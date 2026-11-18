@@ -13,14 +13,14 @@
 - **文案**：`t(key, vars)`，三种语言 `zh-Hans`（默认）、`zh-Hant-TW`（台湾用词）、`en`，按功能分文件放在 `src/strings/`，测试检查三种语言的键和 `{占位符}` 一致。用户写的内容永远不经过 `t()`，也不做简繁转换
 - **注释**用中文，写「为什么」，不写「做了什么」；密度照 babble
 - **CSP**：`connect-src 'self' https://api.github.com`，不加载任何 CDN
-- **离线**：照 babble 的 `sw.js` / `release.json` / `scripts/prepare-release.mjs` / `src/start.js`：整版下载并校验 SHA-256 才安装，页面和 worker 同一版，不 `skipWaiting`。缓存名前缀 `picknest-`，只清自己前缀的旧缓存（同一个 github.io 域名下还有别的 App）。新加的程序文件要进 `CORE`，`tests/sw.test.mjs` 检查
+- **离线**：照 babble 的 `sw.js` / `release.json` / `scripts/prepare-release.mjs` / `src/start.js`：整版下载并校验 SHA-256 才安装，页面和 worker 同一版，不 `skipWaiting`。缓存名前缀 `picknest-`，只清自己前缀的旧缓存（同一个 github.io 域名下还有别的 App）。新加的程序文件要进 `CORE`，`tests/sw.test.mjs` 检查。版本号在 `src/version.js`，由 `prepare-release` 和 `sw.js` 的 `CACHE` 一起改，不要手改
 - **本机存储**：`picknest.state`（快照）+ `picknest.pending.*`（每次改动一条日志）+ `picknest.local`（本机设置），照 babble 的 `core/persistence.js` 和 `core/state.js`。同一个域名下有别的 App，所有键都带 `picknest.` 前缀
 
 ## 从 babble 移植什么
 
 以 `../babble` 为准（它的同步修过 house-ledger 和 virtual-bookshelf 还有的两个问题：文件超过 1 MB 要用 raw 格式读；ETag 要合并成功后再记）。移植时：
 
-- `core/util.js`、`core/hanzi.js`、`core/sha256.js` 基本原样
+- `core/util.js`、`core/hanzi.js` 基本原样（已移植）；`core/sha256.js` 第 5 步跟着同步一起移植
 - `core/store.js`：`canon`、`pick`、`mergeStates`、`stamp`、`deletedRecord`、`restoredRecord`、`newId` 原样；`normalizeState` 和各集合的整理函数按 `docs/DATA_MODEL.md` 重写；加 `ensureSeeds`、`normName`、`hash64`、`itemId`
 - `core/state.js`、`core/persistence.js`：去掉 babble 特有的（说话人、录音、夜间、版本记录本），键名换成 `picknest.*`，`app` 标识换成 `picknest`
 - `core/sync.js`（第 5 步）：文件名 `picknest.json`、App 标识、同步码前缀 `picknest-sync:` 做成参数（babble 第 30 行的正则写死了 `babble-sync:`，别照抄）；V1 没有图片，去掉录音上传下载那部分，但保留以后接图片的位置
@@ -31,7 +31,7 @@
 
 - 删除一律软删除；改动一律经过 `stamp()`；读入的数据一律经过 `normalizeState()`；不认识的字段和集合原样保留
 - 预置的清单、商店、分类用固定 id、`updatedAt: 0`，由 `ensureSeeds()` 补（加载后、每次合并后），不重复、不复活被删的
-- 同一张清单里同名的东西用固定 id `itemId(listId, name)`；再加一次就恢复同一条
+- 同一张清单里同名的东西是同一条记录：id 一律用 `itemId(state, listId, name)` 算（先找同名的，再固定 id，再随机）；再加一次就恢复同一条
 - `items.needs` 是给以后的食谱 / 计划预留的，V1 不用，但必须原样保留
 - 确定性的事（勾选、筛选、数量、分组）永远不用 AI
 
