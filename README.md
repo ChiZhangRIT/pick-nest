@@ -97,6 +97,8 @@ python3 -m http.server 8792 --bind 127.0.0.1
 
 然后打开 `http://127.0.0.1:8792`。本地预览用的是独立的浏览器存储，不注册离线缓存（只在 https 下注册），不代表线上已安装的版本。
 
+这台 Mac 的沙盒不让开端口时，用 `swift tools/snapshot.swift 输出.png [--width 390] [--hash '#/settings'] [--theme dark] [--lang en] [--state 编出来的数据.json] [--js '点按钮的脚本']` 在离屏的 WebKit 里打开本地文件截图（说明在脚本开头；只用编出来的数据，截图不进仓库）。
+
 改了图标（`icons/icon.svg`）后运行 `swift tools/render-icons.swift` 重新生成 PNG（只用 macOS 自带的 AppKit），再运行上面的 `prepare-release`。
 
 - **这个仓库是公开的**：真实的购物记录、备份、令牌都不要放进来，测试、注释、例子里也不要写
