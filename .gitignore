@@ -1,0 +1,9 @@
+# 购物记录、备份、同步下来的数据都是私人内容：只放在自己的设备和私有同步仓库（pick-nest-data）里，这个仓库是公开的，不要提交
+picknest*.json
+PickNest*.json
+*.private.*
+/private/
+.DS_Store
+node_modules/
+# Claude Code 的工作目录（并行开发的 worktree 放在这里）
+.claude/
