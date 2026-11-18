@@ -5,13 +5,14 @@
 ## V1 — 自己用的购物清单
 
 - [x] **第 1 步 文档**：README（行为规格）、CLAUDE.md（开发约定）、docs/DATA_MODEL.md、本文件
-- [ ] **第 2 步 骨架和数据层**
-  - `index.html`、两份 manifest、图标、`styles.css`
-  - 离线：`sw.js` + `release.json` + `scripts/prepare-release.mjs` + `src/start.js`（照 babble：整版校验后安装，页面和 worker 同一版）
-  - `src/app.js` 外壳：hash 路由、手机底栏（清单｜商店｜设置）、宽屏侧栏、浅色 / 深色、三种语言
-  - 数据层：`core/util.js`、`core/hanzi.js`、`core/store.js`（normalize、merge、stamp、软删除、ensureSeeds、固定 id）、`core/state.js` + `core/persistence.js`（从 babble 移植）
+- [x] **第 2 步 骨架和数据层**
+  - `index.html`、两份 manifest、图标（`icons/icon.svg`，PNG 由 `tools/render-icons.swift` 生成）、`styles.css`
+  - 离线：`sw.js` + `release.json` + `scripts/prepare-release.mjs` + `src/start.js`（照 babble：整版校验后安装，页面和 worker 同一版）；版本号在 `src/version.js`
+  - `src/app.js` 外壳：hash 路由、手机底栏、宽屏侧栏、浅色 / 深色、三种语言。底栏现在只有「清单｜设置」：「商店」第 4 步和商店页一起加，不放点了没反应的入口
+  - 数据层：`core/util.js`、`core/hanzi.js`、`core/store.js`（normalize、merge、stamp、软删除、ensureSeeds、normName、hash64、固定 id）、`core/state.js` + `core/persistence.js`（从 babble 移植）
   - 首页能看到预置的两张清单（各有几样要买）；设置里能换语言、外观
-  - 测试：store、state、persistence、i18n 三种语言键一致、sw 文件表、start、prepare-release --check
+  - 本机数据损坏时的恢复页提前到这一步（`ui/recovery.js`：下载原始数据、重新读取、保留读得出来的部分）；「从备份恢复」「从云端恢复」第 5 步再加
+  - 测试：store、state、persistence、i18n 三种语言键一致、sw 文件表、start、boot、prepare-release --check、恢复页、首页 / 设置页（假 DOM）、整个 App 冷启动
 - [ ] **第 3 步 清单**
   - 清单页：快速添加（解析「鸡蛋 12」「2 牛奶」「面粉 1袋」）、输入联想（买过的东西、常去的商店）、点一下勾掉 / 取消、「已买」区（折叠、清除已买可撤销）
   - 改一样东西（名字、数量、单位、商店、分类、备注、移到别的清单、删除）
@@ -23,8 +24,8 @@
   - 「商店」页：每家店还要买几样（跨所有清单，加上「未指定」）；点进去看这家店要买的全部东西，标出各来自哪张清单，能直接勾
   - 设置里管理商店和分类（新增、改名、排序、归档）
 - [ ] **第 5 步 同步和数据安全**
-  - 从 babble 移植同步（通用化：文件名、App 标识、同步码前缀做成参数；不带录音部分），设置 → 同步（连接、同步码、换令牌、停止）
-  - 备份 / 从备份恢复（合并，不覆盖）、最近删除、本机数据损坏时的恢复页
+  - 从 babble 移植同步（通用化：文件名、App 标识、同步码前缀做成参数；不带录音部分；`core/sha256.js` 到这一步跟着同步一起移植），设置 → 同步（连接、同步码、换令牌、停止）
+  - 备份 / 从备份恢复（合并，不覆盖）、最近删除；恢复页加上「从备份恢复」「从云端恢复」，设置里能下载恢复前的原始数据存档
 - [ ] **第 6 步 购物模式、搜索、收尾**
   - 购物模式：大行、隐藏已买、进度、屏幕常亮
   - 搜索所有清单（简繁互通）
@@ -52,5 +53,9 @@
 | 暂不做原生 SwiftUI | 这台 Mac 没装 Xcode；CloudKit 要付费账号；SwiftData 不支持跨 Apple ID 共享；非 Pro 的 iPhone 15 用不了苹果端侧模型 |
 | 本机数据先用 localStorage 日志（babble 的 persistence） | V1 数据小；这套写法有测试、有损坏恢复；主屏幕 App 各自有独立的存储。图片以后放 IndexedDB |
 | 同一张清单里同名的东西用固定 id | 再买一次时恢复同一条，记录不会越积越多；离线各加一次不会重复 |
+| 算 id 时先找同一张清单里同名的记录（没删除的优先），没有才用固定 id，固定 id 被占了才用随机 id | 改名改成同名的、从别的清单移过来的、以前分到随机 id 的，都已经在这张清单上；只看固定 id 那一格会再多出一条 |
+| 内容没变的写入不盖新时间 | 预置记录靠 `updatedAt: 0` 表示没人改过；白盖一个新时间，合并时会盖过别的设备上的删除 |
+| 版本号单独放在 `src/version.js`（由 `scripts/prepare-release.mjs` 和 `sw.js` 的 `CACHE` 一起写，不要手改） | 启动器要拿它核对 worker 的版本，设置页的「关于」也要显示；`app.js` 不能 import 启动器（那会再启动一次） |
+| 本机数据读不出来、存储用不了时不补预置记录 | 恢复页显示「能读出几张清单」，补进去的预置清单会让人以为读到了；修好后再补 |
 | 常去的商店按「买的次数」算 | 偶尔换一家买一次不改习惯 |
 | V1 不接 AI | 先把手动录入的清单做好用 |

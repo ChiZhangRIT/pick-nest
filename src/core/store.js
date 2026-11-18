@@ -1,0 +1,443 @@
+// @ts-check
+// 数据层：state.data 下每个集合都是「id → 记录」——lists 清单、items 清单里的东西、stores 商店、categories 分类、memory 买过的东西。
+// 每条记录有 updatedAt（毫秒）；删除只打 deleted 标记、内容保留（「最近删除」里能恢复，也照样同步）。
+// 多台设备合并时逐条比较 updatedAt 取较新的一整条；时间相同内容不同时按 canon() 排序取一份，保证每台设备结果一样。
+// 设置按键合并，各键有自己的修改时间（settingsAt）。不认识的字段、集合原样保留：旧版 App 同步时不会弄丢新版的数据。
+// 预置的清单、商店、分类用固定 id、updatedAt 0，由 ensureSeeds() 补。细节见 docs/DATA_MODEL.md。
+import { isObj, str, own, safeKey } from './util.js';
+import { toSimplified } from './hanzi.js';
+
+/**
+ * @typedef {object} Base 所有记录都有的字段
+ * @property {string} id
+ * @property {number} createdAt
+ * @property {number} updatedAt   改动一律经过 stamp()：比上一版至少新 1 毫秒；预置记录是 0
+ * @property {true} [deleted]     软删除：内容保留，照样同步
+ * @property {number} [deletedAt]
+ */
+/** @typedef {'grocery' | 'general'} ListKind */
+/** @typedef {'need' | 'done' | 'later'} ItemStatus */
+/**
+ * @typedef {Base & { sys: string | null, name: string, kind: ListKind, icon: string, order: number,
+ *   defaultStoreId: string | null, archived: boolean }} List
+ * 清单。sys：预置清单的标记（'groceries' | 'tobuy'），name 为空时显示界面语言的文案
+ */
+/**
+ * @typedef {Base & { listId: string, name: string, qty: number | null, unit: string, note: string,
+ *   categoryId: string | null, storeId: string | null, status: ItemStatus, doneAt: number | null,
+ *   url: string, price: number | null, needs: Record<string, any> }} Item
+ * 清单里的一样东西。needs 是给以后的食谱 / 计划预留的（来源 → { qty, unit, label }），V1 不用但原样保留
+ */
+/** @typedef {Base & { name: string, order: number, archived: boolean }} Store 商店 */
+/** @typedef {Base & { sys: string | null, name: string, kind: ListKind | null, order: number }} Category 分类 */
+/**
+ * @typedef {Base & { name: string, kind: ListKind, categoryId: string | null, unit: string, qty: number | null,
+ *   stores: Record<string, { n: number, at: number }>, uses: number, lastAt: number }} Memory
+ * 买过的东西（跨清单的习惯），每个 normName 一条，id = 'm_' + hash64(normName)
+ */
+/**
+ * @typedef {object} State
+ * @property {'picknest'} app
+ * @property {1} v
+ * @property {{ lists: Record<string, List>, items: Record<string, Item>, stores: Record<string, Store>,
+ *   categories: Record<string, Category>, memory: Record<string, Memory>, [collection: string]: Record<string, any> }} data
+ * @property {Record<string, any>} settings     同步的设置（按键合并）
+ * @property {Record<string, number>} settingsAt 各设置键的修改时间
+ */
+/** @typedef {(key: string, vars?: Record<string, any>) => string} Translate */
+
+export const COLLECTIONS = ['lists', 'items', 'stores', 'categories', 'memory'];
+// kind、status 认不出的取值按默认值读（下面的整理函数），改过以后会照默认值写回去。
+// 以后要加新的取值（比如「项目」清单）：用新字段表达，或者同时升 v（旧版会拒绝读、不会改坏），不要直接往这几个字段里塞新值
+/** @type {ListKind[]} */
+export const LIST_KINDS = ['grocery', 'general'];
+/** @type {ItemStatus[]} */
+export const ITEM_STATUS = ['need', 'done', 'later'];
+// V1 还没有同步的设置（语言、主题这些是本机设置，在 picknest.local）；以后加的设置在这里给默认值
+export const DEFAULT_SETTINGS = Object.freeze({});
+
+/** @param {any[]} states */
+const collectionsOf = (...states) => [...new Set([...COLLECTIONS, ...states.flatMap(s => Object.keys((s && isObj(s.data) && s.data) || {}))])].filter(safeKey);
+
+/** @returns {State} */
+export function blankState() {
+  return { app: 'picknest', v: 1, data: { lists: {}, items: {}, stores: {}, categories: {}, memory: {} }, settings: { ...DEFAULT_SETTINGS }, settingsAt: {} };
+}
+
+/** 和键的顺序无关的序列化：判断两份数据是否一样，以及打平时决定取哪一份 @param {any} v @returns {string} */
+export function canon(v) {
+  if (Array.isArray(v)) return '[' + v.map(canon).join(',') + ']';
+  if (v && typeof v === 'object') {
+    return '{' + Object.keys(v).filter(k => v[k] !== undefined).sort().map(k => JSON.stringify(k) + ':' + canon(v[k])).join(',') + '}';
+  }
+  return JSON.stringify(v === undefined ? null : v);
+}
+
+// ---------- 整理一条记录：修得好的修好，用户写的文字一个字都不改 ----------
+const DANGER = new Set(['__proto__', 'constructor', 'prototype']);
+/**
+ * 复制自有字段，去掉 __proto__ 之类：JSON.parse 会把 "__proto__" 当成普通的键，再赋值给别的对象就成了改原型
+ * @param {Record<string, any>} o
+ * @returns {Record<string, any>}
+ */
+function copySafe(o) {
+  /** @type {Record<string, any>} */
+  const out = {};
+  for (const k of Object.keys(o)) if (!DANGER.has(k)) out[k] = o[k];
+  return out;
+}
+/** 数字或能读成数字的字符串 → 数字；别的 → null @param {unknown} v @returns {number | null} */
+const numOrNull = v => (typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'string' && v.trim() && Number.isFinite(Number(v)) ? Number(v) : null);
+/** 毫秒时刻：不是非负数就当 0 @param {unknown} v */
+const time = v => { const n = numOrNull(v); return n != null && n >= 0 ? n : 0; };
+/** 次数：非负整数 @param {unknown} v */
+const count = v => { const n = numOrNull(v); return n != null && n > 0 ? Math.floor(n) : 0; };
+/** @param {unknown} v */
+const idOrNull = v => (safeKey(v) ? v : null);
+/** @param {unknown} v */
+const sysOrNull = v => (typeof v === 'string' && v ? v : null);      // 新版可能有新的预置标记：认不出也留着，显示时退回「未命名」
+
+/**
+ * 所有记录共同的字段。createdAt 只在缺了 / 坏了时补成 updatedAt：预置记录的 createdAt 是 0，用户改过以后也要还是 0（清单按 order、createdAt 排）
+ * @param {Record<string, any>} rec
+ * @param {string} id
+ */
+function base(rec, id) {
+  const r = copySafe(rec);
+  r.id = id;
+  r.updatedAt = time(rec.updatedAt);
+  const c = numOrNull(rec.createdAt);
+  r.createdAt = c != null && c >= 0 ? c : r.updatedAt;
+  if (r.deleted) { r.deleted = true; r.deletedAt = time(rec.deletedAt) || r.updatedAt; }
+  else { delete r.deleted; delete r.deletedAt; }
+  return r;
+}
+
+/** @param {Record<string, any>} rec @param {string} [id] @returns {List} */
+export function normalizeList(rec, id = rec && rec.id) {
+  const r = base(rec, /** @type {string} */ (id));
+  r.sys = sysOrNull(r.sys);
+  r.name = str(r.name);
+  r.kind = LIST_KINDS.includes(r.kind) ? r.kind : r.sys === 'groceries' ? 'grocery' : 'general';
+  r.icon = str(r.icon);
+  r.order = numOrNull(r.order) ?? 0;
+  r.defaultStoreId = idOrNull(r.defaultStoreId);
+  r.archived = r.archived === true;
+  return /** @type {List} */ (r);
+}
+
+/** qty 没写（旧记录、手写的数据）当成新加的默认 1；写了 null 是「不写数量」，要保留 @param {Record<string, any>} rec @param {string} [id] @returns {Item} */
+export function normalizeItem(rec, id = rec && rec.id) {
+  const r = base(rec, /** @type {string} */ (id));
+  r.listId = str(r.listId);
+  r.name = str(r.name);
+  r.qty = r.qty === undefined ? 1 : numOrNull(r.qty);
+  r.unit = str(r.unit);
+  r.note = str(r.note);
+  r.categoryId = idOrNull(r.categoryId);
+  r.storeId = idOrNull(r.storeId);
+  r.status = ITEM_STATUS.includes(r.status) ? r.status : 'need';
+  r.doneAt = numOrNull(r.doneAt);
+  r.url = str(r.url);
+  r.price = numOrNull(r.price);
+  r.needs = isObj(r.needs) ? copySafe(r.needs) : {};     // 预留给食谱 / 计划：里面是什么都原样留着
+  return /** @type {Item} */ (r);
+}
+
+/** @param {Record<string, any>} rec @param {string} [id] @returns {Store} */
+export function normalizeStore(rec, id = rec && rec.id) {
+  const r = base(rec, /** @type {string} */ (id));
+  r.name = str(r.name);
+  r.order = numOrNull(r.order) ?? 0;
+  r.archived = r.archived === true;
+  return /** @type {Store} */ (r);
+}
+
+/** @param {Record<string, any>} rec @param {string} [id] @returns {Category} */
+export function normalizeCategory(rec, id = rec && rec.id) {
+  const r = base(rec, /** @type {string} */ (id));
+  r.sys = sysOrNull(r.sys);
+  r.name = str(r.name);
+  r.kind = LIST_KINDS.includes(r.kind) ? r.kind : null;
+  r.order = numOrNull(r.order) ?? 0;
+  return /** @type {Category} */ (r);
+}
+
+/** @param {Record<string, any>} rec @param {string} [id] @returns {Memory} */
+export function normalizeMemory(rec, id = rec && rec.id) {
+  const r = base(rec, /** @type {string} */ (id));
+  r.name = str(r.name);
+  r.kind = LIST_KINDS.includes(r.kind) ? r.kind : 'grocery';
+  r.categoryId = idOrNull(r.categoryId);
+  r.unit = str(r.unit);
+  r.qty = numOrNull(r.qty);
+  /** @type {Record<string, any>} */
+  const stores = {};
+  if (isObj(r.stores)) for (const [sid, v] of Object.entries(r.stores)) if (safeKey(sid) && isObj(v)) stores[sid] = { ...copySafe(v), n: count(v.n), at: time(v.at) };
+  r.stores = stores;
+  r.uses = count(r.uses);
+  r.lastAt = time(r.lastAt);
+  return /** @type {Memory} */ (r);
+}
+
+/** @type {Record<string, (rec: Record<string, any>, id?: string) => any>} */
+const NORMALIZERS = { lists: normalizeList, items: normalizeItem, stores: normalizeStore, categories: normalizeCategory, memory: normalizeMemory };
+
+/**
+ * 按集合整理一条记录。不认识的集合（新版才有的）只修 id 和 updatedAt，别的原样保留
+ * @param {string} collection
+ * @param {Record<string, any>} rec
+ * @param {string} [id]
+ */
+export function normalizeRecord(collection, rec, id = rec && rec.id) {
+  const fn = own(NORMALIZERS, collection);
+  return fn ? fn(rec, id) : { ...copySafe(rec), id, updatedAt: time(rec.updatedAt) };
+}
+
+/** 设置补齐默认值；不认识的键原样保留 @param {unknown} src */
+function normSettings(src) {
+  /** @type {Record<string, any>} */
+  const s = { ...DEFAULT_SETTINGS };
+  if (isObj(src)) for (const [k, v] of Object.entries(src)) if (safeKey(k)) s[k] = v;
+  return s;
+}
+
+/**
+ * 读入本地、云端或备份里的数据时的整理：丢掉不是对象的记录和危险的键，补齐字段。不补预置记录（那是 ensureSeeds 的事）
+ * @param {any} s
+ * @returns {State}
+ */
+export function normalizeState(s) {
+  const out = blankState();
+  if (!isObj(s)) return out;
+  const data = isObj(s.data) ? s.data : {};
+  for (const c of collectionsOf(s)) {
+    const src = own(data, c);
+    if (src !== undefined && !isObj(src)) continue;
+    // 集合名可能是 toString、hasOwnProperty 这种原型上就有的名字：只认自有的，不然会把记录写到内置函数上
+    out.data[c] = own(out.data, c) || {};
+    for (const [id, rec] of Object.entries(src || {})) {
+      if (!isObj(rec) || !safeKey(id)) continue;
+      out.data[c][id] = normalizeRecord(c, rec, id);
+    }
+  }
+  out.settings = normSettings(s.settings);
+  if (isObj(s.settingsAt)) for (const [k, t] of Object.entries(s.settingsAt)) if (safeKey(k) && Number(t) > 0) out.settingsAt[k] = Number(t);
+  return out;
+}
+
+/** 同一条记录的两份取哪份：新的；一样新就按内容排，每台设备选的都一样 @param {any} a @param {any} b */
+export function pick(a, b) {
+  if (!a) return b;
+  if (!b) return a;
+  if ((b.updatedAt || 0) !== (a.updatedAt || 0)) return (b.updatedAt || 0) > (a.updatedAt || 0) ? b : a;
+  return canon(b) > canon(a) ? b : a;
+}
+
+/**
+ * 两份数据逐条合并（顺序无关：merge(a,b) 和 merge(b,a) 结果一样）。不补预置记录：合并完由调用的地方 ensureSeeds
+ * @param {any} a
+ * @param {any} b
+ * @returns {State}
+ */
+export function mergeStates(a, b) {
+  const out = blankState();
+  const da = (a && isObj(a.data) && a.data) || {}, db = (b && isObj(b.data) && b.data) || {};
+  for (const c of collectionsOf(a, b)) {
+    out.data[c] = own(out.data, c) || {};
+    const ids = new Set([...Object.keys(own(da, c) || {}), ...Object.keys(own(db, c) || {})]);
+    for (const id of ids) if (safeKey(id)) out.data[c][id] = pick(own(own(da, c), id), own(own(db, c), id));
+  }
+  const sa = (a && a.settings) || {}, sb = (b && b.settings) || {}, ta0 = (a && a.settingsAt) || {}, tb0 = (b && b.settingsAt) || {};
+  /** @type {Record<string, any>} */
+  const settings = {};
+  const keys = new Set([...Object.keys(sa), ...Object.keys(sb), ...Object.keys(ta0), ...Object.keys(tb0)]);
+  for (const k of keys) {
+    if (!safeKey(k)) continue;
+    const ta = own(ta0, k) || 0, tb = own(tb0, k) || 0;
+    const from = tb > ta ? sb : ta > tb ? sa : (canon(own(sb, k)) > canon(own(sa, k)) ? sb : sa);
+    if (own(from, k) !== undefined) settings[k] = own(from, k);
+    if (ta || tb) out.settingsAt[k] = Math.max(ta, tb);
+  }
+  out.settings = normSettings(settings);
+  return out;
+}
+
+/**
+ * 新的或改过的记录：盖上修改时间（比旧的至少新 1 毫秒，同一毫秒改两次也分得出先后）
+ * @template {Record<string, any>} T
+ * @param {T} rec
+ * @param {{ updatedAt?: number } | null | undefined} prev
+ * @param {number} [now]
+ * @returns {T & { updatedAt: number }}
+ */
+export function stamp(rec, prev, now = Date.now()) {
+  return { ...rec, updatedAt: Math.max(now, ((prev && prev.updatedAt) || 0) + 1) };
+}
+
+/** 软删除：内容保留，照样同步，在「最近删除」里能恢复 @param {any} rec @param {number} [now] */
+export function deletedRecord(rec, now = Date.now()) {
+  return rec && !rec.deleted ? stamp({ ...rec, deleted: true, deletedAt: now }, rec, now) : null;
+}
+
+/** 恢复：去掉删除标记，修改时间晚于删除（别的设备上旧的删除不会再盖过来） @param {any} rec @param {number} [now] */
+export function restoredRecord(rec, now = Date.now()) {
+  if (!rec || !rec.deleted) return null;
+  const { deleted, deletedAt, ...r } = rec;
+  return stamp(r, rec, now);
+}
+
+/** 生成记录 id：前缀 + 时间 + 随机，几台设备同时新建也不会撞 @param {string} prefix */
+export function newId(prefix) {
+  const rnd = (globalThis.crypto && crypto.getRandomValues) ? [...crypto.getRandomValues(new Uint8Array(6))].map(b => b.toString(36).padStart(2, '0')).join('') : Math.random().toString(36).slice(2, 12);
+  return prefix + Date.now().toString(36) + rnd;
+}
+
+/**
+ * 改一项设置（直接改 state），修改时间比旧的至少新 1 毫秒。返回是否真的变了
+ * @param {State} state @param {string} key @param {any} value @param {number} [now]
+ */
+export function setSetting(state, key, value, now = Date.now()) {
+  if (!safeKey(key) || canon(state.settings[key]) === canon(value)) return false;
+  if (value === undefined) delete state.settings[key]; else state.settings[key] = value;
+  state.settingsAt[key] = Math.max(now, (state.settingsAt[key] || 0) + 1);
+  return true;
+}
+
+// ---------- 预置数据 ----------
+export const SYS_LISTS = ['groceries', 'tobuy'];
+// 商店名是专有名词，直接写名字（不经过 t()）
+export const SEED_STORES = [
+  ['s_wholefoods', 'Whole Foods'], ['s_traderjoes', "Trader Joe's"], ['s_costco', 'Costco'], ['s_target', 'Target'],
+  ['s_hmart', 'H Mart'], ['s_99ranch', '99 Ranch'], ['s_amazon', 'Amazon'], ['s_homedepot', 'The Home Depot'],
+];
+export const GROCERY_CATEGORIES = ['produce', 'meat', 'dairy', 'bakery', 'frozen', 'pantry', 'condiments', 'snacks', 'household'];
+export const GENERAL_CATEGORIES = ['clothing', 'books', 'tools', 'electronics', 'home'];
+export const SYS_CATEGORIES = [...GROCERY_CATEGORIES, ...GENERAL_CATEGORIES];
+
+/**
+ * 预置记录（每次调用都是新对象，改了不影响下次）。固定 id：两台设备各自初始化，同步后不会有两份「食材」；
+ * createdAt / updatedAt 都是 0：用户的任何修改都比它新，另一台设备晚些初始化也盖不掉
+ * @returns {{ lists: List[], stores: Store[], categories: Category[] }}
+ */
+export function seedRecords() {
+  const at = { createdAt: 0, updatedAt: 0 };
+  return {
+    lists: [
+      { id: 'l_groceries', sys: 'groceries', name: '', kind: 'grocery', icon: '', order: 0, defaultStoreId: 's_wholefoods', archived: false, ...at },
+      { id: 'l_tobuy', sys: 'tobuy', name: '', kind: 'general', icon: '', order: 1, defaultStoreId: null, archived: false, ...at },
+    ],
+    stores: SEED_STORES.map(([id, name], i) => ({ id, name, order: i, archived: false, ...at })),
+    categories: SYS_CATEGORIES.map((sys, i) => ({ id: 'c_' + sys, sys, name: '', kind: GROCERY_CATEGORIES.includes(sys) ? 'grocery' : 'general', order: i, ...at })),
+  };
+}
+
+/**
+ * 补上缺的预置记录（直接改 state，返回同一个 state）。已经有的——包括删掉的、改过的——都不动，所以删掉的预置商店不会自己回来；
+ * 重复调用结果不变。加载后、每次合并后调用；不要放在 mutate 里（mutate 会给 updatedAt 0 的新记录盖上现在的时间）
+ * @param {State} state
+ */
+export function ensureSeeds(state) {
+  for (const [c, recs] of Object.entries(seedRecords())) {
+    if (!isObj(state.data[c])) state.data[c] = {};
+    const col = state.data[c];
+    for (const rec of recs) if (own(col, rec.id) === undefined) col[rec.id] = normalizeRecord(c, rec, rec.id);
+  }
+  return state;
+}
+
+// ---------- 名字和固定 id ----------
+/**
+ * 比较名字用：NFKC（全角字母数字、全角空格变半角）→ 去首尾空格 → 连续空白合成一个 → 小写 → 繁体折成简体。
+ * 只用来比较和算 id，不改用户写的名字
+ * @param {unknown} s
+ */
+export function normName(s) {
+  return toSimplified(str(s).normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase());
+}
+
+const B36 = '0123456789abcdefghijklmnopqrstuvwxyz';
+/**
+ * FNV-1a 64 位（按 UTF-8 字节），结果写成 base36。用两个 32 位的半边算，不用 BigInt：
+ * 乘以 FNV 质数 2^40 + 0x1b3 = 低半边 × 0x1b3（不超过 2^41，double 算得准）再把低半边左移 8 位加到高半边
+ * @param {string} s
+ */
+export function hash64(s) {
+  let hi = 0xcbf29ce4, lo = 0x84222325;
+  for (const b of new TextEncoder().encode(str(s))) {
+    lo = (lo ^ b) >>> 0;
+    const p = lo * 0x1b3;
+    hi = (Math.imul(hi, 0x1b3) + Math.floor(p / 0x100000000) + (lo << 8)) >>> 0;
+    lo = p >>> 0;
+  }
+  // 64 位整数超出 double 的精度：拆成四段 16 位，做长除法转 base36
+  let parts = [hi >>> 16, hi & 0xffff, lo >>> 16, lo & 0xffff], out = '';
+  while (parts.some(x => x)) {
+    let rem = 0;
+    parts = parts.map(x => { const cur = rem * 0x10000 + x; rem = cur % 36; return Math.floor(cur / 36); });
+    out = B36[rem] + out;
+  }
+  return out || '0';
+}
+
+/**
+ * 同一张清单里同名的东西用同一条记录，返回它的 id（调用的地方拿到后：有这条就恢复 / 提示已经在清单上，没有就新建）。
+ * 先找这张清单里同名的记录（已买、已清除也算），而不是只看固定 id 那一格：改名改成「牛奶」的、从别的清单移过来的、
+ * 以前固定 id 被占时分到随机 id 的，都已经是「这张清单里的牛奶」，再加一次不能又多出一条。
+ * 同名的有几条时：没删除的优先（不然恢复一条删掉的，清单上就有两条一样的），再固定 id 优先，再按 id 排（每台设备选的一样）。
+ * 都没有：用固定 id 'i_' + hash64(listId + '\n' + normName(name))（两台设备离线各加一次，同步后还是一条）；
+ * 这一格被别的东西占了（那条改过名或移走了）才用随机 id
+ * @param {State} state
+ * @param {string} listId
+ * @param {string} name
+ * @returns {string}
+ */
+export function itemId(state, listId, name) {
+  // 以前的写法是 itemId(listId, name)：少传 state 不会报错，只会算出一个看着正常、其实不对的 id，所以这里直接拦下
+  if (!isObj(state) || !isObj(state.data) || typeof listId !== 'string') throw new TypeError('itemId(state, listId, name)');
+  const key = normName(name);
+  const id = 'i_' + hash64(listId + '\n' + key);
+  const items = isObj(state.data.items) ? state.data.items : {};
+  /** @type {[string, any][]} */
+  const same = Object.entries(items).filter(([, r]) => isObj(r) && r.listId === listId && normName(r.name) === key);
+  /** @param {[string, any][]} recs */
+  const choose = recs => (!recs.length ? null : recs.some(([k]) => k === id) ? id : recs.map(([k]) => k).sort()[0]);
+  return choose(same.filter(([, r]) => !r.deleted)) || choose(same.filter(([, r]) => r.deleted)) || (own(items, id) ? newId('i_') : id);
+}
+
+// ---------- 显示和排序 ----------
+// 默认图标写成转义，免得编辑器把变体选择符弄丢
+export const DEFAULT_LIST_ICON = { grocery: '\u{1F96C}', general: '\u{1F6CD}\uFE0F' };
+
+/** 清单的显示名：用户写的名字 → 预置清单的文案 → 「未命名清单」。t 由调用的地方给（core 不依赖界面语言） @param {List} list @param {Translate} t */
+export function listName(list, t) {
+  const name = str(list && list.name).trim();
+  if (name) return name;
+  return list && list.sys && SYS_LISTS.includes(list.sys) ? t('list.sys.' + list.sys) : t('list.untitled');
+}
+/** 分类的显示名：用户写的名字 → 预置分类的文案 → 「未命名分类」 @param {Category} cat @param {Translate} t */
+export function categoryName(cat, t) {
+  const name = str(cat && cat.name).trim();
+  if (name) return name;
+  return cat && cat.sys && SYS_CATEGORIES.includes(cat.sys) ? t('cat.sys.' + cat.sys) : t('cat.untitled');
+}
+/** 清单的图标：用户选的 emoji，没选就按 kind 用默认的 @param {List} list */
+export function listIcon(list) {
+  return str(list && list.icon).trim() || DEFAULT_LIST_ICON[list && list.kind === 'grocery' ? 'grocery' : 'general'];
+}
+
+/** 排序：order，再 createdAt，再 id（保证每台设备一样） @param {{ order: number, createdAt: number, id: string }} a @param {{ order: number, createdAt: number, id: string }} b */
+export function byOrder(a, b) {
+  return (a.order - b.order) || (a.createdAt - b.createdAt) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+}
+/** 一个集合里没删除的记录（数组，无序） @param {State} state @param {string} collection */
+export const live = (state, collection) => Object.values((state && state.data && state.data[collection]) || {}).filter(r => !r.deleted);
+/** 首页显示的清单：没删除、没归档，按顺序 @param {State} state @returns {List[]} */
+export const homeLists = state => live(state, 'lists').filter(l => !l.archived).sort(byOrder);
+/** 每张清单还要买几样（status 'need'、没删除）：listId → 数量 @param {State} state */
+export function needCounts(state) {
+  /** @type {Map<string, number>} */
+  const m = new Map();
+  for (const it of live(state, 'items')) if (it.status === 'need') m.set(it.listId, (m.get(it.listId) || 0) + 1);
+  return m;
+}

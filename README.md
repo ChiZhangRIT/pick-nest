@@ -8,9 +8,11 @@
 
 > **正在开发**。进度见 [docs/ROADMAP.md](docs/ROADMAP.md)。标着 🚧 的部分还没做好，下面写的是做好后的样子；做好一部分就把这里改成实际的行为。
 
+> **现在能用的**（第 2 步）：打开就是首页「清单」，有两张预置清单（食材、想买），各显示还要买几样；「设置」里能换语言（简体 / 繁體 / English）和外观（自动 / 浅色 / 深色）。部署后添加到主屏幕，没网也能打开。还不能加东西、不能点进清单（第 3 步）；底栏现在只有「清单｜设置」，「商店」第 4 步和商店页一起加。
+
 ## 怎么用
 
-底栏三个：**清单** ｜ **商店** ｜ **设置**。iPad 和 Mac 上换成侧栏。
+底栏三个：**清单** ｜ **商店** 🚧 ｜ **设置**。iPad 和 Mac 上换成侧栏。
 
 ### 清单 🚧
 
@@ -95,6 +97,8 @@ python3 -m http.server 8792 --bind 127.0.0.1
 
 然后打开 `http://127.0.0.1:8792`。本地预览用的是独立的浏览器存储，不注册离线缓存（只在 https 下注册），不代表线上已安装的版本。
 
+改了图标（`icons/icon.svg`）后运行 `swift tools/render-icons.swift` 重新生成 PNG（只用 macOS 自带的 AppKit），再运行上面的 `prepare-release`。
+
 - **这个仓库是公开的**：真实的购物记录、备份、令牌都不要放进来，测试、注释、例子里也不要写
-- 新加的程序文件要写进 `sw.js` 的 `CORE`，提交前运行 `node scripts/prepare-release.mjs`（生成 `release.json` 的 SHA-256 清单，内容变了自动升级缓存版本）
+- 新加的程序文件要写进 `sw.js` 的 `CORE`，提交前运行 `node scripts/prepare-release.mjs`（生成 `release.json` 的 SHA-256 清单，内容变了自动升级缓存版本，`sw.js` 的 `CACHE` 和 `src/version.js` 一起改，不要手改）
 - 开发约定见 [CLAUDE.md](CLAUDE.md)，数据结构见 [docs/DATA_MODEL.md](docs/DATA_MODEL.md)
