@@ -43,12 +43,12 @@ test('动态字段 {x} 三种语言一致；函数文案能用示例变量算出
 });
 
 test('每个文案文件只用自己的前缀；预置清单、预置分类都有文案', () => {
-  const prefix = { core: /^(common|nav)\./, lists: /^list\./, items: /^item\./, catalog: /^cat\./, settings: /^set\./, recovery: /^recovery\./ };
+  const prefix = { core: /^(common|nav)\./, lists: /^list\./, items: /^item\./, stores: /^store\./, catalog: /^cat\./, settings: /^set\./, recovery: /^recovery\./ };
   assert.deepEqual(Object.keys(TABLES).sort(), Object.keys(prefix).sort());
   for (const [name, table] of Object.entries(TABLES)) for (const key of Object.keys(table['zh-Hans'])) assert.match(key, prefix[name], `${name}: ${key}`);
   for (const sys of SYS_LISTS) assert.ok(has('list.sys.' + sys), sys);
   for (const sys of SYS_CATEGORIES) assert.ok(has('cat.sys.' + sys), sys);
-  for (const key of ['list.untitled', 'cat.untitled', 'nav.lists', 'nav.settings', 'common.appName']) assert.ok(has(key), key);
+  for (const key of ['list.untitled', 'cat.untitled', 'nav.lists', 'nav.stores', 'nav.settings', 'store.none', 'common.appName']) assert.ok(has(key), key);
 });
 
 test('t()：替换变量；缺变量保留原样；不认识的键返回键名；不认识的语言退回简体', () => {
@@ -74,7 +74,7 @@ test('预置清单的名字三种语言；英文数量分单复数', () => {
 
 test('台灣用語', () => {
   setLang('zh-Hant-TW');
-  const want = { 'nav.settings': '設定', 'nav.lists': '清單', 'common.undo': '復原', 'cat.sys.bakery': '麵包烘焙', 'cat.sys.frozen': '冷凍', 'set.theme.light': '淺色' };
+  const want = { 'nav.settings': '設定', 'nav.lists': '清單', 'store.archive': '封存', 'store.add': '新增商店', 'cat.sec.both': '兩邊都用', 'common.undo': '復原', 'cat.sys.bakery': '麵包烘焙', 'cat.sys.frozen': '冷凍', 'set.theme.light': '淺色' };
   for (const [key, value] of Object.entries(want)) assert.equal(t(key), value, key);
   setLang('zh-Hans');
 });

@@ -28,8 +28,8 @@ export { PENDING_PREFIX };
 /** @typedef {{ source: string, undoLabel?: string | null, label?: string, saved: boolean, ids: string[], changed?: boolean | number, [k: string]: any }} ChangeInfo */
 
 export const KEY = 'picknest.state', LKEY = 'picknest.local';
-// view：各清单的显示方式 { [listId]: { groupBy, showDone } }（第 3 步用）
-export const LOCAL_DEFAULTS = Object.freeze({ lang: null, theme: 'auto', device: null, sync: null, lastBackupAt: null, view: {} });
+// view：各清单的显示方式 { [listId]: { groupBy, showDone, showLater } }；storeView：各家店的页面 { [storeId | 'none']: { showDone } }（core/group.js 读）
+export const LOCAL_DEFAULTS = Object.freeze({ lang: null, theme: 'auto', device: null, sync: null, lastBackupAt: null, view: {}, storeView: {} });
 const UNDO_MAX = 20;
 
 /** @type {StorageLike | null} */
@@ -42,7 +42,7 @@ let persistenceLocks;
 /** @type {State} */
 let S = normalizeState(null);
 /** @type {Record<string, any>} */
-let L = { ...LOCAL_DEFAULTS, view: {} };
+let L = { ...LOCAL_DEFAULTS, view: {}, storeView: {} };
 let version = 0;
 let lastSaveOk = true;
 /** @type {any} */
@@ -55,7 +55,7 @@ const undoStack = [];
 function defaultStorage() { try { return globalThis.localStorage || null; } catch (e) { return null; } }
 /** @param {string} k */
 function readJSON(k) { try { return JSON.parse((storage && storage.getItem(k)) || 'null'); } catch (e) { return null; } }
-function readLocal() { const l = readJSON(LKEY); return { ...LOCAL_DEFAULTS, view: {}, ...(isObj(l) ? l : {}) }; }
+function readLocal() { const l = readJSON(LKEY); return { ...LOCAL_DEFAULTS, view: {}, storeView: {}, ...(isObj(l) ? l : {}) }; }
 
 /**
  * 读入本机数据。storage 不传就用 localStorage；只有显式传 null 的测试模式允许纯内存保存。

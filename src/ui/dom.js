@@ -1,4 +1,5 @@
-// 界面小工具：建元素（文字一律用 textContent，不拼 HTML：清单名、商品名、粘贴的链接都是用户内容）、图标、提示条、面板、确认框、下载。
+// 界面小工具：建元素（文字一律用 textContent，不拼 HTML：清单名、商品名、粘贴的链接都是用户内容）、图标、提示条、面板、确认框、
+// ↑↓ 按完让按钮留在手指下面、下载。
 import { t } from '../i18n.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -45,6 +46,8 @@ const C = (cx, cy, r) => ['circle', { cx, cy, r }];
 const ICONS = {
   // 清单：三行，前两行打了勾
   list: { kids: [P('M4 7l1.8 1.8L9 5.6'), P('M12.5 7.2H20'), P('M4 12.6l1.8 1.8L9 11.2'), P('M12.5 12.8H20'), C(6.4, 18.4, 1.5), P('M12.5 18.4H20')] },
+  // 商店：带波浪边的雨棚、门
+  store: { kids: [P('M5 4.5h14l1.8 4.5a2.2 2.2 0 01-4.4 0 2.2 2.2 0 01-4.4 0 2.2 2.2 0 01-4.4 0 2.2 2.2 0 01-4.4 0z'), P('M5 11.6v7.9h14v-7.9'), P('M10 19.5V15h4v4.5')] },
   gear: { kids: [C(12, 12, 3), P('M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z')] },
   x: { kids: [P('M6.5 6.5l11 11M17.5 6.5l-11 11')] },
   back: { kids: [P('M15 4.5L7.5 12l7.5 7.5')] },
@@ -216,6 +219,24 @@ export function confirmDialog(opts) {
       ],
     });
     s.el.querySelector('.sheet-foot .btn:last-child').focus();
+  });
+}
+
+/**
+ * ↑↓ 排顺序的按钮（首页、设置 → 商店 / 分类）：按完这一行换了位置，手指下面换成了另一行的按钮，紧接着再按一下就把它挪回去了。
+ * fn 改完数据以后，等页面重画好，把页面滚一下，让刚按的按钮（data-fid）回到屏幕上原来的位置：连着按挪的还是同一样。
+ * 页面不够长、滚不动时就算了（键盘、读屏不受影响：焦点本来就按 data-fid 放回同一个按钮）
+ */
+export function keepUnderFinger(ctx, main, fid, fn) {
+  const top = () => { const el = main.querySelector(`[data-fid="${fid}"]`); return el && el.getBoundingClientRect ? el.getBoundingClientRect().top : null; };
+  const before = top();
+  fn();
+  if (before == null) return;
+  // app.js 收到修改通知时把重画排进了微任务，这个排在它后面
+  queueMicrotask(() => {
+    const after = top();
+    const sc = ctx.layout() === 'phone' ? document.scrollingElement : main;     // 手机整页滚，宽屏内容栏自己滚
+    if (after != null && sc && Math.abs(after - before) >= 1) sc.scrollTop += after - before;
   });
 }
 

@@ -3,9 +3,10 @@
 // 归档、删除马上生效，由调用的页面做（它要先离开这一页，再改数据、弹「撤销」）。
 import { h } from './dom.js';
 import { t } from '../i18n.js';
-import { field, showErr, discardGuard } from './form.js';
+import { field, showErr, discardGuard, closeThen, onEnter } from './form.js';
 import { createList, editList, LIST_ICONS, firstGrapheme } from '../core/lists.js';
 import { listName, live, byOrder, DEFAULT_LIST_ICON } from '../core/store.js';
+import { liveStore } from '../core/stores.js';
 
 /**
  * listSheet(ctx, { list })：list 给了就是编辑，否则新建。
@@ -15,11 +16,12 @@ export function listSheet(ctx, { list = null, onCreated = null, onArchive = null
   const editing = !!list;
   let kind = editing ? list.kind : 'general';          // 预置的「食材」已经有了，自己建的多半是一般清单（木工、衣服……）
   let chosen = editing ? list.icon : '';
-  const init = { name: editing ? list.name : '', icon: chosen, store: (editing && list.defaultStoreId) || '', kind };
+  // 默认商店删掉了：显示「未指定」，不动它就不算修改（存的时候也不交这一项：商店恢复了，默认商店跟着回来）
+  const init = { name: editing ? list.name : '', icon: chosen, store: (editing && list.defaultStoreId && liveStore(ctx.state, list.defaultStoreId) && list.defaultStoreId) || '', kind };
 
   const nameIn = h('input.f-in', { type: 'text', value: init.name, maxlength: 80, autocomplete: 'off', enterkeyhint: 'done',
     placeholder: editing && list.sys ? listName({ ...list, name: '' }, t) : t('list.namePh'),
-    onkeydown: (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); save(); } } });
+    onkeydown: onEnter(() => save()) });
   const nameRow = field(t('list.name'), nameIn);
 
   const kindRow = editing ? null : field(t('list.kind'), h('div.kind-pick', { role: 'radiogroup' }, ['general', 'grocery'].map(k =>
@@ -48,12 +50,14 @@ export function listSheet(ctx, { list = null, onCreated = null, onArchive = null
   storeSel.value = init.store;
   const storeRow = field(t('list.defaultStore'), storeSel, { help: t('list.defaultStoreHelp') });
 
+  // 归档、删除马上生效：先关面板（改了名字、图标还没存时先问「放弃修改？」），再交给页面
+  const act = (fn) => closeThen(ctx, () => dirty(), () => s, () => fn && fn());
   const actions = editing ? h('div.sheet-actions', null,
-    h('button.btn.block', { type: 'button', onclick: () => { s.close(); onArchive && onArchive(); } }, t(list.archived ? 'list.unarchive' : 'list.archive')),
+    h('button.btn.block', { type: 'button', onclick: act(onArchive) }, t(list.archived ? 'list.unarchive' : 'list.archive')),
     list.archived ? null : h('p.f-help', null, t('list.archiveHelp')),
     list.sys
       ? h('p.f-help', null, t('list.sysNoDelete'))
-      : h('button.btn.block.danger', { type: 'button', onclick: () => { s.close(); onDelete && onDelete(); } }, t('list.delete'))) : null;
+      : h('button.btn.block.danger', { type: 'button', onclick: act(onDelete) }, t('list.delete'))) : null;
 
   const vals = () => ({ name: nameIn.value.trim(), icon: chosen, store: storeSel.value, kind });
   const dirty = () => { const v = vals(); return v.name !== init.name.trim() || v.icon !== init.icon || v.store !== init.store || v.kind !== init.kind; };
@@ -70,7 +74,7 @@ export function listSheet(ctx, { list = null, onCreated = null, onArchive = null
   function save() {
     const v = vals(), now = Date.now();
     const res = editing
-      ? ctx.mutate(st => editList(st, list.id, { name: v.name, icon: v.icon, defaultStoreId: v.store || null }, now))
+      ? ctx.mutate(st => editList(st, list.id, { name: v.name, icon: v.icon, ...(v.store !== init.store ? { defaultStoreId: v.store || null } : {}) }, now))
       : ctx.mutate(st => createList(st, { name: v.name, kind: v.kind, icon: v.icon, defaultStoreId: v.store || null }, now));
     if (!res.ok) { showErr(nameRow, res.errors.name || res.errors.list); if (res.errors.name) nameIn.focus(); return; }
     s.close();

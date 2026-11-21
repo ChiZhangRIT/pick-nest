@@ -1,4 +1,4 @@
-/* PickNest 的全部样式，一个文件：变量、基础、外壳、通用组件、深色 → 首页清单 → 清单页 → 面板里的表单 → 设置 → 恢复页。
+/* PickNest 的全部样式，一个文件：变量、基础、外壳、通用组件、深色 → 首页清单 → 清单页 → 商店 → 面板里的表单 → 设置 → 恢复页。
    页面样式请只用下面的变量，深色模式就自动对了：
      --bg 底色  --card 卡片 / 分组底  --ink 正文  --ink-2 次要正文  --muted 说明文字  --faint 占位 / 最淡
      --line 分隔线  --fill 浅填充（分段控件底、输入框底）  --seg-on 分段控件选中的那段  --side-bg 侧栏底  --tile 清单图标的底
@@ -8,7 +8,7 @@
      --shadow-card 卡片阴影  --shadow-pop 浮层阴影  --pop 浮层底（输入联想；深色下比卡片亮一级，不然和下面的行连成一片）  --radius 12px  --radius-btn 10px  --sans 系统字体（苹方）
    外壳给的钩子：body[data-layout=phone|side]、body[data-route=<页面名>]、body[data-tabs=1|0]；页面容器 section.pane.view.view-<名字>。
    通用组件：.navbar .back（推入的页面）| .page-head .toolbar .tb-btn .lt | .page .row | .btn(.primary .ghost .danger .danger-fill .small .block) .icon-btn .link-btn
-             .card .group .group-row(.go) .group-h .group-foot | .seg | .chips .chip | .sec-toggle .sec-chev（折叠的一组）| .empty
+             .card .group .group-row(.go) .group-h .group-foot | .seg | .chips .chip | .tag（「已归档」这种小标记）| .sec-toggle .sec-chev（折叠的一组）| .empty
              dialog.sheet .sheet-actions | .form .f-row .f-label .f-help .f-err（ui/form.js）| #toast | .ic（图标，见 ui/dom.js 的 icon()） */
 
 :root {
@@ -176,6 +176,9 @@ a.group-row:hover, button.group-row:hover { background: var(--fill); }
 .sec-chev { width: 18px; height: 18px; transition: transform .18s; }
 .sec-toggle[aria-expanded="true"] .sec-chev { transform: rotate(90deg); }
 
+/* 行里的小标记（「已归档」）：灰底小字，不抢名字的位置 */
+.tag { flex: none; padding: 1px 7px; border-radius: 6px; background: var(--fill); color: var(--muted); font-size: 12px; font-weight: 600; line-height: 1.5; }
+
 /* ---------- 空状态、出错 ---------- */
 .empty { padding: 48px 24px; text-align: center; color: var(--muted); }
 .safe-mode { margin-top: calc(24px + env(safe-area-inset-top)); }
@@ -264,7 +267,7 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
 .sug + .sug { border-top: .5px solid var(--line); }
 .sug.on, .sug:hover { background: var(--accent-soft); }
 .sug-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; }
-.sug-store { flex: none; color: var(--muted); font-size: 13px; }
+.sug-store { flex: 0 1 auto; min-width: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 13px; }   /* 店名长了截断：名字优先 */
 .sug-in { flex: none; padding: 2px 7px; border-radius: 6px; background: var(--accent-soft); color: var(--accent-text); font-size: 12px; font-weight: 600; }
 .sug.on .sug-in, .sug:hover .sug-in { background: var(--pop); box-shadow: inset 0 0 0 1px var(--accent-line); }   /* 选中的那行底色就是 --accent-soft，标签换个底才看得见 */
 
@@ -285,8 +288,11 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
 .item-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .item-name { font-size: 17px; line-height: 1.35; overflow-wrap: anywhere; transition: color .18s; }
 .item-sub { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; line-height: 1.3; color: var(--muted); }
-.store-chip { flex: none; padding: 1px 7px; border-radius: 6px; background: var(--fill); color: var(--ink-2); font-size: 12px; font-weight: 500; }
-.item-note { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 小标签（清单页标商店、商店页标来自哪张清单）不跟着备注一起挤：最多占这一行的 60%，长了截断；备注拿剩下的（flex-basis 0，按长短分会先把短的标签挤没） */
+.store-chip { flex: 0 0 auto; min-width: 0; max-width: 60%; padding: 1px 7px; border-radius: 6px; background: var(--fill); color: var(--ink-2); font-size: 12px; font-weight: 500;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.store-chip:only-child { max-width: 100%; }
+.item-note { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item-qty { flex: none; max-width: 38%; color: var(--muted); font-size: 15px; text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .item-more { flex: none; display: grid; place-items: center; width: 44px; padding: 0; border: 0; background: none; color: var(--muted); }
 .item-more .ic { width: 18px; height: 18px; }
@@ -306,6 +312,18 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
 .lp-empty { padding: 40px 20px; }
 .lp-empty p + p { margin-top: 8px; line-height: 1.6; }
 .menu .menu-row { min-height: 50px; color: var(--accent-text); font-size: 17px; }
+
+/* ================= 商店（#/stores）、一家店（#/s/<id>：页头、行、已买借清单页的 .lp-* 和 ui/checklist.js 的行） ================= */
+.stores > li { position: relative; }
+.stores > li + li > .store-row::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: .5px; background: var(--line); }
+.store-row { min-height: 52px; }
+.store-name { flex: 1; min-width: 0; font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.store-row.zero .store-name { color: var(--muted); }   /* 0 样的淡一级（和首页的 0 一样用 --muted：店里亮处也看得清） */
+.sp-icon { color: var(--accent-text); }
+.sp-icon .ic { width: 26px; height: 26px; }
+.sp-hint { margin-top: 8px; padding: 0 4px; color: var(--muted); font-size: 14px; line-height: 1.5; }
+/* 来自哪张清单：小标签（.store-chip，长了截断）里一个小图标 + 清单名 */
+.list-chip-ic { margin-right: 3px; font-size: 11px; }
 
 /* ================= 面板里的表单（编辑清单、编辑一样东西） ================= */
 .form .f-row + .f-row { margin-top: 16px; }
@@ -350,6 +368,22 @@ select.f-in { width: 100%; }
 .set-about-top b { font-size: 18px; font-weight: 650; }
 .set-about .small { line-height: 1.6; }
 .set-version { font-variant-numeric: tabular-nums; }
+
+/* ================= 设置 → 商店、分类（#/settings/stores、#/settings/categories） ================= */
+.push-head { padding-top: 2px; }
+.push-title { padding: 0 4px; font-size: 30px; font-weight: 700; line-height: 1.2; letter-spacing: .01em; overflow-wrap: anywhere; }
+.manage { margin-top: 16px; }
+.manage .set-sec + .set-sec, .manage .group-foot + .set-sec { margin-top: 22px; }
+.manage .set-sec > .group-h { margin-top: 0; }
+.manage-row { padding: 0 6px 0 0; }
+/* 名字是整块的按钮（点了打开面板），右边留给 ↑↓；名字后面一个淡的 ›（和 .group-row.go 一样）：看得出点了能改 */
+.manage-name { flex: 1; min-width: 0; align-self: stretch; display: flex; align-items: center; gap: 10px; min-height: 50px; padding: 10px 12px 10px 16px; border: 0; background: none;
+  color: var(--ink); font-size: 17px; text-align: left; }
+.manage-name > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.manage-name::after { content: ""; flex: none; width: 8px; height: 8px; margin: 0 4px 0 auto; border: solid var(--faint); border-width: 2px 2px 0 0; transform: rotate(45deg); }
+.manage-name:hover { background: var(--fill); }
+.manage-list.archived .manage-name { color: var(--ink-2); }
+.cat-empty { margin-top: 0; padding: 12px 16px; border-radius: var(--radius); background: var(--card); box-shadow: var(--shadow-card); font-size: 14px; }
 
 /* ================= 本机数据坏了：恢复页盖在整个 App 上；启动失败的提示 ================= */
 .recovery-screen { position: fixed; inset: 0; z-index: 200; overflow: auto; background: var(--bg); color: var(--ink);

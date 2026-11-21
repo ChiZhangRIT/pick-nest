@@ -9,7 +9,7 @@ export const STRINGS = {
     'common.renderError': '这一页出错了：', 'common.safeMode': '数据还在。可以先下载一份原始数据留着。',
     'common.exportRaw': '下载数据（JSON）',
 
-    'nav.label': '主导航', 'nav.lists': '清单', 'nav.settings': '设置',
+    'nav.label': '主导航', 'nav.lists': '清单', 'nav.stores': '商店', 'nav.settings': '设置',
   },
 
   'zh-Hant-TW': {
@@ -20,7 +20,7 @@ export const STRINGS = {
     'common.renderError': '這一頁出錯了：', 'common.safeMode': '資料還在。可以先下載一份原始資料留著。',
     'common.exportRaw': '下載資料（JSON）',
 
-    'nav.label': '主要導覽', 'nav.lists': '清單', 'nav.settings': '設定',
+    'nav.label': '主要導覽', 'nav.lists': '清單', 'nav.stores': '商店', 'nav.settings': '設定',
   },
 
   en: {
@@ -31,6 +31,6 @@ export const STRINGS = {
     'common.renderError': 'This page hit an error:', 'common.safeMode': 'Your data is still here. You can download a copy of the raw data first.',
     'common.exportRaw': 'Download data (JSON)',
 
-    'nav.label': 'Main', 'nav.lists': 'Lists', 'nav.settings': 'Settings',
+    'nav.label': 'Main', 'nav.lists': 'Lists', 'nav.stores': 'Stores', 'nav.settings': 'Settings',
   },
 };

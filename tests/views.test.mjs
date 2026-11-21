@@ -64,7 +64,7 @@ test('首页：所有清单都归档了 → 显示一句说明，不是空白', 
   } finally { dom.restore(); }
 });
 
-test('设置：语言三个选项（当前的选中）、外观三段（点了马上生效并更新按钮）、关于里有版本号；没有别的入口', () => {
+test('设置：语言三个选项（当前的选中）、外观三段（点了马上生效并更新按钮）、商店和分类的入口、关于里有版本号', () => {
   const dom = installDom();
   try {
     setLang('zh-Hans');
@@ -93,8 +93,9 @@ test('设置：语言三个选项（当前的选中）、外观三段（点了�
     assert.equal(select.dataset.fid, 'set-lang', '换语言整页重画后靠它把焦点放回来');
     assert.ok(text(main.querySelector('.set-version')).includes('picknest-v7'));
     assert.ok(text(main).includes('PickNest'));
-    assert.equal(main.querySelectorAll('.set-sec').length, 3, '只有语言、外观、关于');
-    assert.equal(all(main, el => el.tag === 'a').length, 0, '还没有要跳转的入口');
+    assert.equal(main.querySelectorAll('.set-sec').length, 4, '语言、外观、商店和分类、关于');
+    assert.deepEqual(all(main, el => el.tag === 'a').map(a => [a.attrs.href, text(a)]), [['#/settings/stores', '商店'], ['#/settings/categories', '分类']],
+      '只有做好了的入口（同步、备份后面几步再加）');
   } finally { dom.restore(); }
 });
 

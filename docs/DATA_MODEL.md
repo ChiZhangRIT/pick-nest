@@ -57,7 +57,7 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 - 系统清单能改名、换图标、归档，不能删除；自建清单能删除（软删除，里面的东西不动、跟着隐藏，恢复清单时一起回来）
 - 新建的 `order` = 现有清单（没删除的）里最大的 + 1；`kind` 只在新建时选，以后不改（东西的分类、「以后再说」都跟着它）
 - `defaultStoreId` 只收没删除、没归档的商店；归档了的照样留着，只是新加东西时不再当默认
-- 首页排顺序（↑↓）：和相邻的一张（没归档的）换位置，再按新顺序把 `order` 写成 0、1、2……，只有 `order` 真的变了的才盖新时间
+- 首页排顺序（↑↓）：挪到相邻的一张（没归档的）的另一边，**只改这一张的 `order`**：取新位置前后两条的中间值（可以是小数），别的记录不动、不盖新时间——合并是整条取较新的，给没挪的记录（包括 `updatedAt: 0` 的预置记录）白盖一个新时间，会盖掉别的设备上对它的删除。归档的也算在「前后两条」里（它的 `order` 还占着位置，取消归档后回到原处）。前后两条的 `order` 一样（两台设备各自新建了一条）或者中间值已经分不开（同一处挪了很多次）时，才把所有的重写成 0、1、2……（只盖变了的）。在 `store.js` 的 `moveInOrder`，商店、分类也用它
 
 ## items — 清单里的一样东西
 
@@ -115,7 +115,7 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 
 - 每个 `normName` 一条，不分清单（砂纸在哪张清单里都记得去 Home Depot 买）
 - **加进清单时**（新加或恢复；已经在清单上的不算）：`uses + 1`、`lastAt`、`name`（最近一次的写法）、`kind`；输入里写了单位也记成 `unit`
-- **勾成已买时**：这次的 `storeId` 计数 `n + 1`、`at` 更新（没指定商店就不计）。勾上 30 分钟内（`UNTICK_MS`，按 `doneAt` 算）又取消，算点错了 / 没买成，把那次减回去（减到 0 去掉这家店，`at` 不动）；隔久了再取消是又要买了，那次照样算（不然每次从「已买」点回来都减一次，常去的商店永远只记得最近一次）。已买的东西改了商店或名字（`normName` 变了），那一次挪过去：从旧的减掉、记到新的上
+- **勾成已买时**：这次的 `storeId` 计数 `n + 1`、`at` 更新（没指定商店就不计；指定的商店删掉了也当没指定，不记到那家：`items.js` 的 `storeKeyOf`，和「商店」页的数法一样）。勾上 30 分钟内（`UNTICK_MS`，按 `doneAt` 算）又取消，算点错了 / 没买成，把那次减回去（减到 0 去掉这家店，`at` 不动）；隔久了再取消是又要买了，那次照样算（不然每次从「已买」点回来都减一次，常去的商店永远只记得最近一次）。已买的东西改了商店或名字（`normName` 变了），那一次挪过去：从旧的减掉、记到新的上
 - **改分类、单位时**（编辑面板）：记下来，下次同名的东西直接用。改分类时同时记 `categorySet: true`：改成「未分类」（`categoryId: null`）和「没改过」（也是 `null`）要分得开，不然分错的又按对照表猜回来；没选过的记录上没有这个键
 - **常去的商店** `usualStore(memory)`：`n` 最大的，一样多取 `at` 最新的；跳过已删除、已归档的商店。偶尔换一家买一次不会改掉习惯
 - 输入时的联想 `suggestions`：名字开头对上的在中间对上的前面，再按 `uses` 多的、`lastAt` 新的，最多 8 个；带着常去的商店、这样东西是不是已经在这张清单上要买
@@ -137,7 +137,15 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 
 预置（固定 id，`updatedAt: 0`）：`s_wholefoods` Whole Foods、`s_traderjoes` Trader Joe's、`s_costco` Costco、`s_target` Target、`s_hmart` H Mart、`s_99ranch` 99 Ranch、`s_amazon` Amazon、`s_homedepot` The Home Depot。
 
-线上商家也是商店。归档的商店不出现在选择列表里，但已经指定给它的东西照常显示。
+线上商家也是商店。归档的商店不出现在选择列表里，但已经指定给它的东西照常显示。规则在 `core/stores.js`：
+
+- **这家店的东西**：没删除、所在的清单没删除**也没归档**的东西里，`storeId` 是这家店的。`storeId` 是 `null`、指向删掉的或者不存在的商店：算「未指定」
+- **还要买几样** `storeCounts`：只数 `status: 'need'`（以后再说、已买不算）。「商店」页的行 `storeRows`：没归档的商店按顺序（0 样的也列）；归档的商店只在还有要买的时候列，排在后面；最后「未指定」（有要买的才列）
+- **一家店的页面** `groupStore`：要买的按分类分组（和清单页同一个 `group.js` 的 `groupItems`），已买的 `doneAt` 新的在前；「清除已买」`clearStoreDone` 只软删除这一页上的已买
+- **名字**：不能空，不能和别的没删除的商店 `normName` 一样（删掉的不算）。预置商店也能改名、删除
+- **新增**：`order` = 现有的（没删除的，归档的也算）最大的 + 1，id `newId('s_')`
+- **排顺序**（设置里的 ↑↓）：挪到相邻的（没归档的）另一边，和清单一样只改这一家的 `order`（归档的也算在前后两条里）
+- **删除**：软删除。东西的 `storeId`、清单的 `defaultStoreId`、memory 里的次数都不动，商店删掉期间都当「未指定」（不当默认、不算常去的，勾掉时也不记到它）；恢复（撤销、最近删除）时一起回来。`ensureSeeds` 不会补回删掉的预置商店
 
 ## categories — 分类
 
@@ -150,6 +158,10 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 - 预置食材分类：蔬果 produce、肉类海鲜 meat、蛋奶 dairy、面包烘焙 bakery、冷冻 frozen、粮油干货 pantry、调料酱料 condiments、零食饮料 snacks、日用清洁 household
 - 预置一般分类：衣物 clothing、书籍 books、工具五金 tools、数码 electronics、家居 home
 - 没有分类的东西归在「未分类」，排在最后
+- 设置里按 `kind` 分三组：食材（`'grocery'`）、一般（`'general'`）、两边都用（`null`）。`kind` 只在新增时选，以后不改（改了的话已经分在这一类的东西会突然「不合适」）。规则在 `core/categories.js`
+- **名字**：预置分类可以清空（显示界面语言的名字）；自己加的不能空。不能和会出现在同一张清单上的分类（同一种，或者有一边是两边都用的）重名：`normName` 比，删掉的不算，没改过名的预置分类按显示的名字比；食材的和一般的可以同名。新增的 `order` = 现有的最大的 + 1（排在它那一组的最后），id `newId('c_')`
+- **排顺序**：只在同一组里挪。所有没删除的分类按 `order` 排成一列（几组是穿插的），这一个挪到组里上一个 / 下一个的另一边，和清单一样只改它的 `order`（取前后两条的中间值），别的相对顺序不变、不盖新时间。两边都用的分类和食材分类会出现在同一张清单上，所以是一套顺序
+- **删除**：软删除。东西的 `categoryId`、memory 里记住的分类都不动，分类删掉期间归到「未分类」（也不再当默认），恢复时回来。预置分类也能删，删掉的不会被补回来
 
 ## 排序
 
@@ -157,11 +169,12 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 - 清单里「要买」的东西：按分类（或按商店）分组，组按 `order`，「未分类 / 未指定」在最后；已删除的分类 / 商店当作没有（归到「未分类 / 未指定」），归档的商店照常一组。组内按名字（`Intl.Collator`：简体 `zh-Hans-u-co-pinyin`，繁体 `zh-Hant-TW`，英文 `en`，数字按大小），一样的按 id
 - 「以后再说」：单独一组，按名字
 - 「已买」：`doneAt` 新的在前
-- 在 `core/group.js` 的 `groupNeed`
+- 在 `core/group.js` 的 `groupNeed`；分组本身是 `groupItems`，商店页（`core/stores.js` 的 `groupStore`，按分类分组）也用它
 
 ## 本机设置 picknest.local（不同步）
 
 ```js
 { lang: null, theme: 'auto', device: null, sync: null, lastBackupAt: null,
-  view: { [listId]: { groupBy: 'category' | 'store', showDone: true, showLater: true } } }   // 认不出的值按默认（core/group.js 的 listView）
+  view: { [listId]: { groupBy: 'category' | 'store', showDone: true, showLater: true } },   // 认不出的值按默认（core/group.js 的 listView）
+  storeView: { [storeId | 'none']: { showDone: true } } }                                     // 商店页「已买」折没折；'none' 是「未指定」（core/group.js 的 storeView）
 ```

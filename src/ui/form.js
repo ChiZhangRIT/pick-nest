@@ -1,4 +1,5 @@
-// 面板里的表单小部件（新建 / 编辑清单、编辑一样东西共用）：一行字段（标题、控件、说明、错误）、关面板前问「放弃修改？」。
+// 面板里的表单小部件（新建 / 编辑清单、编辑一样东西、商店和分类的名字共用）：一行字段（标题、控件、说明、错误）、回车提交、
+// 关面板前问「放弃修改？」（面板里马上生效的归档、删除也先问）。
 import { h } from './dom.js';
 import { t } from '../i18n.js';
 
@@ -30,13 +31,33 @@ export function showErr(row, key, vars) {
 }
 
 /**
+ * 输入法还在选字（中文、日文）：这时的回车是选字，不是提交。Safari 先结束选字再发回车的 keydown，那时 isComposing 已经是 false，
+ * 只能靠 keyCode 229 认出来
+ */
+export const composing = (e) => e.isComposing || e.keyCode === 229;
+/** 输入框的 onkeydown：回车（不是选字的）= fn() */
+export const onEnter = (fn) => (e) => { if (e.key === 'Enter' && !composing(e)) { e.preventDefault(); fn(); } };
+
+const askDiscard = (ctx) => ctx.confirm({ message: t('item.discardQ'), confirmLabel: t('item.discard'), danger: true });
+/**
  * 给 sheet 的 beforeClose 用：有没保存的修改时先不关，问一句「放弃这次的修改？」，确定了才关。
  * getSheet() 返回 sheet() 的结果（beforeClose 在 sheet 建好以后才会被调用）
  */
 export function discardGuard(ctx, isDirty, getSheet) {
   return () => {
     if (!isDirty()) return true;
-    ctx.confirm({ message: t('item.discardQ'), confirmLabel: t('item.discard'), danger: true }).then(ok => { if (ok) getSheet().close(); });
+    askDiscard(ctx).then(ok => { if (ok) getSheet().close(); });
     return false;
+  };
+}
+/**
+ * 面板里马上生效的按钮（归档、删除）的 onclick：和关面板一样，有没保存的修改时先问「放弃这次的修改？」，
+ * 放弃了（或者没改过）才关面板、做 fn。不然改了名字再点「归档」，改的名字就悄悄丢了
+ */
+export function closeThen(ctx, isDirty, getSheet, fn) {
+  return async () => {
+    if (isDirty() && !(await askDiscard(ctx))) return;
+    getSheet().close();
+    fn();
   };
 }

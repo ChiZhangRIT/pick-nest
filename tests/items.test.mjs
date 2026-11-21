@@ -2,7 +2,7 @@
 // 函数直接改传进来的 state（页面在 ctx.mutate 里调用）；撤销用真的 state.js。全是编的数据
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ensureSeeds, blankState, normalizeRecord, itemId, hash64, normName, deletedRecord } from '../src/core/store.js';
+import { ensureSeeds, blankState, normalizeRecord, itemId, hash64, normName, deletedRecord, restoredRecord } from '../src/core/store.js';
 import { addFromInput, addItem, defaultsFor, toggleDone, setStatus, clearDone, moveItem, moveConflict, validateItemPatch, editItem,
   readPrice, cleanUrl, liveItem, countItems, UNTICK_MS } from '../src/core/items.js';
 import { memoryOf, memoryId, usualStore, recordUse, recordPurchase, recordPrefs, suggestions } from '../src/core/memory.js';
@@ -185,6 +185,26 @@ test('memory：勾成已买时这次的商店 n + 1（没指定不计）；取�
   editItem(s, id, { storeId: 's_costco' }, now());
   assert.deepEqual(Object.keys(memoryOf(s, '牛奶').stores), ['s_costco'], '已买的改了商店：那一次算到新商店');
   assert.equal(recordPurchase(s, '牛奶', null, 'grocery', now()), null);
+});
+
+test('memory：指定的商店删掉了（显示成「未指定」）时勾掉不计到那家店，编辑面板里勾成已买、改名也一样；商店恢复后照常计', () => {
+  const s = seeded();
+  const { id } = add(s, '牛奶');
+  assert.equal(s.data.items[id].storeId, 's_wholefoods');
+  s.data.stores.s_wholefoods = deletedRecord(s.data.stores.s_wholefoods, now());
+  toggleDone(s, id, now());
+  assert.deepEqual(memoryOf(s, '牛奶').stores, {}, '删掉期间当未指定：不计');
+  toggleDone(s, id, now());
+  editItem(s, id, { status: 'done' }, now());
+  assert.deepEqual(memoryOf(s, '牛奶').stores, {});
+  editItem(s, id, { name: '全脂牛奶' }, now());
+  assert.equal(memoryOf(s, '全脂牛奶'), null, '已买的改名：没记过的那一次也不挪');
+  assert.equal(usualStore(s, memoryOf(s, '牛奶')), null);
+  // 恢复了：东西的 storeId 一直没动，再勾就算回 Whole Foods
+  s.data.stores.s_wholefoods = restoredRecord(s.data.stores.s_wholefoods, now());
+  setStatus(s, id, 'need', now());
+  toggleDone(s, id, now());
+  assert.equal(memoryOf(s, '全脂牛奶').stores.s_wholefoods.n, 1);
 });
 
 test('memory：隔久了再取消勾选（又要买了）不减；几周都在 Costco 买，偶尔在 H Mart 买一次，常去的还是 Costco', () => {

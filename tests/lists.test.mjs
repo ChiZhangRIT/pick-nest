@@ -193,26 +193,32 @@ test('删除清单：只有自建的；软删除，里面的东西留着、跟�
   } finally { state.load({ storage: null }); }
 });
 
-test('排顺序：和上一张 / 下一张换，只给 order 真的变了的清单盖新时间；到头了挪不动', () => {
+test('排顺序：挪到上一张 / 下一张的另一边，只改这一张的 order（别的清单不盖新时间）；归档的不排、位置留着；到头了挪不动', () => {
   const s = seeded();
   const a = createList(s, { name: 'A' }, now()).id;
   const b = createList(s, { name: 'B' }, now()).id;
   const at = (id) => s.data.lists[id].updatedAt;
-  const before = { g: at('l_groceries'), t: at('l_tobuy'), a: at(a) };
+  const before = { a: at(a), b: at(b) };
   assert.equal(moveList(s, b, -1, now()), true);
   assert.deepEqual(homeLists(s).map(l => l.id), ['l_groceries', 'l_tobuy', b, a]);
-  assert.deepEqual([at('l_groceries'), at('l_tobuy')], [0, 0], '预置清单没挪：还是 updatedAt 0');
-  assert.ok(at(a) > before.a);
+  assert.deepEqual([at('l_groceries'), at('l_tobuy'), at(a)], [0, 0, before.a], '只有挪的那一张盖新时间：预置清单还是 updatedAt 0');
+  assert.ok(at(b) > before.b);
+  assert.deepEqual(homeLists(s).map(l => l.order), [0, 1, 1.5, 2], '取前后两张的中间值');
   assert.equal(moveList(s, 'l_groceries', -1, now()), false);
   assert.equal(moveList(s, a, 1, now()), false);
   assert.equal(moveList(s, 'l_nope', 1, now()), false);
   moveList(s, 'l_tobuy', -1, now());
   assert.deepEqual(homeLists(s).map(l => l.id), ['l_tobuy', 'l_groceries', b, a]);
-  assert.deepEqual(homeLists(s).map(l => l.order), [0, 1, 2, 3]);
-  // 归档的不参与（首页上看不到它）
+  assert.equal(at('l_groceries'), 0);
+  // 归档的不参与（首页上看不到它），但 order 还占着：取消归档后回到原处，不和挪过来的撞在一起
   setArchived(s, 'l_groceries', true, now());
+  assert.equal(moveList(s, 'l_groceries', 1, now()), false, '归档的不排');
+  const g = at('l_groceries');
   moveList(s, b, -1, now());
   assert.deepEqual(homeLists(s).map(l => l.id), [b, 'l_tobuy', a]);
+  assert.equal(at('l_groceries'), g);
+  setArchived(s, 'l_groceries', false, now());
+  assert.deepEqual(homeLists(s).map(l => l.id), [b, 'l_tobuy', 'l_groceries', a]);
 });
 
 test('预置分类都有：九个食材、五个一般', () => {

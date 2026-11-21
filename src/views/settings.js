@@ -1,8 +1,10 @@
-// 设置（#/settings）：语言、外观、关于。同步、备份、商店和分类管理在后面几步再加（不放还没做好的入口）。
+// 设置（#/settings）：语言、外观、商店和分类（进 #/settings/stores、#/settings/categories，页面在 views/manage.js）、关于。
+// 同步、备份在后面几步再加（不放还没做好的入口）。
 // 语言、外观是本机设置（picknest.local），改了不通知订阅者：外观换完就地更新这一组按钮（不换掉按钮，焦点和读屏的位置不丢），
 // 换语言由 app 整页重画（下拉框带 data-fid，重画后焦点回到它上面）。
 import { h } from '../ui/dom.js';
 import { LANGS, LANG_LABELS, t } from '../i18n.js';
+import { storesPage, categoriesPage } from './manage.js';
 
 const THEMES = ['auto', 'light', 'dark'];
 const LANG_ROW = '语言 / Language';     // 三种语言写在一起：不管现在是哪种语言都找得到
@@ -14,6 +16,8 @@ const row = (label, control) => h((/^(INPUT|SELECT|TEXTAREA)$/.test(control.tagN
   h('span.set-label', null, label), control);
 
 export function render(main, params, ctx) {
+  if (params.sub === 'stores') return storesPage(main, params, ctx);
+  if (params.sub === 'categories') return categoriesPage(main, params, ctx);
   const page = h('div.page.set');
   main.append(h('header.page-head', null, h('h1.lt', null, t('nav.settings'))), page);
 
@@ -31,6 +35,10 @@ export function render(main, params, ctx) {
     sec('lang', null, [row(LANG_ROW, h('select.set-in.set-select', { 'aria-label': LANG_ROW, dataset: { fid: 'set-lang' }, onchange: (e) => ctx.setLang(e.target.value) },
       LANGS.map(l => h('option', { value: l, selected: l === ctx.lang() }, LANG_LABELS[l]))))]),
     sec('look', null, [row(t('set.theme'), themeSeg())]),
+    sec('manage', null, [
+      h('a.group-row.set-row.go', { href: '#/settings/stores' }, h('span.set-label', null, t('set.stores'))),
+      h('a.group-row.set-row.go', { href: '#/settings/categories' }, h('span.set-label', null, t('set.categories'))),
+    ]),
     h('section.set-sec#set-about', null, h('h2.group-h', null, t('set.aboutH')),
       h('div.card.set-about', null,
         h('div.set-about-top', null,

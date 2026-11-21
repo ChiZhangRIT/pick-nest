@@ -4,7 +4,7 @@
 // 面板不在页面里：数据变了页面重画不会打断输入。
 import { h, icon } from './dom.js';
 import { t } from '../i18n.js';
-import { field, showErr, discardGuard } from './form.js';
+import { field, showErr, discardGuard, onEnter } from './form.js';
 import { liveItem, liveList, validateItemPatch, editItem, moveItem, moveConflict, categoryFits, cleanUrl } from '../core/items.js';
 import { formatQty, readQty, stepQty, UNIT_SUGGESTIONS } from '../core/parse.js';
 import { listName, categoryName, live, byOrder } from '../core/store.js';
@@ -22,7 +22,7 @@ export function itemSheet(ctx, itemId) {
     status: it.status, url: it.url.trim(), price: it.price == null ? '' : String(it.price), listId: it.listId };
   /** @type {Record<string, any>} */
   const rows = {};
-  const enter = (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); save(); } };
+  const enter = onEnter(() => save());
 
   const nameIn = h('input.f-in', { type: 'text', value: init.name, maxlength: 200, autocomplete: 'off', enterkeyhint: 'done', onkeydown: enter });
   rows.name = field(t('item.name'), nameIn);

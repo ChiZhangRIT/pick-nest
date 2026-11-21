@@ -449,6 +449,37 @@ export function listIcon(list) {
 export function byOrder(a, b) {
   return (a.order - b.order) || (a.createdAt - b.createdAt) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 }
+/**
+ * 「编辑」里的 ↑↓（首页的清单、设置里的商店和分类共用）：arr 是一起排顺序的全部记录（没删除的，归档的也在里面，按 byOrder 排好），
+ * id 这一条挪到它前面 / 后面第一条 peer 为真的记录（首页、商店：没归档的；分类：同一组的，几组在 arr 里是穿插的）的另一边。
+ * 只改这一条的 order：取新位置前后两条的中间值（可以是小数），别的记录一条也不动。合并是整条取较新的，白盖一个新时间
+ * 就会盖过别的设备上对那一条的删除（预置记录靠 updatedAt 0 表示没人改过）；按 0、1、2…… 重写的话，中间夹着一条归档的
+ * 或者跳过了别的组，后面的就全跟着变。归档的也要在 arr 里：不然它占着的 order 会被当成空位，取消归档以后和挪过来的撞在一起。
+ * 前后两条的 order 一样（两台设备各自新建了一条）或者中间值已经分不开（同一处挪了很多次）时，才把 arr 写成 0、1、2……（只盖变了的）。
+ * 挪不动（到头了、不在 arr 里、自己不是 peer：归档的清单 / 商店不排）返回 false
+ * @param {State} state @param {string} collection @param {{ id: string, order: number }[]} arr @param {string} id @param {1 | -1} dir
+ * @param {(r: any) => boolean} [peer] @param {number} [now]
+ */
+export function moveInOrder(state, collection, arr, id, dir, peer = () => true, now = Date.now()) {
+  const list = [...arr];
+  const i = list.findIndex(r => r.id === id);
+  if (i < 0 || !peer(list[i])) return false;
+  let j = i + dir;
+  while (j >= 0 && j < list.length && !peer(list[j])) j += dir;
+  if (j < 0 || j >= list.length) return false;
+  const [r] = list.splice(i, 1);
+  // 拿掉它以后插到 j：往下挪时 list[j - 1] 是越过的那一条，往上挪时 list[j] 是
+  const lo = list[j - 1], hi = list[j];
+  const order = lo && hi ? (lo.order + hi.order) / 2 : lo ? lo.order + 1 : hi ? hi.order - 1 : 0;
+  if ((!lo || lo.order < order) && (!hi || order < hi.order)) {
+    writeRecord(state, collection, { ...r, order }, now);
+    return true;
+  }
+  list.splice(j, 0, r);
+  list.forEach((x, k) => { if (x.order !== k) writeRecord(state, collection, { ...x, order: k }, now); });
+  return true;
+}
+
 /** 一个集合里没删除的记录（数组，无序） @param {State} state @param {string} collection */
 export const live = (state, collection) => Object.values((state && state.data && state.data[collection]) || {}).filter(r => !r.deleted);
 /** 首页显示的清单：没删除、没归档，按顺序 @param {State} state @returns {List[]} */

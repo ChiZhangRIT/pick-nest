@@ -26,6 +26,13 @@ export function liveItem(state, id) {
 }
 /** 商店在（没删除；归档的也算：已经指定给它的东西照常显示它的名字） @param {State} state @param {unknown} id */
 export const storeExists = (state, id) => { const s = typeof id === 'string' ? own(col(state, 'stores'), id) : null; return !!s && !s.deleted; };
+/**
+ * 东西算在哪家店：指定的商店在（归档的也算）→ 它的 id；没指定、删掉了、不存在 → null（「未指定」）。
+ * 商店页、「商店」页的数法（core/stores.js）和勾掉时记在哪家（setStatus、editItem）都用它：显示成「未指定」的东西勾掉了，
+ * 不能偷偷记到那家删掉的店上（恢复以后它就成了「常去的」）
+ * @param {State} state @param {{ storeId: string | null }} it
+ */
+export const storeKeyOf = (state, it) => (it.storeId && storeExists(state, it.storeId) ? it.storeId : null);
 /** 能默认选上的商店：在、没归档 @param {State} state @param {unknown} id */
 const pickableStore = (state, id) => { const s = typeof id === 'string' ? own(col(state, 'stores'), id) : null; return !!s && !s.deleted && !s.archived; };
 /** 分类在（没删除） @param {State} state @param {unknown} id */
@@ -120,8 +127,9 @@ export function setStatus(state, id, status, now = Date.now()) {
   if (!it || !list || !ITEM_STATUS.includes(status) || (status === 'later' && list.kind !== 'general')) return null;
   if (it.status === status) return it;
   const out = /** @type {Item} */ (writeRecord(state, 'items', { ...it, status, doneAt: status === 'done' ? now : null }, now));
-  if (status === 'done') recordPurchase(state, it.name, it.storeId, list.kind, now);
-  else if (justBought(it, now)) unrecordPurchase(state, it.name, it.storeId, now);
+  const at = storeKeyOf(state, it);
+  if (status === 'done') recordPurchase(state, it.name, at, list.kind, now);
+  else if (justBought(it, now)) unrecordPurchase(state, it.name, at, now);
   return out;
 }
 
@@ -142,15 +150,31 @@ export function countItems(state, listId, status) {
   return n;
 }
 
-/** 「清除已买」：这张清单里已买的都软删除（不是改状态：以后再加同名的会恢复同一条）。返回清掉了几样 @param {State} state @param {string} listId @param {number} [now] */
-export function clearDone(state, listId, now = Date.now()) {
+/**
+ * 「清除已买」：match 的已买的东西都软删除（不是改状态：以后再加同名的会恢复同一条）。清单页按清单、商店页按商店（core/stores.js）。
+ * 返回清掉了几样
+ * @param {State} state @param {(it: Item) => boolean} match @param {number} [now]
+ */
+export function clearDoneWhere(state, match, now = Date.now()) {
   let n = 0;
   const items = col(state, 'items');
   for (const it of Object.values(items)) {
-    if (!it || it.deleted || it.listId !== listId || it.status !== 'done') continue;
+    if (!it || it.deleted || it.status !== 'done' || !match(it)) continue;
     items[it.id] = deletedRecord(it, now);
     n++;
   }
+  return n;
+}
+/** 清单页的「清除已买」：这张清单里已买的都清掉 @param {State} state @param {string} listId @param {number} [now] */
+export const clearDone = (state, listId, now = Date.now()) => clearDoneWhere(state, it => it.listId === listId, now);
+
+/**
+ * 有几样东西（没删除、所在的清单没删除，什么状态都算）指定了这家店 / 这个分类：删除商店、分类之前的提示用
+ * @param {State} state @param {'storeId' | 'categoryId'} field @param {string} id
+ */
+export function countUsing(state, field, id) {
+  let n = 0;
+  for (const it of Object.values(col(state, 'items'))) if (it && !it.deleted && it[field] === id && liveList(state, it.listId)) n++;
   return n;
 }
 
@@ -268,14 +292,16 @@ export function editItem(state, id, patch, now = Date.now()) {
   if (next.status !== it.status) next.doneAt = next.status === 'done' ? now : null;
   const item = /** @type {Item} */ (writeRecord(state, 'items', next, now));
   const wasDone = it.status === 'done', isDone = next.status === 'done';
+  // 和 setStatus 一样按「算在哪家」记：删掉的商店当未指定，不计
+  const was = storeKeyOf(state, it), will = storeKeyOf(state, next);
   if (wasDone && isDone) {
     // 还是已买，改的是买的那一次（在哪家买的、买的叫什么）：不挪的话取消勾选时会从新名字下面减掉一次
-    if (next.storeId !== it.storeId || normName(next.name) !== normName(it.name)) {
-      unrecordPurchase(state, it.name, it.storeId, now);
-      recordPurchase(state, next.name, next.storeId, list.kind, now);
+    if (will !== was || normName(next.name) !== normName(it.name)) {
+      unrecordPurchase(state, it.name, was, now);
+      recordPurchase(state, next.name, will, list.kind, now);
     }
-  } else if (wasDone) { if (justBought(it, now)) unrecordPurchase(state, it.name, it.storeId, now); }
-  else if (isDone) recordPurchase(state, next.name, next.storeId, list.kind, now);
+  } else if (wasDone) { if (justBought(it, now)) unrecordPurchase(state, it.name, was, now); }
+  else if (isDone) recordPurchase(state, next.name, will, list.kind, now);
   /** @type {{ categoryId?: string | null, unit?: string }} */
   const prefs = {};
   if ('categoryId' in v.clean && v.clean.categoryId !== it.categoryId) prefs.categoryId = v.clean.categoryId;

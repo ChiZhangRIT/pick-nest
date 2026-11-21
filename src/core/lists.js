@@ -1,7 +1,7 @@
 // @ts-check
 // 清单本身：新建、改名 / 换图标 / 默认商店、归档、删除（只有自建的；软删除，里面的东西留着、跟着隐藏，恢复清单时一起回来）、排顺序。
 // 写法和 items.js 一样：直接改传进来的 state（在 ctx.mutate 里调用），记录经过 writeRecord（没变的不盖新时间）。
-import { newId, byOrder, writeRecord, deletedRecord, live, LIST_KINDS } from './store.js';
+import { newId, byOrder, writeRecord, deletedRecord, live, moveInOrder, LIST_KINDS } from './store.js';
 import { own, isObj, str } from './util.js';
 import { liveList } from './items.js';
 
@@ -24,7 +24,7 @@ export function firstGrapheme(s) {
 
 /** 归档了的清单（没删除），按顺序 @param {State} state @returns {List[]} */
 export const archivedLists = state => live(state, 'lists').filter(l => l.archived).sort(byOrder);
-/** 没删除的清单上的、没删除的东西（删掉的清单里的东西跟着隐藏）。第 4 步的商店页用 @param {State} state */
+/** 没删除的清单上的、没删除的东西（删掉的清单里的东西跟着隐藏）。商店页再去掉归档的清单上的（core/stores.js 的 shoppingItems） @param {State} state */
 export const visibleItems = state => live(state, 'items').filter(it => liveList(state, it.listId));
 
 /** 默认商店只收在的、没归档的；别的 → null @param {State} state @param {unknown} id */
@@ -85,15 +85,11 @@ export function deleteList(state, id, now = Date.now()) {
 }
 
 /**
- * 首页「编辑」里的 ↑↓：和上一张 / 下一张（首页显示的、没归档的）换位置，再按新顺序把 order 写成 0、1、2……
- * 只有 order 真的变了的清单才盖新时间（预置清单没动就还是 updatedAt 0）。挪不动（已经在最前 / 最后）返回 false
+ * 首页「编辑」里的 ↑↓：挪到上一张 / 下一张（首页显示的、没归档的）的另一边。只改这一张的 order（store.js 的 moveInOrder），
+ * 别的清单不盖新时间（预置清单没动就还是 updatedAt 0）。归档的也交进去：它们的 order 还占着位置，取消归档后回到原处。
+ * 挪不动（已经在最前 / 最后、归档了）返回 false
  * @param {State} state @param {string} id @param {1 | -1} dir @param {number} [now]
  */
 export function moveList(state, id, dir, now = Date.now()) {
-  const arr = live(state, 'lists').filter(l => !l.archived).sort(byOrder);
-  const i = arr.findIndex(l => l.id === id), j = i + dir;
-  if (i < 0 || j < 0 || j >= arr.length) return false;
-  [arr[i], arr[j]] = [arr[j], arr[i]];
-  arr.forEach((l, k) => { if (l.order !== k) writeRecord(state, 'lists', { ...l, order: k }, now); });
-  return true;
+  return moveInOrder(state, 'lists', live(state, 'lists').sort(byOrder), id, dir, l => !l.archived, now);
 }

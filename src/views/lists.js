@@ -1,9 +1,9 @@
 // 首页「清单」（#/）：没归档、没删除的清单，按顺序排，每张显示图标、名字、还要买几样，点了进清单页（#/l/<id>）。
 // 右上角「新建清单」（面板在 ui/listEditor.js）；「编辑」切到排顺序：每行一对 ↑↓（44px，读屏念「上移『食材』」）。
 // 归档的清单收在最下面「已归档（N）」里，点开才显示；点进去以后在「⋯ → 编辑清单」里可以取消归档。
-// 没有输入框，数据变了由 app 整页重画；↑↓ 带 data-fid，重画后焦点还在同一个按钮上，可以连着按。
+// 没有输入框，数据变了由 app 整页重画；↑↓ 带 data-fid，重画后焦点还在同一个按钮上、页面滚到按钮还在手指下面，可以连着按。
 // 「编辑」「已归档」这种只改显示的开关就地重画（不走 ctx.refresh：那会回到页首），焦点照样放回同一个按钮。
-import { h, icon } from '../ui/dom.js';
+import { h, icon, keepUnderFinger } from '../ui/dom.js';
 import { t } from '../i18n.js';
 import { homeLists, needCounts, listName, listIcon } from '../core/store.js';
 import { archivedLists, moveList } from '../core/lists.js';
@@ -30,9 +30,9 @@ export function render(main, params, ctx) {
     // 排顺序：到头了的按钮标 aria-disabled（不用 disabled：按到头时焦点不会丢）
     const editRow = (l, i) => {
       const name = listName(l, t);
-      const mv = (dir, ic, key, edge) => h('button.icon-btn.mv-btn', { type: 'button', 'aria-label': t(key, { name }), 'aria-disabled': String(edge),
-        dataset: { fid: `mv-${dir > 0 ? 'down' : 'up'}-${l.id}` },
-        onclick: () => { if (!edge) ctx.mutate(s => moveList(s, l.id, dir, Date.now())); } }, icon(ic));
+      const mv = (dir, ic, key, edge) => { const fid = `mv-${dir > 0 ? 'down' : 'up'}-${l.id}`;
+        return h('button.icon-btn.mv-btn', { type: 'button', 'aria-label': t(key, { name }), 'aria-disabled': String(edge), dataset: { fid },
+          onclick: () => { if (!edge) keepUnderFinger(ctx, main, fid, () => ctx.mutate(s => moveList(s, l.id, dir, Date.now()))); } }, icon(ic)); };
       return h('li.group-row.list-row.editing', { dataset: { id: l.id } },
         h('span.list-icon', { 'aria-hidden': 'true' }, listIcon(l)), h('span.list-name', null, name), count(counts.get(l.id) || 0),
         h('span.mv', null, mv(-1, 'up', 'list.moveUp', i === 0), mv(1, 'down', 'list.moveDown', i === lists.length - 1)));

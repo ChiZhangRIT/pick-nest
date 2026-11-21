@@ -1,5 +1,5 @@
-// 预置分类的名字（cat.sys.*，用户改过名字就显示用户写的）。商店名是专有名词，不在这里。
-// 食材分类给食材清单用，后面五个给一般清单用（见 docs/DATA_MODEL.md）。
+// 分类：预置分类的名字（cat.sys.*，用户改过名字就显示用户写的）、设置 → 分类。商店名是专有名词，不在这里。
+// 食材分类给食材清单用，后面五个给一般清单用（见 docs/DATA_MODEL.md）。繁體（台灣）用台灣用語。
 export const STRINGS = {
   'zh-Hans': {
     'cat.sys.produce': '蔬果', 'cat.sys.meat': '肉类海鲜', 'cat.sys.dairy': '蛋奶', 'cat.sys.bakery': '面包烘焙',
@@ -7,6 +7,19 @@ export const STRINGS = {
     'cat.sys.household': '日用清洁',
     'cat.sys.clothing': '衣物', 'cat.sys.books': '书籍', 'cat.sys.tools': '工具五金', 'cat.sys.electronics': '数码', 'cat.sys.home': '家居',
     'cat.untitled': '未命名分类',
+    // 设置 → 分类
+    'cat.sec.grocery': '食材', 'cat.sec.general': '一般', 'cat.sec.both': '两边都用', 'cat.secEmpty': '这一组还没有分类。',
+    'cat.add': '新增分类', 'cat.editTitle': '编辑分类', 'cat.name': '名字', 'cat.namePh': '比如：宠物用品', 'cat.create': '添加',
+    'cat.kind': '用在', 'cat.kind.grocery': '食材清单', 'cat.kind.general': '一般清单', 'cat.kind.both': '两种清单都用',
+    'cat.kindFixed': '建好以后不能改。',
+    // 编辑分类时名字下面的说明：一整句，{kind} 是 cat.kindName.*（句子里用的叫法）
+    'cat.kindName.grocery': '食材清单', 'cat.kindName.general': '一般清单', 'cat.kindName.both': '两种清单',
+    'cat.kindIs': '这个分类用于{kind}，不能更改。', 'cat.sysKindIs': '名字空着就用自带的（跟着界面语言）。这个分类用于{kind}，不能更改。',
+    'cat.err.name': '请写个名字', 'cat.err.taken': '已经有同名的分类了', 'cat.gone': '这个分类不在了',
+    'cat.delete': '删除分类', 'cat.deleteQ': '删除「{name}」？',
+    'cat.deleteMsg': v => (Number(v.n) ? `这个分类里的 ${v.n} 样东西会归到「未分类」。` : '') + '删除后 10 秒内可以撤销。',
+    'cat.deleted': '已删除「{name}」',
+    'cat.manageHelp': '点名字可以改名或删除。组里的顺序就是清单里分组的顺序。',
   },
   'zh-Hant-TW': {
     'cat.sys.produce': '蔬果', 'cat.sys.meat': '肉類海鮮', 'cat.sys.dairy': '蛋奶', 'cat.sys.bakery': '麵包烘焙',
@@ -14,6 +27,17 @@ export const STRINGS = {
     'cat.sys.household': '日用清潔',
     'cat.sys.clothing': '衣物', 'cat.sys.books': '書籍', 'cat.sys.tools': '工具五金', 'cat.sys.electronics': '3C 產品', 'cat.sys.home': '居家',
     'cat.untitled': '未命名分類',
+    'cat.sec.grocery': '食材', 'cat.sec.general': '一般', 'cat.sec.both': '兩邊都用', 'cat.secEmpty': '這一組還沒有分類。',
+    'cat.add': '新增分類', 'cat.editTitle': '編輯分類', 'cat.name': '名稱', 'cat.namePh': '例如：寵物用品', 'cat.create': '新增',
+    'cat.kind': '用在', 'cat.kind.grocery': '食材清單', 'cat.kind.general': '一般清單', 'cat.kind.both': '兩種清單都用',
+    'cat.kindFixed': '建立後就不能改。',
+    'cat.kindName.grocery': '食材清單', 'cat.kindName.general': '一般清單', 'cat.kindName.both': '兩種清單',
+    'cat.kindIs': '這個分類適用於{kind}，無法更改。', 'cat.sysKindIs': '名稱留白就用內建的（跟著介面語言）。這個分類適用於{kind}，無法更改。',
+    'cat.err.name': '請輸入名稱', 'cat.err.taken': '已經有同名的分類了', 'cat.gone': '這個分類已經不在了',
+    'cat.delete': '刪除分類', 'cat.deleteQ': '刪除「{name}」？',
+    'cat.deleteMsg': v => (Number(v.n) ? `這個分類裡的 ${v.n} 樣東西會歸到「未分類」。` : '') + '刪除後 10 秒內可以復原。',
+    'cat.deleted': '已刪除「{name}」',
+    'cat.manageHelp': '點名稱可以改名或刪除。組裡的順序就是清單裡分組的順序。',
   },
   en: {
     'cat.sys.produce': 'Produce', 'cat.sys.meat': 'Meat & Seafood', 'cat.sys.dairy': 'Dairy & Eggs', 'cat.sys.bakery': 'Bakery',
@@ -21,5 +45,16 @@ export const STRINGS = {
     'cat.sys.household': 'Household',
     'cat.sys.clothing': 'Clothing', 'cat.sys.books': 'Books', 'cat.sys.tools': 'Tools & Hardware', 'cat.sys.electronics': 'Electronics', 'cat.sys.home': 'Home',
     'cat.untitled': 'Untitled category',
+    'cat.sec.grocery': 'Grocery Lists', 'cat.sec.general': 'General Lists', 'cat.sec.both': 'Both', 'cat.secEmpty': 'No categories here yet.',
+    'cat.add': 'Add Category', 'cat.editTitle': 'Edit Category', 'cat.name': 'Name', 'cat.namePh': 'e.g. Pet Supplies', 'cat.create': 'Add',
+    'cat.kind': 'Use for', 'cat.kind.grocery': 'Grocery lists', 'cat.kind.general': 'General lists', 'cat.kind.both': 'Both kinds of lists',
+    'cat.kindFixed': 'This can’t be changed later.',
+    'cat.kindName.grocery': 'grocery lists', 'cat.kindName.general': 'general lists', 'cat.kindName.both': 'both kinds of lists',
+    'cat.kindIs': 'Used for {kind} (can’t be changed).', 'cat.sysKindIs': 'Leave the name empty to use the built-in one (it follows the app language). Used for {kind} (can’t be changed).',
+    'cat.err.name': 'Enter a name', 'cat.err.taken': 'There’s already a category with that name', 'cat.gone': 'That category no longer exists',
+    'cat.delete': 'Delete Category', 'cat.deleteQ': 'Delete “{name}”?',
+    'cat.deleteMsg': v => (Number(v.n) ? `${v.n} ${Number(v.n) === 1 ? 'item' : 'items'} in it will move to “Uncategorized”. ` : '') + 'You can undo for 10 seconds.',
+    'cat.deleted': 'Deleted “{name}”',
+    'cat.manageHelp': 'Tap a name to rename or delete it. The order in each group is the order of groups on your lists.',
   },
 };

@@ -6,7 +6,9 @@
 
 - **无构建**：原生 ES modules，没有 `package.json`、没有 npm 依赖、没有打包。部署 = GitHub Pages 直接发布 `main` 的根目录，地址 `https://chizhangrit.github.io/pick-nest/`
 - **测试**：`node --test tests/*.test.mjs`（Node 自带，零依赖）。视图测试用假 DOM（照 `../babble/tests/helpers/dom.mjs`）。只用编出来的数据，不读令牌、不访问 GitHub
-- **结构**：`src/core/*` 纯逻辑（不碰 DOM，Node 里能 import、能测）；`src/views/*` 页面；`src/ui/*` 共用界面部件；`src/strings/*.js` 文案；`src/app.js` 外壳。关键的业务规则（解析输入、固定 id、合并、常去商店、排序分组）必须在 `core/` 里并有测试，不写在页面里；页面也不自己数（还要买几样用 `store.js` 的 `needCounts`，已买几样、清单里几样用 `items.js` 的 `countItems`）。现在的分工：`parse.js` 解析快速添加、`catalog.js` 常见食材对照、`items.js` 加 / 恢复 / 勾选 / 清除 / 移动 / 编辑、`memory.js` 买过的东西和联想、`group.js` 分组排序、`lists.js` 清单本身。
+- **结构**：`src/core/*` 纯逻辑（不碰 DOM，Node 里能 import、能测）；`src/views/*` 页面；`src/ui/*` 共用界面部件；`src/strings/*.js` 文案；`src/app.js` 外壳。关键的业务规则（解析输入、固定 id、合并、常去商店、排序分组）必须在 `core/` 里并有测试，不写在页面里；页面也不自己数（还要买几样用 `store.js` 的 `needCounts`，每家店几样用 `stores.js` 的 `storeCounts` / `storeRows`（东西算在哪家店、勾掉记在哪家用 `items.js` 的 `storeKeyOf`：删掉的商店算未指定），已买几样、清单里几样用 `items.js` 的 `countItems`，删除前「会影响几样」用 `countUsing`）。现在的分工：`parse.js` 解析快速添加、`catalog.js` 常见食材对照、`items.js` 加 / 恢复 / 勾选 / 清除 / 移动 / 编辑、`memory.js` 买过的东西和联想、`group.js` 分组排序（清单页、商店页共用 `groupItems`）、`lists.js` 清单本身、`stores.js` 商店（「商店」页、一家店、设置里管商店）、`categories.js` 设置里管分类；↑↓ 排顺序一律用 `store.js` 的 `moveInOrder`（只改挪的那一条的 `order`，别的不盖新时间），按钮的 onclick 套 `ui/dom.js` 的 `keepUnderFinger`。
+  界面上能勾的一行和勾选的节奏在 `ui/checklist.js`（清单页、商店页共用），改一样东西的面板是 `ui/itemEditor.js`，不要在页面里再写一份。
+  面板里输入框的回车用 `ui/form.js` 的 `onEnter`（输入法选字的回车不算，Safari 要看 keyCode 229）；面板里马上生效的按钮（归档、删除）用 `closeThen`（有没存的修改先问）
   这些操作函数直接改传进来的 state（页面在 `ctx.mutate(s => …)` 里调用，撤销、保存由 `state.js` 管），写记录一律用 `store.js` 的 `writeRecord`（整理字段；内容没变不盖新时间）或 `deletedRecord`
 - **页面接口**照 babble `src/app.js` 开头的约定：`render(main, params, ctx)` 返回清理函数或 `{ cleanup, onChange }`；改数据一律走 `ctx.mutate / put / update / remove`，app 负责保存、同步、重画。把 PickNest 实际的 `ctx` 写在 `src/app.js` 开头
 - **DOM**：用 `ui/dom.js` 的 `h()`，只用 `textContent`，不拼 HTML 字符串（清单名、商品名、粘贴的链接都是用户内容）

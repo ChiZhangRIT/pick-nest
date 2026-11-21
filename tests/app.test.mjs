@@ -1,11 +1,11 @@
-// 真实 App（src/app.js）在假 DOM 里冷启动：外壳、路由、首页、改数据后重画、换语言和外观、进清单页、清单不在了回首页。全是编的数据
+// 真实 App（src/app.js）在假 DOM 里冷启动：外壳、路由、首页、改数据后重画、换语言和外观、进清单页、清单不在了回首页、商店页、设置 → 商店。全是编的数据
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readStoredState, STATE_KEY } from '../src/core/persistence.js';
 import { BUILD } from '../src/version.js';
 import { Element, all, find, fakeStorage, installDom } from './helpers/dom.mjs';
 
-test('冷启动：首页是预置的两张清单；底栏只有清单和设置；改数据自动重画并保存；换页、换语言、换外观、撤销都生效', async () => {
+test('冷启动：首页是预置的两张清单；底栏是清单、商店、设置；改数据自动重画并保存；换页、换语言、换外观、撤销都生效', async () => {
   const storage = fakeStorage();
   const loc = { hash: '', protocol: 'http:' };
   const media = {};
@@ -32,8 +32,8 @@ test('冷启动：首页是预置的两张清单；底栏只有清单和设置�
     assert.deepEqual(rows(), [['食材', '0'], ['想买', '0']]);
     assert.deepEqual([body.dataset.route, body.dataset.layout, body.dataset.tabs], ['lists', 'phone', '1']);
     assert.deepEqual([root.lang, root.dataset.theme, dom.doc.title], ['zh-Hans', 'light', 'PickNest']);
-    assert.deepEqual(tabs.children.map(a => [a.attrs.href, a.textContent, a.attrs['aria-current'] || null]), [['#/', '清单', 'page'], ['#/settings', '设置', null]]);
-    assert.deepEqual(all(dom.doc.querySelector('#side'), el => el.tag === 'a').map(a => a.attrs.href), ['#/', '#/settings'], '侧栏也只有做好了的两项');
+    assert.deepEqual(tabs.children.map(a => [a.attrs.href, a.textContent, a.attrs['aria-current'] || null]), [['#/', '清单', 'page'], ['#/stores', '商店', null], ['#/settings', '设置', null]]);
+    assert.deepEqual(all(dom.doc.querySelector('#side'), el => el.tag === 'a').map(a => a.attrs.href), ['#/', '#/stores', '#/settings'], '侧栏也是这三项');
     assert.equal(storage.m.size, 0, '只是打开看看，不写存储');
 
     // 改数据：存进本机、首页自动重画
@@ -83,11 +83,19 @@ test('冷启动：首页是预置的两张清单；底栏只有清单和设置�
     // 换页：设置；不认识的地址回到清单
     await go('#/settings');
     assert.equal(body.dataset.route, 'settings');
-    assert.deepEqual(tabs.children.map(a => a.attrs['aria-current'] || null), [null, 'page']);
+    assert.deepEqual(tabs.children.map(a => a.attrs['aria-current'] || null), [null, null, 'page']);
     assert.ok(main.querySelector('.set-version').textContent.includes(BUILD));
-    await go('#/stores');
+    await go('#/nope');
     assert.equal(body.dataset.route, 'lists');
     assert.equal(main.querySelectorAll('.list-row').length, 2);
+    // 设置 → 商店是推入的页面（不显示底栏，有返回）；设置里还没有的子页面当成设置首页（有底栏）
+    await go('#/settings/stores');
+    assert.deepEqual([body.dataset.route, body.dataset.tabs], ['settings', '0']);
+    assert.ok(main.querySelector('.back'));
+    assert.equal(main.querySelectorAll('.manage-row').length, 8, '八家预置商店');
+    await go('#/settings/sync');
+    assert.deepEqual([body.dataset.route, body.dataset.tabs], ['settings', '1']);
+    assert.ok(main.querySelector('.set-version'));
 
     // 换外观：马上生效、记在本机设置里
     await go('#/settings');
@@ -114,7 +122,7 @@ test('冷启动：首页是预置的两张清单；底栏只有清单和设置�
     assert.equal(root.lang, 'en');
     assert.equal(JSON.parse(storage.getItem('picknest.local')).lang, 'en');
     assert.ok(main.textContent.includes('Appearance'));
-    assert.deepEqual(tabs.children.map(a => a.textContent), ['Lists', 'Settings']);
+    assert.deepEqual(tabs.children.map(a => a.textContent), ['Lists', 'Stores', 'Settings']);
     await go('#/');
     assert.deepEqual(rows(), [['Groceries', '1'], ['想要的', '0']]);
 
@@ -156,5 +164,25 @@ test('冷启动：首页是预置的两张清单；底栏只有清单和设置�
     await settle();
     assert.deepEqual([loc.hash, body.dataset.route], ['#/', 'lists']);
     assert.equal(dom.doc.querySelector('#toast').querySelector('.toast-msg').textContent, 'That list no longer exists');
+
+    // 「商店」：每家店还要买几样（快速添加的 oat milk 默认在食材清单的 Whole Foods；没指定商店的两样在最后的「未指定」）
+    await go('#/stores');
+    assert.deepEqual([body.dataset.route, body.dataset.tabs], ['stores', '1']);
+    assert.deepEqual(tabs.children.map(a => a.attrs['aria-current'] || null), [null, 'page', null]);
+    const storeRows = () => main.querySelectorAll('.store-row').map(r => [r.querySelector('.store-name').textContent, r.querySelector('.list-count').textContent]);
+    assert.equal(storeRows().length, 9);
+    assert.deepEqual([storeRows()[0], storeRows().at(-1)], [['Whole Foods', '1'], ['No Store', '2']]);
+    // 点进一家店：推入的页面（不显示底栏，有返回），「商店」还亮着
+    await go(main.querySelector('.store-row').attrs.href);
+    assert.deepEqual([loc.hash, body.dataset.route, body.dataset.tabs], ['#/s/s_wholefoods', 'store', '0']);
+    assert.equal(main.querySelector('.lp-name').textContent, 'Whole Foods');
+    assert.deepEqual(main.querySelectorAll('.item-name').map(el => el.textContent), ['oat milk']);
+    assert.ok(main.querySelector('.back'));
+    assert.equal(tabs.children[1].attrs['aria-current'], 'page');
+    // 地址里的商店不在了：换回「商店」，提示一句
+    await go('#/s/s_nope');
+    await settle();
+    assert.deepEqual([loc.hash, body.dataset.route], ['#/stores', 'stores']);
+    assert.equal(dom.doc.querySelector('#toast').querySelector('.toast-msg').textContent, 'That store no longer exists');
   } finally { dom.restore(); }
 });
