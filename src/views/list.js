@@ -228,5 +228,6 @@ export function render(main, params, ctx) {
       // 离开时点过、还没挪的，马上改：点过的不能丢（清单删掉、归档了的不改）
       if (leaving) cl.drop(); else cl.flush();
     },
+    flush: () => { if (!leaving) cl.flush(); },       // 切到后台：同上，app 接着把它传上去
   };
 }

@@ -228,6 +228,20 @@ export function normalizeState(s) {
   return out;
 }
 
+/**
+ * 一个数据文件的外壳对不对：{ app, v: 1, state: { data… } }——同步仓库里的 picknest.json、备份、出错时下载的原始数据都是这个形状。
+ * 不是这个 App 的（或者根本读不出来）→ 'notApp'；新版 App 写的（v 比 1 大：旧版读了会改坏，见 docs/DATA_MODEL.md）→ 'newer'；
+ * 缺了 state、版本号不对 → 'bad'；能读 → null。里面的记录由 normalizeState 整理
+ * @param {any} d @param {string} [app]
+ */
+export function fileProblem(d, app = 'picknest') {
+  if (!isObj(d) || d.app !== app) return 'notApp';
+  if (Number(d.v) > 1 || (isObj(d.state) && Number(d.state.v) > 1)) return 'newer';
+  if (d.v !== 1 || !isObj(d.state) || (d.state.app !== undefined && d.state.app !== app) || (d.state.v !== undefined && d.state.v !== 1)) return 'bad';
+  if (d.state.data !== undefined && !isObj(d.state.data)) return 'bad';
+  return null;
+}
+
 /** 同一条记录的两份取哪份：新的；一样新就按内容排，每台设备选的都一样 @param {any} a @param {any} b */
 export function pick(a, b) {
   if (!a) return b;

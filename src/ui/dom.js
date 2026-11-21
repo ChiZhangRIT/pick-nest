@@ -1,5 +1,5 @@
 // 界面小工具：建元素（文字一律用 textContent，不拼 HTML：清单名、商品名、粘贴的链接都是用户内容）、图标、提示条、面板、确认框、
-// ↑↓ 按完让按钮留在手指下面、下载。
+// 推入的页面的顶栏、↑↓ 按完让按钮留在手指下面、复制、下载。
 import { t } from '../i18n.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -238,6 +238,32 @@ export function keepUnderFinger(ctx, main, fid, fn) {
     const sc = ctx.layout() === 'phone' ? document.scrollingElement : main;     // 手机整页滚，宽屏内容栏自己滚
     if (after != null && sc && Math.abs(after - before) >= 1) sc.scrollTop += after - before;
   });
+}
+
+/**
+ * 推入的页面（设置 → 商店 / 分类 / 同步 / 数据、最近删除）：吸顶的顶栏（左边返回，右边可选一个按钮 add = { label, run, fid }）和大标题，
+ * 返回放内容的容器（div.page.<cls>）。顶栏和清单页一样吸顶：长的一页滚下去也要能返回；宽屏有侧栏，CSS 把返回藏起来
+ */
+export function pushFrame(main, ctx, title, { add = null, back = '/settings', backLabel = t('nav.settings'), cls = '' } = {}) {
+  const page = h('div.page' + (cls ? '.' + cls : ''));
+  main.append(
+    h('header.navbar.lp-nav', null,
+      h('button.back', { type: 'button', onclick: () => ctx.back(back) }, icon('back'), backLabel),
+      add ? h('button.tb-btn', { type: 'button', dataset: { fid: add.fid || 'push-add' }, onclick: add.run }, icon('plus'), add.label) : null),
+    h('div.page.push-head', null, h('h1.push-title', null, title)),
+    page);
+  return page;
+}
+
+/** 复制文字（剪贴板 API 不行就退回到选中一个看不见的文本框） → Promise<boolean> */
+export async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch (e) { /* 退回下面的办法 */ }
+  const ta = h('textarea', { style: { position: 'fixed', opacity: '0', top: '0' }, readonly: true });
+  ta.value = text; document.body.appendChild(ta);
+  let ok = false;
+  try { ta.select(); ok = document.execCommand('copy'); } catch (e) { ok = false; }
+  ta.remove();
+  return ok;
 }
 
 /** 下载一个文件：data 是 Blob 或字符串 */

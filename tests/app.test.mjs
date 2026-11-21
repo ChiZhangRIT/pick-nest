@@ -12,7 +12,7 @@ test('冷启动：首页是预置的两张清单；底栏是清单、商店、�
   const dom = installDom({ localStorage: storage, location: loc, history: { state: {}, replaceState(s, title, hash) { loc.hash = hash; }, back() {} },
     navigator: { languages: ['zh-CN'], locks: { request: async (name, fn) => fn() } },
     matchMedia: q => (media[q] = { matches: false, listeners: [], addEventListener(type, fn) { this.listeners.push(fn); } }),
-    setTimeout: () => 0, getComputedStyle: () => ({ bottom: '24px' }), requestAnimationFrame: () => 0,
+    setTimeout: () => 0, setInterval: () => 0, getComputedStyle: () => ({ bottom: '24px' }), requestAnimationFrame: () => 0,
     MutationObserver: class { observe() {} disconnect() {} }, CSS: { escape: String } });
   try {
     const shell = new Element('div'); shell.className = 'app';
@@ -93,7 +93,7 @@ test('冷启动：首页是预置的两张清单；底栏是清单、商店、�
     assert.deepEqual([body.dataset.route, body.dataset.tabs], ['settings', '0']);
     assert.ok(main.querySelector('.back'));
     assert.equal(main.querySelectorAll('.manage-row').length, 8, '八家预置商店');
-    await go('#/settings/sync');
+    await go('#/settings/nope');
     assert.deepEqual([body.dataset.route, body.dataset.tabs], ['settings', '1']);
     assert.ok(main.querySelector('.set-version'));
 

@@ -1,10 +1,12 @@
-// 设置（#/settings）：语言、外观、商店和分类（进 #/settings/stores、#/settings/categories，页面在 views/manage.js）、关于。
-// 同步、备份在后面几步再加（不放还没做好的入口）。
+// 设置（#/settings）：语言、外观、商店和分类（进 #/settings/stores、#/settings/categories，页面在 views/manage.js）、
+// 同步（#/settings/sync，views/sync.js；这一行右边是同步状态的小标签）、数据（#/settings/data，views/data.js：备份、恢复、最近删除）、关于。
 // 语言、外观是本机设置（picknest.local），改了不通知订阅者：外观换完就地更新这一组按钮（不换掉按钮，焦点和读屏的位置不丢），
 // 换语言由 app 整页重画（下拉框带 data-fid，重画后焦点回到它上面）。
 import { h } from '../ui/dom.js';
 import { LANGS, LANG_LABELS, t } from '../i18n.js';
 import { storesPage, categoriesPage } from './manage.js';
+import { syncPage } from './sync.js';
+import { dataPage } from './data.js';
 
 const THEMES = ['auto', 'light', 'dark'];
 const LANG_ROW = '语言 / Language';     // 三种语言写在一起：不管现在是哪种语言都找得到
@@ -18,6 +20,8 @@ const row = (label, control) => h((/^(INPUT|SELECT|TEXTAREA)$/.test(control.tagN
 export function render(main, params, ctx) {
   if (params.sub === 'stores') return storesPage(main, params, ctx);
   if (params.sub === 'categories') return categoriesPage(main, params, ctx);
+  if (params.sub === 'sync') return syncPage(main, params, ctx);
+  if (params.sub === 'data') return dataPage(main, params, ctx);
   const page = h('div.page.set');
   main.append(h('header.page-head', null, h('h1.lt', null, t('nav.settings'))), page);
 
@@ -38,6 +42,11 @@ export function render(main, params, ctx) {
     sec('manage', null, [
       h('a.group-row.set-row.go', { href: '#/settings/stores' }, h('span.set-label', null, t('set.stores'))),
       h('a.group-row.set-row.go', { href: '#/settings/categories' }, h('span.set-label', null, t('set.categories'))),
+    ]),
+    // 同步那一行本身是链接：里面的状态标签不能再是链接（app 换新标签时照原来的样子换）
+    sec('data', null, [
+      h('a.group-row.set-row.go', { href: '#/settings/sync' }, h('span.set-label', null, t('set.sync')), ctx.syncBadge ? ctx.syncBadge({ link: false }) : null),
+      h('a.group-row.set-row.go', { href: '#/settings/data' }, h('span.set-label', null, t('set.data'))),
     ]),
     h('section.set-sec#set-about', null, h('h2.group-h', null, t('set.aboutH')),
       h('div.card.set-about', null,

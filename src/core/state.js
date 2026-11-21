@@ -8,9 +8,9 @@
 //                                改过的记录会自动补盖修改时间、按集合整理字段；硬删除的记录自动改成软删除（不然同步会把它带回来）。
 //                                有改动才保存、editVersion +1、通知订阅者；给了 undoLabel 就能 undo()。
 //   undo()                       撤销最近一次带 undoLabel 的修改（只改回那次改过的字段），返回它的 label（没有可撤销的 → null）
-//   applyRemote(merged, info)    同步合并出的新数据（第 5 步用）：补预置记录、保存、通知，但不算本机修改（editVersion 不变）。返回有没有存进本机
+//   applyRemote(merged, info)    同步合并出的新数据（core/sync.js 拉取以后）：补预置记录、保存、通知，但不算本机修改（editVersion 不变）。返回有没有存进本机
 //   saveOk()                     最近一次保存数据是否成功（存不下时本机存的比内存里旧，同步不能把云端版本号记下来）
-//   mergeIn(other)               导入备份：逐条合并（较新的为准）、补预置记录，算本机修改。返回 { changed: 条数 }
+//   mergeIn(other)               从备份恢复：逐条合并（较新的为准）、补预置记录，算本机修改（开着同步会传上去）。返回 { changed: 条数 }
 //   subscribe(fn)                fn(state, info)；info = { source: 'local'|'undo'|'remote'|'merge'|'storage', undoLabel?, label?, saved, ids, changed? }
 //   getLocal() / setLocal(patch) 本机设置 picknest.local（语言、主题、同步令牌…，不进数据、不同步、不进备份）；setLocal 不通知订阅者
 //   editVersion()                本机修改计数（同步用：上传期间又改过，上传完仍算有改动）

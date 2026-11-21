@@ -6,7 +6,7 @@
 // 预置的商店、分类和自己加的一样，都能改、能删（删掉的预置记录不会自己回来）。
 // 规则在 core/stores.js、core/categories.js。面板不在页面里，数据变了由 app 整页重画；↑↓ 和名字带 data-fid，重画后焦点还在同一个按钮上，
 // 页面也滚到按过的按钮还在手指下面，可以连着按；删掉一行之前焦点先给同一组的下一行。
-import { h, icon, keepUnderFinger } from '../ui/dom.js';
+import { h, icon, keepUnderFinger, pushFrame } from '../ui/dom.js';
 import { t } from '../i18n.js';
 import { categoryName } from '../core/store.js';
 import { countUsing } from '../core/items.js';
@@ -14,17 +14,8 @@ import { activeStores, archivedStores, liveStore, createStore, renameStore, setS
 import { categorySections, CATEGORY_SECTIONS, sectionOf, liveCategory, createCategory, renameCategory, deleteCategory, moveCategory } from '../core/categories.js';
 import { nameSheet } from '../ui/nameSheet.js';
 
-/** 推入的页面的顶栏（返回、新增；和清单页一样吸顶：分类那一页很长，滚下去也要能返回、新增）和标题，返回放内容的容器 */
-function frame(main, ctx, title, addLabel, onAdd) {
-  const page = h('div.page.manage');
-  main.append(
-    h('header.navbar.lp-nav', null,
-      h('button.back', { type: 'button', onclick: () => ctx.back('/settings') }, icon('back'), t('nav.settings')),
-      h('button.tb-btn', { type: 'button', dataset: { fid: 'mg-add' }, onclick: onAdd }, icon('plus'), addLabel)),
-    h('div.page.push-head', null, h('h1.push-title', null, title)),
-    page);
-  return page;
-}
+/** 推入的页面的顶栏（返回、新增；吸顶：分类那一页很长，滚下去也要能返回、新增）和标题，返回放内容的容器 */
+const frame = (main, ctx, title, addLabel, onAdd) => pushFrame(main, ctx, title, { add: { label: addLabel, run: onAdd, fid: 'mg-add' }, cls: 'manage' });
 
 /** 一对 ↑↓（move 是 core 里的 moveStore / moveCategory） */
 function movers(main, ctx, id, name, first, last, move) {
@@ -61,7 +52,7 @@ async function confirmDelete(main, ctx, { title, message, run, undoLabel, ids, i
 export function storesPage(main, params, ctx) {
   const page = frame(main, ctx, t('set.stores'), t('store.add'), () => addStore());
   const active = activeStores(ctx.state), archived = archivedStores(ctx.state);
-  page.append(
+  page.append(...[
     active.length
       ? h('ul.group.manage-list', { 'aria-label': t('set.stores') },
         active.map((s, i) => nameRow(s.id, s.name, () => editStore(s.id), movers(main, ctx, s.id, s.name, i === 0, i === active.length - 1, moveStore))))
@@ -69,7 +60,8 @@ export function storesPage(main, params, ctx) {
     h('p.group-foot', null, t('store.manageHelp')),
     archived.length ? h('section.set-sec.manage-arch', null, h('h2.group-h', null, t('store.archivedN', { n: archived.length })),
       h('ul.group.manage-list.archived', { 'aria-label': t('store.archivedN', { n: archived.length }) },
-        archived.map(s => nameRow(s.id, s.name, () => editStore(s.id), null)))) : null);
+        archived.map(s => nameRow(s.id, s.name, () => editStore(s.id), null)))) : null,
+  ].filter(Boolean));      // append 会把 null 写成字「null」（h() 才跳过 null）
 
   function addStore() {
     nameSheet(ctx, { title: t('store.add'), label: t('store.name'), placeholder: t('store.namePh'), submitLabel: t('store.create'), focus: true,

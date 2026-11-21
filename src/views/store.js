@@ -89,5 +89,6 @@ export function render(main, params, ctx) {
     },
     // 离开时点过、还没挪的，马上改：点过的不能丢（商店删掉了也一样：东西还在各自的清单上）
     cleanup: () => cl.flush(),
+    flush: () => cl.flush(),        // 切到后台：同上，app 接着把它传上去
   };
 }

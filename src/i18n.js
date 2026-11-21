@@ -8,10 +8,12 @@ import { STRINGS as stores } from './strings/stores.js';
 import { STRINGS as catalog } from './strings/catalog.js';
 import { STRINGS as settings } from './strings/settings.js';
 import { STRINGS as recovery } from './strings/recovery.js';
+import { STRINGS as sync } from './strings/sync.js';
+import { STRINGS as data } from './strings/data.js';
 
 export const LANGS = ['zh-Hans', 'zh-Hant-TW', 'en'];
 export const LANG_LABELS = { 'zh-Hans': '简体中文', 'zh-Hant-TW': '繁體中文（台灣）', en: 'English' };
-export const TABLES = { core, lists, items, stores, catalog, settings, recovery };
+export const TABLES = { core, lists, items, stores, catalog, settings, recovery, sync, data };
 
 /** 各部分合并成 { 'zh-Hans': {...}, 'zh-Hant-TW': {...}, en: {...} }；同一个键出现两次时后面的覆盖前面的（测试会查重复） */
 export const STRINGS = Object.fromEntries(LANGS.map(l => [l, Object.assign({}, ...Object.values(TABLES).map(tb => (tb && tb[l]) || {}))]));

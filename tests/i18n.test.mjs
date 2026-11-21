@@ -43,7 +43,7 @@ test('动态字段 {x} 三种语言一致；函数文案能用示例变量算出
 });
 
 test('每个文案文件只用自己的前缀；预置清单、预置分类都有文案', () => {
-  const prefix = { core: /^(common|nav)\./, lists: /^list\./, items: /^item\./, stores: /^store\./, catalog: /^cat\./, settings: /^set\./, recovery: /^recovery\./ };
+  const prefix = { core: /^(common|nav)\./, lists: /^list\./, items: /^item\./, stores: /^store\./, catalog: /^cat\./, settings: /^set\./, recovery: /^recovery\./, sync: /^sync(Err)?\./, data: /^(data|backup|deleted)\./ };
   assert.deepEqual(Object.keys(TABLES).sort(), Object.keys(prefix).sort());
   for (const [name, table] of Object.entries(TABLES)) for (const key of Object.keys(table['zh-Hans'])) assert.match(key, prefix[name], `${name}: ${key}`);
   for (const sys of SYS_LISTS) assert.ok(has('list.sys.' + sys), sys);
@@ -74,7 +74,8 @@ test('预置清单的名字三种语言；英文数量分单复数', () => {
 
 test('台灣用語', () => {
   setLang('zh-Hant-TW');
-  const want = { 'nav.settings': '設定', 'nav.lists': '清單', 'store.archive': '封存', 'store.add': '新增商店', 'cat.sec.both': '兩邊都用', 'common.undo': '復原', 'cat.sys.bakery': '麵包烘焙', 'cat.sys.frozen': '冷凍', 'set.theme.light': '淺色' };
+  const want = { 'nav.settings': '設定', 'nav.lists': '清單', 'store.archive': '封存', 'store.add': '新增商店', 'cat.sec.both': '兩邊都用', 'common.undo': '復原', 'cat.sys.bakery': '麵包烘焙', 'cat.sys.frozen': '冷凍', 'set.theme.light': '淺色',
+    'sync.renew': '更換權杖', 'sync.repo': '儲存庫', 'set.data': '資料', 'deleted.restore': '還原', 'backup.download': '下載備份' };
   for (const [key, value] of Object.entries(want)) assert.equal(t(key), value, key);
   setLang('zh-Hans');
 });

@@ -12,6 +12,8 @@
 
 本机设置 `picknest.local`（语言、主题、设备名、同步令牌、各清单的显示方式……）不进数据、不同步、不进备份。
 
+所有数据文件（同步仓库里的 `picknest.json`、备份、出错时下载的原始数据）外面都是 `{ app: 'picknest', v: 1, …, state }`，读之前由 `store.js` 的 `fileProblem` 检查：不是这个 App 的 → 不读；`v`（或 `state.v`）比 1 大 → 是新版写的，旧版不读、不合并、不上传（免得改坏）；缺了 `state` → 不读。
+
 ## 所有记录都有的字段
 
 | 字段 | 说明 |
@@ -31,6 +33,35 @@
 V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间相同按 `canon()` 序列化比较，保证每台设备结果一样。设置按键合并（`settingsAt`）。
 
 现在只有自己用，同一时刻在两台设备上改同一样东西的情况很少，整条覆盖可以接受。以后多人共用时改成按字段合并（见 ROADMAP），数据形状不用变。
+
+## 同步（core/sync.js）
+
+仓库里一个文件 `picknest.json`（文件名、App 标识、同步码前缀都是 `createSync` / `syncCode` 的参数）：
+
+```js
+{ app: 'picknest', v: 1, device: 'iPhone', savedAt: '2026-11-21T10:00:00.000Z', state: { app, v, data, settings, settingsAt } }
+```
+
+- 每一轮：确认仓库是私有的（`visibility === 'private'`，5 分钟内确认过不再问；要新建文件时一定再问）→ 拉取（`Accept: application/vnd.github.object+json`，带 `If-None-Match`；超过 1 MB 时内容是空的，再用 raw 格式取原文）→ 两边都 `normalizeState`，`mergeStates`，`ensureSeeds`，交给 `state.applyRemote` 保存（不算本机修改）→ 本机有云端没有的才上传（PUT 整个文件，带上次的 `sha`）
+- 409 / 422（别的设备抢先改过、已经有文件了）、带着 sha 却 404（文件被删了）：重新拉取、合并再传，最多传 4 次，重传前等一下（150 毫秒起、每次加倍，再加一点随机）；还不行报 `mergeFail`，下一轮再来
+- ETag 只在合并成功以后记；保存合并结果失败（空间满）时本机设置里不记云端版本号，下次完整拉取
+- 「有没传的修改」：`state.js` 每次本机修改都标 `sync.dirty`；上传前记下 `editVersion`，上传完它变了（上传期间又改过）就还是 dirty
+- 同一时间只跑一轮。切到后台时（`pushFirst`）：知道云端版本、有改动就直接上传（不先拉取），请求体小于 60 KB 时用 `fetch` 的 `keepalive`
+- 出错：`SyncError` 的 `code`——`net`（断网，只标离线）、`auth`（401）、`perm`（403）、`notfound`（404）、`public`、`classic`（经典令牌）、`notFine`（不是 `github_pat_` 开头的别的格式）、`badFile`（不是这个 App 的 / 读不出来，不覆盖）、`newer`（新版写的）、`mergeFail`、`rate`（429 或 403 + 剩余 0：带着能再试的时刻 `until`，app 在那之前不自动同步）、`http`（别的状态码）。`net`、`rate`、`mergeFail`、`http` 5xx 是暂时的，状态标签显示「稍后重试」，别的要用户处理
+- 本机数据读不出来（恢复页）时 `getConfig` 返回 null：一律不同步。「从云端恢复」另开一个只读的（`readRemote`，raw 格式），只读不写
+- 以后有图片：照 babble 的录音，在拉取之后、上传 `picknest.json` 之前传本机还没上传的图片（按内容的 sha256 命名，只增不改），`core/sha256.js` 到那时再移植
+
+## 备份（core/backup.js）
+
+`picknest-backup-YYYYMMDD.json` = `{ app: 'picknest', v: 1, kind: 'backup', exportedAt, state }`。`state` 就是整份同步的数据（软删除的记录、不认识的集合和设置都在），没有令牌和本机设置。
+
+从备份恢复 = `state.mergeIn`：逐条合并、较新的为准、补预置记录，备份里没有的不删（备份里更晚的删除照样合并进来），算本机修改（开着同步会传上去）。读的时候认所有 `{ app: 'picknest', v: 1, state }` 形状的文件，读不出来按 `fileProblem` 说原因（`notJson`、`notApp`、`newer`、`bad`）。
+
+## 最近删除（core/deleted.js）
+
+列的是 `deleted` 的清单、东西、商店、分类，各自 `deletedAt` 新的在前。东西只列所在的清单没删除的：删掉的清单里的东西没有删除标记，只是跟着隐藏，恢复清单时一起回来。「清除已买」清掉的东西 `status` 还是 `done`，恢复后回到「已买」。
+
+恢复 = `store.js` 的 `restoredRecord`（去掉删除标记，修改时间晚于删除）。不能恢复（`restoreBlock`）：这张清单上已经有同名的（`normName`）没删除的东西（同一张清单里同名的只能有一条）、已经有同名的商店、已经有会一起出现的同名分类（规则和新增、改名一样）、所在的清单也删了（先恢复清单）。
 
 ## 预置数据（系统清单、商店、分类）
 
@@ -174,7 +205,15 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 ## 本机设置 picknest.local（不同步）
 
 ```js
-{ lang: null, theme: 'auto', device: null, sync: null, lastBackupAt: null,
+{ lang: null, theme: 'auto', device: null, lastBackupAt: null,
+  sync: null | { repo: 'owner/pick-nest-data', token: 'github_pat_…', tokenExp: null /* 用户填的到期日 23:59 */,
+                 sha, etag, dirty, at /* 上次同步成功 */, err: null | { code, vars }, offline },
   view: { [listId]: { groupBy: 'category' | 'store', showDone: true, showLater: true } },   // 认不出的值按默认（core/group.js 的 listView）
   storeView: { [storeId | 'none']: { showDone: true } } }                                     // 商店页「已买」折没折；'none' 是「未指定」（core/group.js 的 storeView）
 ```
+
+- `device`：写进同步文件和提交说明的设备名；没设就用平台名（iPhone / iPad / Mac，`core/sync.js` 的 `platformDevice`）
+- `lastBackupAt`：这台设备上次下载 / 分享备份的时刻（设置 → 数据里显示）
+- `tokenExp`：用户填的到期日那天 23:59（`dates.js` 的 `endOfDay`；2000 年以前的不收：用键盘填日期时年份是一位一位进去的，0002 也是「合法」的日期）
+- 同步码 = `picknest-sync:<owner/repo>:<令牌>[:<到期日 YYYY-MM-DD>]`（`syncCode` / `parseSyncCode`，前缀是参数）。到期日是每台设备自己的本机设置，带在同步码里，用它连上的设备也会提前提醒
+- 只收 Fine-grained 令牌（`tokenProblem`，只认 `github_pat_` 前缀）：`ghp_`、`gho_`、`ghu_`、`ghs_`、`ghr_` 开头的和以前没有前缀的 40 位十六进制（都是经典令牌，GitHub 照样收）报 `classic`，别的格式报 `notFine`，都不拿来发任何请求（`readRemote` 也一样）

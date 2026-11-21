@@ -50,6 +50,12 @@ function nameTaken(state, name, kind, self, t) {
     && normName(t ? categoryName(c, t) : c.name) === key);
 }
 
+/** 这个分类的名字（显示的那个）和会一起出现的别的分类撞了吗（最近删除里恢复之前查）。没给 t 时没改过名的预置分类不算撞 @param {State} state @param {Category} cat @param {Translate} [t] */
+export function categoryNameTaken(state, cat, t) {
+  const shown = t ? categoryName(cat, t) : str(cat.name).trim();
+  return !!shown && nameTaken(state, shown, cat.kind, cat.id, t);
+}
+
 /**
  * 新增分类：用在哪种清单（'grocery' | 'general'，别的都是两边都用），排在最后（order = 现有的最大值 + 1：在它那一组的最后）。
  * 名字不能空，不能和同一种清单上的分类重名（nameTaken）

@@ -1,14 +1,15 @@
-/* PickNest 的全部样式，一个文件：变量、基础、外壳、通用组件、深色 → 首页清单 → 清单页 → 商店 → 面板里的表单 → 设置 → 恢复页。
+/* PickNest 的全部样式，一个文件：变量、基础、外壳、通用组件、深色 → 首页清单 → 清单页 → 商店 → 面板里的表单 → 设置 → 同步、数据、最近删除 → 恢复页。
    页面样式请只用下面的变量，深色模式就自动对了：
      --bg 底色  --card 卡片 / 分组底  --ink 正文  --ink-2 次要正文  --muted 说明文字  --faint 占位 / 最淡
      --line 分隔线  --fill 浅填充（分段控件底、输入框底）  --seg-on 分段控件选中的那段  --side-bg 侧栏底  --tile 清单图标的底
      --accent 主色（按钮底）  --accent-text 主色文字和线条图标（深色下更亮）  --on-accent 主色上的文字
      --accent-soft 浅主色底  --accent-line 输入框聚焦边  --accent-ring 聚焦光圈
-     --danger / --danger-soft  --tabbar-bg 底栏（半透明，后面模糊）  --toast-* 提示条  --scrim 面板后面的遮罩
+     --danger / --danger-soft  --warn 提醒（令牌快到期）  --tabbar-bg 底栏（半透明，后面模糊）  --toast-* 提示条  --scrim 面板后面的遮罩
      --shadow-card 卡片阴影  --shadow-pop 浮层阴影  --pop 浮层底（输入联想；深色下比卡片亮一级，不然和下面的行连成一片）  --radius 12px  --radius-btn 10px  --sans 系统字体（苹方）
    外壳给的钩子：body[data-layout=phone|side]、body[data-route=<页面名>]、body[data-tabs=1|0]；页面容器 section.pane.view.view-<名字>。
    通用组件：.navbar .back（推入的页面）| .page-head .toolbar .tb-btn .lt | .page .row | .btn(.primary .ghost .danger .danger-fill .small .block) .icon-btn .link-btn
              .card .group .group-row(.go) .group-h .group-foot | .seg | .chips .chip | .tag（「已归档」这种小标记）| .sec-toggle .sec-chev（折叠的一组）| .empty
+             .sync-badge(.ok .wait .warn .err .off)（同步状态的小标签，ui/syncBadge.js）
              dialog.sheet .sheet-actions | .form .f-row .f-label .f-help .f-err（ui/form.js）| #toast | .ic（图标，见 ui/dom.js 的 icon()） */
 
 :root {
@@ -16,7 +17,7 @@
   --line: #e4e4dc; --fill: #eeede6; --seg-on: #ffffff; --side-bg: #efeee7; --tile: #eef3ea;
   --accent: #2b7a47; --accent-text: #2b7a47; --on-accent: #fff; --accent-soft: #e3f0e5;
   --accent-line: #a7d2b2; --accent-ring: rgba(43, 122, 71, .14);
-  --danger: #b3261e; --danger-soft: #fbe7e5;
+  --danger: #b3261e; --danger-soft: #fbe7e5; --warn: #9a5b00;
   --tabbar-bg: rgba(250, 250, 247, .86); --toast-bg: #1f2420; --toast-ink: #f6f5f0; --toast-action: #8fd6a4; --scrim: rgba(20, 24, 20, .36);
   --shadow-card: 0 0 0 .5px rgba(31, 36, 32, .07), 0 1px 2px rgba(31, 36, 32, .04), 0 6px 16px -12px rgba(31, 36, 32, .16);
   --shadow-pop: 0 0 0 .5px rgba(31, 36, 32, .10), 0 10px 26px -10px rgba(31, 36, 32, .28); --pop: #ffffff;
@@ -29,7 +30,7 @@
   --line: #2b302b; --fill: #262a26; --seg-on: #3d433d; --side-bg: #161916; --tile: #243026;
   --accent: #2a7f4b; --accent-text: #7fcf98; --on-accent: #fff; --accent-soft: #1e3326;
   --accent-line: #33654a; --accent-ring: rgba(127, 207, 152, .18);
-  --danger: #ff8a80; --danger-soft: #3d1f1c;
+  --danger: #ff8a80; --danger-soft: #3d1f1c; --warn: #f0b860;
   --tabbar-bg: rgba(28, 31, 28, .86); --toast-bg: #2f342f; --toast-ink: #eef1ec; --toast-action: #8fd6a4; --scrim: rgba(0, 0, 0, .55);
   --shadow-card: 0 0 0 .5px rgba(255, 255, 255, .06), 0 6px 16px -10px rgba(0, 0, 0, .6);
   --shadow-pop: 0 0 0 .5px rgba(255, 255, 255, .08), 0 12px 30px -10px rgba(0, 0, 0, .7); --pop: #272b27;
@@ -105,6 +106,9 @@ body[data-layout="phone"][data-tabs="1"] #tabs {
 .tb-btn { display: inline-flex; align-items: center; gap: 5px; min-height: 44px; padding: 0 6px; border: 0; background: none; color: var(--accent-text); font-size: 16px; font-weight: 500; }
 .tb-btn .ic { width: 20px; height: 20px; }
 .lt { font-size: 34px; font-weight: 700; letter-spacing: .01em; line-height: 1.2; }
+/* 首页大标题右边是同步状态（一行放不下时标签掉到下面） */
+.lt-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 2px 12px; }
+.lt-row .sync-badge { margin-top: 4px; }
 
 /* ---------- 推入的页面的顶栏：返回 · 操作（宽屏有侧栏，不要返回） ---------- */
 .navbar { display: flex; justify-content: space-between; align-items: center; max-width: 752px; margin: 0 auto;
@@ -175,6 +179,18 @@ a.group-row:hover, button.group-row:hover { background: var(--fill); }
   font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .02em; }
 .sec-chev { width: 18px; height: 18px; transition: transform .18s; }
 .sec-toggle[aria-expanded="true"] .sec-chev { transform: rotate(90deg); }
+
+/* 同步状态的小标签：圆点 + 一句话。绿点已同步，灰点在路上（同步中、离线、待同步、稍后再试），黄点令牌快到期，红色出错，空心没开 */
+.sync-badge { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; font-size: 13px; font-weight: 500; color: var(--muted); white-space: nowrap; }
+a.sync-badge { position: relative; }
+a.sync-badge::after { content: ""; position: absolute; inset: -8px -6px; }   /* 点按区域 44px */
+.sync-badge .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
+.sync-badge.ok .dot { background: var(--accent-text); }
+.sync-badge.warn { color: var(--warn); }
+.sync-badge.warn .dot { background: var(--warn); }
+.sync-badge.err { color: var(--danger); }
+.sync-badge.err .dot { background: var(--danger); }
+.sync-badge.off .dot { background: none; border: 1.5px solid var(--faint); }
 
 /* 行里的小标记（「已归档」）：灰底小字，不抢名字的位置 */
 .tag { flex: none; padding: 1px 7px; border-radius: 6px; background: var(--fill); color: var(--muted); font-size: 12px; font-weight: 600; line-height: 1.5; }
@@ -384,6 +400,43 @@ select.f-in { width: 100%; }
 .manage-name:hover { background: var(--fill); }
 .manage-list.archived .manage-name { color: var(--ink-2); }
 .cat-empty { margin-top: 0; padding: 12px 16px; border-radius: var(--radius); background: var(--card); box-shadow: var(--shadow-card); font-size: 14px; }
+
+/* ================= 设置 → 同步（#/settings/sync）、数据（#/settings/data）、最近删除（#/deleted） ================= */
+.set-row .sync-badge { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+.set-row .sync-text { overflow: hidden; text-overflow: ellipsis; }
+.set-count { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
+.sync, .data, .deleted { margin-top: 12px; }
+.sy-lead, .del-lead { margin: 0 4px 4px; color: var(--ink-2); font-size: 15px; line-height: 1.6; }
+.sync .set-sec, .data .set-sec, .deleted .set-sec { margin-top: 20px; }
+.sync .set-sec > .group-h, .data .set-sec > .group-h, .deleted .set-sec > .group-h { margin-top: 0; }
+.sy-card > * + *, .sy-status > * + *, .data-card > * + * { margin-top: 12px; }
+.sy-card .small, .sy-status .small, .data-card .small { line-height: 1.6; }
+.sy-status { margin-top: 4px; }
+.sync > .card + .card { margin-top: 12px; }        /* 状态、补填到期日、换令牌：几张卡片不贴在一起 */
+.sy-repo b { font-size: 17px; font-weight: 650; overflow-wrap: anywhere; }
+.sy-status > .sync-badge { margin-top: 4px; }
+.sy-warn { color: var(--warn); }
+.sy-btns { margin-top: 16px; }
+.sy-exp { max-width: 220px; }
+.sy-howto summary { min-height: 44px; display: flex; align-items: center; gap: 10px; color: var(--accent-text); font-weight: 600; cursor: pointer; list-style: none; }
+.sy-howto summary::-webkit-details-marker { display: none; }
+/* 换成 flex 以后自带的三角没了：画一个和 .sec-toggle 一样的箭头，展开时朝下 */
+.sy-howto summary::before { content: ""; flex: none; width: 7px; height: 7px; margin: 0 2px; border: solid currentColor; border-width: 2px 2px 0 0; transform: rotate(45deg); transition: transform .18s; }
+.sy-howto[open] summary::before { transform: rotate(135deg); }
+.sy-steps { margin: 4px 0 10px; padding-left: 1.4em; font-size: 14px; line-height: 1.6; color: var(--ink-2); }
+.sy-steps li + li { margin-top: 8px; }
+.sy-howto p { font-size: 14px; }
+.sy-filled { color: var(--accent-text); }
+.sy-notes { margin: 0 4px; padding-left: 1.2em; }
+.sy-notes li + li { margin-top: 6px; }
+.sy-stop { margin: 28px 0 8px; }
+.del-row { padding: 10px 12px 10px 16px; }
+.del-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.del-name { font-size: 17px; line-height: 1.35; overflow-wrap: anywhere; }
+.del-sub { flex-wrap: wrap; }
+.del-at { white-space: nowrap; }
+.del-row .btn { flex: none; }
+.del-more { margin: 4px 0 0 4px; }
 
 /* ================= 本机数据坏了：恢复页盖在整个 App 上；启动失败的提示 ================= */
 .recovery-screen { position: fixed; inset: 0; z-index: 200; overflow: auto; background: var(--bg); color: var(--ink);

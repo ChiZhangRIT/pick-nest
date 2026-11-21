@@ -93,9 +93,9 @@ test('设置：语言三个选项（当前的选中）、外观三段（点了�
     assert.equal(select.dataset.fid, 'set-lang', '换语言整页重画后靠它把焦点放回来');
     assert.ok(text(main.querySelector('.set-version')).includes('picknest-v7'));
     assert.ok(text(main).includes('PickNest'));
-    assert.equal(main.querySelectorAll('.set-sec').length, 4, '语言、外观、商店和分类、关于');
-    assert.deepEqual(all(main, el => el.tag === 'a').map(a => [a.attrs.href, text(a)]), [['#/settings/stores', '商店'], ['#/settings/categories', '分类']],
-      '只有做好了的入口（同步、备份后面几步再加）');
+    assert.equal(main.querySelectorAll('.set-sec').length, 5, '语言、外观、商店和分类、同步和数据、关于');
+    assert.deepEqual(all(main, el => el.tag === 'a').map(a => [a.attrs.href, text(a.querySelector('.set-label'))]),
+      [['#/settings/stores', '商店'], ['#/settings/categories', '分类'], ['#/settings/sync', '同步'], ['#/settings/data', '数据']]);
   } finally { dom.restore(); }
 });
 
@@ -108,4 +108,49 @@ test('设置：本机设置里的外观值不认识 → 当成「自动」', () 
     const on = find(main.querySelector('.seg'), el => el.tag === 'button' && el.attrs['aria-pressed'] === 'true');
     assert.equal(text(on), 'Auto');
   } finally { setLang('zh-Hans'); dom.restore(); }
+});
+
+test('同步状态的小标签：首页标题旁边是去设置 → 同步的链接；设置里「同步」那一行本身是链接，里面的标签是 <span>（不套链接）', async () => {
+  const { syncBadge } = await import('../src/ui/syncBadge.js');
+  const dom = installDom();
+  try {
+    setLang('zh-Hans');
+    const opts = [];
+    const st = { on: true, at: Date.now(), dirty: false };
+    const ctx = { state: seededWithItems(), local: { theme: 'auto' }, build: 'picknest-v7', lang: () => 'zh-Hans', setLang() {}, setTheme() {},
+      syncBadge: (o) => { opts.push(o); return syncBadge(st, 'zh-Hans', o); } };
+    const home = new Element('section');
+    lists.render(home, { name: 'lists' }, ctx);
+    const badge = home.querySelector('.sync-badge');
+    assert.deepEqual([badge.tag, badge.attrs.href], ['a', '#/settings/sync']);
+    assert.match(text(badge), /^已同步 · \d{1,2}:\d{2}$/);
+    assert.equal(badge.parent.attrs.class, 'lt-row', '在大标题旁边');
+    const set = new Element('section');
+    settings.render(set, { name: 'settings' }, ctx);
+    const row = find(set, el => el.tag === 'a' && el.attrs.href === '#/settings/sync');
+    assert.equal(row.querySelector('.sync-badge').tag, 'span');
+    assert.deepEqual(opts, [undefined, { link: false }]);
+    // 没开、出错、离线、令牌快到期的样子
+    const look = (s) => { const b = syncBadge(s, 'zh-Hans'); return [b.attrs.class, text(b)]; };
+    assert.deepEqual(look(null), ['sync-badge off', '未开同步']);
+    assert.deepEqual(look({ on: true, err: { code: 'auth' } }), ['sync-badge err', '同步出错']);
+    assert.equal(syncBadge({ on: true, err: { code: 'auth' } }, 'zh-Hans').attrs.title, t('syncErr.auth'), '鼠标停上去看到原因');
+    assert.deepEqual(look({ on: true, offline: true, dirty: true }), ['sync-badge wait', '离线']);
+    assert.deepEqual(look({ on: true, tokenExp: Date.now() + 864e5 }), ['sync-badge warn', '令牌快到期']);
+    assert.deepEqual(look({ on: true, dirty: true }), ['sync-badge wait', '待同步']);
+  } finally { dom.restore(); }
+});
+
+test('设置里的子页面没有的部分不画成字「null」（append 不像 h() 那样跳过 null）', () => {
+  const dom = installDom();
+  try {
+    setLang('zh-Hans');
+    const ctx = { state: ensureSeeds(blankState()), local: {}, lang: () => 'zh-Hans', back() {}, recoveryArchive: () => null,
+      sync: { status: () => ({ on: false }) }, on: () => () => {} };
+    for (const sub of ['stores', 'categories', 'sync', 'data']) {
+      const main = new Element('section');
+      settings.render(main, { name: 'settings', sub }, ctx);
+      assert.ok(main.children.length && !text(main).includes('null'), sub);
+    }
+  } finally { dom.restore(); }
 });

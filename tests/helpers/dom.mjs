@@ -21,6 +21,7 @@ export class Element {
   removeEventListener(key, fn) { this.events[key]?.delete(fn); }
   async fire(key) { for (const fn of this.events[key] || []) await fn({ target: this, preventDefault() {} }); }
   focus() { globalThis.document.activeElement = this; }
+  click() { this.clicks = (this.clicks || 0) + 1; return this.fire('click'); }
   contains(el) { return this === el || this.children.some(child => child.contains(el)); }
   querySelectorAll(selector) {
     const attr = /^([\w-]*)\[([\w-]+)="([^"]*)"\]$/.exec(selector);     // meta[name="theme-color"]、[data-fid="x"]

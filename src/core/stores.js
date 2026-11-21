@@ -81,9 +81,14 @@ export function clearStoreDone(state, storeId, now = Date.now()) {
  * @param {State} state @param {unknown} name @param {string | null} self 改名时自己的 id
  */
 function nameError(state, name, self) {
-  const nm = str(name).trim(), key = normName(nm);
+  const nm = str(name).trim();
   if (!nm) return 'store.err.name';
-  return live(state, 'stores').some(s => s.id !== self && normName(s.name) === key) ? 'store.err.taken' : null;
+  return storeNameTaken(state, nm, self) ? 'store.err.taken' : null;
+}
+/** 别的（没删除的）商店已经叫这个名字了吗（最近删除里恢复一家店之前也查：恢复出两个「Costco」就分不清了） @param {State} state @param {unknown} name @param {string | null} self */
+export function storeNameTaken(state, name, self) {
+  const key = normName(name);
+  return live(state, 'stores').some(s => s.id !== self && normName(s.name) === key);
 }
 
 /**

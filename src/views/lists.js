@@ -1,5 +1,6 @@
 // 首页「清单」（#/）：没归档、没删除的清单，按顺序排，每张显示图标、名字、还要买几样，点了进清单页（#/l/<id>）。
 // 右上角「新建清单」（面板在 ui/listEditor.js）；「编辑」切到排顺序：每行一对 ↑↓（44px，读屏念「上移『食材』」）。
+// 标题右边是同步状态的小标签（ctx.syncBadge，点了去设置 → 同步；状态变了由 app 换掉，不用重画这一页）。
 // 归档的清单收在最下面「已归档（N）」里，点开才显示；点进去以后在「⋯ → 编辑清单」里可以取消归档。
 // 没有输入框，数据变了由 app 整页重画；↑↓ 带 data-fid，重画后焦点还在同一个按钮上、页面滚到按钮还在手指下面，可以连着按。
 // 「编辑」「已归档」这种只改显示的开关就地重画（不走 ctx.refresh：那会回到页首），焦点照样放回同一个按钮。
@@ -44,7 +45,7 @@ export function render(main, params, ctx) {
           onclick: () => { ui.editing = !ui.editing; redraw(); } }, t(ui.editing ? 'list.editDone' : 'list.edit')) : h('span'),
         h('button.tb-btn', { type: 'button', onclick: () => listSheet(ctx, { onCreated: id => ctx.navigate('/l/' + encodeURIComponent(id)) }) },
           icon('plus'), t('list.new'))),
-      h('h1.lt', null, t('nav.lists')));
+      h('div.lt-row', null, h('h1.lt', null, t('nav.lists')), ctx.syncBadge ? ctx.syncBadge() : null));
 
     const archivedSec = archived.length ? h('section.arch', null,
       h('button.sec-toggle', { type: 'button', 'aria-expanded': String(ui.archivedOpen), dataset: { fid: 'lists-archived' },
