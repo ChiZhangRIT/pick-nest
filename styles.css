@@ -1,4 +1,4 @@
-/* PickNest 的全部样式，一个文件：变量、基础、外壳、通用组件、深色 → 首页清单 → 清单页 → 商店 → 面板里的表单 → 设置 → 同步、数据、最近删除 → 恢复页。
+/* PickNest 的全部样式，一个文件：变量、基础、外壳、通用组件、深色 → 首页清单 → 清单页 → 商店 → 购物模式 → 搜索 → 面板里的表单 → 设置 → 同步、数据、最近删除 → 恢复页。
    页面样式请只用下面的变量，深色模式就自动对了：
      --bg 底色  --card 卡片 / 分组底  --ink 正文  --ink-2 次要正文  --muted 说明文字  --faint 占位 / 最淡
      --line 分隔线  --fill 浅填充（分段控件底、输入框底）  --seg-on 分段控件选中的那段  --side-bg 侧栏底  --tile 清单图标的底
@@ -6,9 +6,11 @@
      --accent-soft 浅主色底  --accent-line 输入框聚焦边  --accent-ring 聚焦光圈
      --danger / --danger-soft  --warn 提醒（令牌快到期）  --tabbar-bg 底栏（半透明，后面模糊）  --toast-* 提示条  --scrim 面板后面的遮罩
      --shadow-card 卡片阴影  --shadow-pop 浮层阴影  --pop 浮层底（输入联想；深色下比卡片亮一级，不然和下面的行连成一片）  --radius 12px  --radius-btn 10px  --sans 系统字体（苹方）
-   外壳给的钩子：body[data-layout=phone|side]、body[data-route=<页面名>]、body[data-tabs=1|0]；页面容器 section.pane.view.view-<名字>。
+     --hl 搜索命中的字的底色  --sel 双栏时左栏选中的那一行的底色
+   外壳给的钩子：body[data-layout=phone|side|two]、body[data-route=<页面名>]、body[data-tabs=1|0]、#main[data-panes=1|2]；
+   页面容器 section.pane.view.view-<名字>（双栏时 .pane-list / .pane-detail，一栏 .pane-main）。
    通用组件：.navbar .back（推入的页面）| .page-head .toolbar .tb-btn .lt | .page .row | .btn(.primary .ghost .danger .danger-fill .small .block) .icon-btn .link-btn
-             .card .group .group-row(.go) .group-h .group-foot | .seg | .chips .chip | .tag（「已归档」这种小标记）| .sec-toggle .sec-chev（折叠的一组）| .empty
+             .card .group .group-row(.go .sel) .group-h .group-foot | .seg | .chips .chip | .tag（「已归档」这种小标记）| .sec-toggle .sec-chev（折叠的一组）| .empty .detail-empty
              .sync-badge(.ok .wait .warn .err .off)（同步状态的小标签，ui/syncBadge.js）
              dialog.sheet .sheet-actions | .form .f-row .f-label .f-help .f-err（ui/form.js）| #toast | .ic（图标，见 ui/dom.js 的 icon()） */
 
@@ -21,6 +23,7 @@
   --tabbar-bg: rgba(250, 250, 247, .86); --toast-bg: #1f2420; --toast-ink: #f6f5f0; --toast-action: #8fd6a4; --scrim: rgba(20, 24, 20, .36);
   --shadow-card: 0 0 0 .5px rgba(31, 36, 32, .07), 0 1px 2px rgba(31, 36, 32, .04), 0 6px 16px -12px rgba(31, 36, 32, .16);
   --shadow-pop: 0 0 0 .5px rgba(31, 36, 32, .10), 0 10px 26px -10px rgba(31, 36, 32, .28); --pop: #ffffff;
+  --hl: #fbe38e; --sel: #e3f0e5;
   --radius: 12px; --radius-btn: 10px;
   --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "PingFang TC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", "Segoe UI", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
   color-scheme: light;
@@ -34,6 +37,7 @@
   --tabbar-bg: rgba(28, 31, 28, .86); --toast-bg: #2f342f; --toast-ink: #eef1ec; --toast-action: #8fd6a4; --scrim: rgba(0, 0, 0, .55);
   --shadow-card: 0 0 0 .5px rgba(255, 255, 255, .06), 0 6px 16px -10px rgba(0, 0, 0, .6);
   --shadow-pop: 0 0 0 .5px rgba(255, 255, 255, .08), 0 12px 30px -10px rgba(0, 0, 0, .7); --pop: #272b27;
+  --hl: rgba(240, 184, 96, .38); --sel: #22382a;
   color-scheme: dark;
 }
 
@@ -78,7 +82,7 @@ body[data-layout="phone"][data-tabs="1"] #tabs {
 .tab .ic { width: 26px; height: 26px; }
 .tab.on { color: var(--accent-text); }
 
-/* ---------- 宽屏（≥720，iPad、Mac）：侧栏 + 内容栏，各自滚动 ---------- */
+/* ---------- 宽屏（≥720，iPad、Mac）：侧栏 + 内容栏，各自滚动；≥1000 时首页 / 「商店」和选中的那一张 / 那一家并排（照 babble） ---------- */
 @media (min-width: 720px) {
   .app { display: grid; grid-template-columns: 228px minmax(0, 1fr); height: 100vh; height: 100dvh; }
   #side { display: flex; flex-direction: column; gap: 6px; padding: calc(18px + env(safe-area-inset-top)) 12px calc(16px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
@@ -87,7 +91,22 @@ body[data-layout="phone"][data-tabs="1"] #tabs {
   #main { display: flex; min-width: 0; min-height: 0; height: 100%; }
   .pane, body[data-tabs="1"] .pane { flex: 1 1 auto; min-width: 0; min-height: 0; height: 100%; overflow-y: auto; overscroll-behavior: contain;
     padding-bottom: calc(48px + env(safe-area-inset-bottom)); }
+  /* 购物模式占满整个窗口：不要侧栏 */
+  body[data-route="shop"] .app { grid-template-columns: minmax(0, 1fr); }
+  body[data-route="shop"] #side { display: none; }
 }
+@media (min-width: 1000px) {
+  #main[data-panes="2"] .pane-list { flex: 0 0 clamp(330px, 32vw, 400px); border-right: 1px solid var(--line); }
+  #main[data-panes="2"] .pane-detail { flex: 1 1 auto; }
+}
+/* 双栏右边还没选的时候 */
+.detail-empty { min-height: 100%; display: grid; place-content: center; justify-items: center; gap: 12px; padding: 40px 24px; color: var(--muted); text-align: center; }
+.detail-empty-ic { width: 56px; height: 56px; stroke-width: 1.4; color: var(--faint); }
+.detail-empty p { max-width: 20em; line-height: 1.6; }
+/* 双栏左边：窄一点，标题收一点 */
+.pane-list .page-head { padding-left: 18px; padding-right: 18px; }
+.pane-list .lt { font-size: 30px; }
+.pane-list .page { padding-left: 14px; padding-right: 14px; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 2px 8px 14px; }
 .brand img { border-radius: 8px; }
 .brand b { font-size: 18px; font-weight: 650; letter-spacing: .01em; }
@@ -115,7 +134,8 @@ body[data-layout="phone"][data-tabs="1"] #tabs {
   min-height: calc(48px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) max(6px, env(safe-area-inset-right)) 0 max(4px, env(safe-area-inset-left)); }
 .back { display: inline-flex; align-items: center; min-height: 44px; padding: 0 10px 0 2px; border: 0; background: none; color: var(--accent-text); font-size: 17px; }
 .back .ic { width: 24px; height: 24px; stroke-width: 2.2; }
-body[data-layout="side"] .navbar .back { visibility: hidden; }
+body:not([data-layout="phone"]) .navbar .back { visibility: hidden; }
+.nav-acts { display: flex; align-items: center; gap: 2px; }
 /* iPhone 横过来时刘海那一侧要让开：右边总要；左边只在单栏时（宽屏时侧栏已经让开了） */
 .page { padding-right: max(16px, env(safe-area-inset-right)); }
 .page-head { padding-right: max(20px, env(safe-area-inset-right)); }
@@ -150,6 +170,8 @@ body[data-layout="phone"] .page-head { padding-left: max(20px, env(safe-area-ins
 a.group-row { color: var(--ink); }
 .group-row.go::after { content: ""; flex: none; width: 8px; height: 8px; margin: 0 4px 0 2px; border: solid var(--faint); border-width: 2px 2px 0 0; transform: rotate(45deg); }
 a.group-row:hover, button.group-row:hover { background: var(--fill); }
+/* 双栏时左栏里右边正在看的那一行 */
+a.group-row.sel, a.group-row.sel:hover { background: var(--sel); }
 .group-h { margin: 24px 4px 8px; font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .02em; }
 .group-foot { margin: 6px 4px 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
 
@@ -256,6 +278,13 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
 .arch { margin-top: 22px; }
 .arch .sec-toggle { margin-left: 4px; }
 .lists.archived .list-icon, .lists.archived .list-name { opacity: .7; }
+/* 标题下面的搜索入口：长得像 iOS 的搜索框，其实是去 #/search 的链接 */
+.search-entry { display: flex; align-items: center; gap: 8px; min-height: 40px; margin: 12px -4px 2px; padding: 0 12px; border-radius: 11px;   /* 左右和下面的清单卡片对齐 */
+  background: var(--fill); color: var(--muted); font-size: 16px; }
+.search-entry .ic { width: 18px; height: 18px; stroke-width: 2.2; }
+.search-entry:hover { color: var(--ink-2); }
+/* 双栏时右栏是搜索：和左栏里选中的那一行一样用底色（不画输入框聚焦的那圈边：真的搜索框在右栏，这个只是入口） */
+.search-entry.on { background: var(--sel); color: var(--ink-2); }
 
 /* ================= 清单页（#/l/<id>） ================= */
 .lp-head { padding-top: 2px; }
@@ -340,6 +369,69 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
 .sp-hint { margin-top: 8px; padding: 0 4px; color: var(--muted); font-size: 14px; line-height: 1.5; }
 /* 来自哪张清单：小标签（.store-chip，长了截断）里一个小图标 + 清单名 */
 .list-chip-ic { margin-right: 3px; font-size: 11px; }
+
+/* 清单页、商店页顶栏右边的「开始购物」 */
+.shop-btn .ic { width: 21px; height: 21px; }
+
+/* ================= 购物模式（#/l/<id>?shop=1、#/s/<id>?shop=1）：行、字、勾都更大，上面吸顶的是名字、完成购物和进度 ================= */
+.shop-top { position: sticky; top: 0; z-index: 16; background: var(--bg); box-shadow: 0 1px 0 var(--line);
+  padding: calc(8px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 12px max(16px, env(safe-area-inset-left)); }
+.shop-top-in { max-width: 688px; margin: 0 auto; padding: 0 4px; }   /* 和下面 .page 里的卡片一样宽（720 减去左右 16），名字和组名对齐 */
+.shop-row { display: flex; align-items: center; gap: 12px; min-height: 48px; }
+.shop-title { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 700; line-height: 1.25; }
+.shop-title:focus { outline: none; }
+.shop-icon { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: var(--tile); font-size: 21px; line-height: 1; color: var(--accent-text); }
+.shop-icon .ic { width: 22px; height: 22px; }
+.shop-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shop-finish { flex: none; }
+.shop-prog { margin-top: 8px; color: var(--ink-2); font-size: 16px; font-weight: 550; font-variant-numeric: tabular-nums; }
+.shop-bar { height: 5px; margin-top: 7px; border-radius: 3px; background: var(--fill); overflow: hidden; }
+.shop-bar-fill { display: block; height: 100%; width: 0; border-radius: inherit; background: var(--accent); transition: width .3s ease-out; }
+.view-shop .lp-body { padding-top: 6px; }
+.view-shop .item-row { scroll-margin-top: calc(120px + env(safe-area-inset-top)); }
+.view-shop .item-main { min-height: 64px; gap: 14px; padding: 12px 4px 12px 16px; }
+.view-shop .check { width: 34px; height: 34px; border-width: 2.5px; }
+.view-shop .check .ic { width: 21px; height: 21px; }
+.view-shop .item-name { font-size: 20px; line-height: 1.3; }
+.view-shop .item-sub { font-size: 14px; }
+.view-shop .item-qty { font-size: 18px; }
+.view-shop .item-more { width: 52px; }
+.view-shop .item-row + .item-row::before { left: 64px; }
+.view-shop .group-h { font-size: 14px; }
+/* 已买：收在最下面，紧凑一点（一行、小一号，点一下照样放回去） */
+.view-shop .sec-done .item-main { min-height: 48px; gap: 12px; padding-top: 6px; padding-bottom: 6px; }
+.view-shop .sec-done .check { width: 26px; height: 26px; border-width: 2px; }
+.view-shop .sec-done .check .ic { width: 16px; height: 16px; }
+.view-shop .sec-done .item-name { font-size: 16px; }
+.view-shop .sec-done .item-sub { display: none; }
+.view-shop .sec-done .item-qty { font-size: 15px; }
+.view-shop .sec-done .item-more { width: 44px; }
+.view-shop .sec-done .item-row + .item-row::before { left: 54px; }
+/* 都买齐了 */
+.shop-end { margin-top: 12px; padding: 28px 20px 22px; text-align: center; }
+.shop-end-ic { display: grid; place-items: center; width: 56px; height: 56px; margin: 0 auto 10px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-text); }
+.shop-end-ic .ic { width: 30px; height: 30px; stroke-width: 2.4; }
+.shop-end-t { font-size: 22px; font-weight: 700; }
+.shop-end-hint { margin-top: 4px; color: var(--muted); font-size: 15px; }
+.shop-end-btns { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 18px; }
+.shop-none .shop-end-btns { margin-top: 20px; }
+.shop-wake { margin: 22px 4px 0; text-align: center; color: var(--muted); font-size: 13px; }
+
+/* ================= 搜索（#/search）：搜索框借快速添加的样子（.add-bar 吸顶），结果按清单分组 ================= */
+.search-input { -webkit-appearance: none; appearance: none; }
+.search-input::-webkit-search-decoration { -webkit-appearance: none; }
+.search-found { margin: 4px auto 0; padding: 0 20px; max-width: 720px; color: var(--muted); font-size: 13px; }
+.search-hint { max-width: 30em; margin: 0 auto; padding-top: 32px; line-height: 1.7; }
+.sr-head { display: flex; align-items: center; gap: 8px; margin: 22px 4px 8px; font-size: 15px; font-weight: 600; }
+.sr-grp:first-child .sr-head { margin-top: 10px; }
+.sr-list { display: inline-flex; align-items: center; gap: 8px; min-width: 0; min-height: 32px; color: var(--ink-2); }
+.sr-list::after { content: ""; flex: none; width: 7px; height: 7px; margin-left: 2px; border: solid var(--faint); border-width: 2px 2px 0 0; transform: rotate(45deg); }
+.sr-list:hover { color: var(--accent-text); }
+.sr-list-ic { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: var(--tile); font-size: 16px; line-height: 1; }
+.sr-list-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sr-later { flex: none; }
+/* 命中的字：底色标出来（<mark> 里只有文字） */
+mark { padding: 0 1px; border-radius: 3px; background: var(--hl); color: inherit; }
 
 /* ================= 面板里的表单（编辑清单、编辑一样东西） ================= */
 .form .f-row + .f-row { margin-top: 16px; }

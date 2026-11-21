@@ -1,5 +1,5 @@
 // 界面小工具：建元素（文字一律用 textContent，不拼 HTML：清单名、商品名、粘贴的链接都是用户内容）、图标、提示条、面板、确认框、
-// 推入的页面的顶栏、↑↓ 按完让按钮留在手指下面、复制、下载。
+// 推入的页面的顶栏、↑↓ 按完让按钮留在手指下面、在点按里马上换页的链接、复制、下载。
 import { t } from '../i18n.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -61,6 +61,10 @@ const ICONS = {
   check: { kids: [P('M5 12.5l4.5 4.5L19 7.5')] },
   // 在新标签页打开（商品链接）
   open: { kids: [P('M13.5 4.5h6v6'), P('M19.5 4.5l-8 8'), P('M17.5 13.5v4a2 2 0 01-2 2h-9a2 2 0 01-2-2v-9a2 2 0 012-2h4')] },
+  // 搜索：放大镜
+  search: { kids: [C(10.5, 10.5, 6), P('M15 15l5 5')] },
+  // 开始购物：购物车
+  cart: { kids: [P('M3 4.5h2.6l2.2 10.2a1.5 1.5 0 001.5 1.2h8.3a1.5 1.5 0 001.5-1.1L21 8H6.6'), C(10, 19.6, 1.3), C(17, 19.6, 1.3)] },
 };
 export const ICON_NAMES = Object.keys(ICONS);
 
@@ -254,6 +258,20 @@ export function pushFrame(main, ctx, title, { add = null, back = '/settings', ba
     page);
   return page;
 }
+
+/**
+ * 链接的 onclick：不等浏览器的 hashchange，在这一下点按里就换页（ctx.navigate 马上画出新页面）。
+ * 新页面要把焦点给输入框（搜索）：iPhone 只在点按里弹出键盘，等到 hashchange 再 focus() 只有光标、没有键盘。
+ * here()：已经在那一页上时返回那一页的输入框（双栏时搜索页在右栏，左栏的入口还看得见）：不换页，焦点给它——
+ * 换页会把那一页上的状态（搜索词、结果）清掉。也是在点按里 focus，iPad 的键盘弹得出来。
+ * 按着 ⌘ / Ctrl / Shift 点的（在新标签页打开）照浏览器自己的来
+ */
+export const linkTo = (ctx, path, here = null) => (e) => {
+  if (e && (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button)) return;
+  if (e && e.preventDefault) e.preventDefault();
+  const input = here ? here() : null;
+  if (input) input.focus(); else ctx.navigate(path);
+};
 
 /** 复制文字（剪贴板 API 不行就退回到选中一个看不见的文本框） → Promise<boolean> */
 export async function copyText(text) {

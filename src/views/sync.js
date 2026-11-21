@@ -57,7 +57,7 @@ export function syncPage(main, params, ctx) {
   function draw(want) {
     const a = document.activeElement;
     const here = a && main.contains(a) && a.dataset ? a.dataset.fid : null;
-    // 焦点掉到了页面外（<body>，或者已经被换掉的旧按钮上）：多半是上一次重画时按���不能按，这次放回去；在对话框里的不管
+    // 焦点掉到了页面外（<body>，或者已经被换掉的旧按钮上）：多半是上一次重画时按钮不能按，这次放回去；在对话框里的不管
     const lost = !a || a === document.body || !document.body.contains(a);
     const fid = want || here || (lost ? refocus : null);
     refocus = null;
@@ -87,7 +87,7 @@ export function syncPage(main, params, ctx) {
     const expIn = h('input.f-in.sy-exp', { type: 'date', value: form.exp, dataset: { fid: 'sy-exp' }, onchange: (e) => { form.exp = e.target.value; showErr(expRow, null); } });
     const btn = h('button.btn.primary.block', { type: 'button', disabled: busy, dataset: { fid: 'sy-connect' }, onclick: () => connect(form.repo, form.token, form.exp) },
       busy ? t('sync.connecting') : t('sync.connect'));
-    // 粘贴的是��步码（在哪一栏都行）：拆成仓库和令牌填好，焦点给「连接」。
+    // 粘贴的是同步码（在哪一栏都行）：拆成仓库和令牌填好，焦点给「连接」。
     // 带着到期日（复制它的那台设备填过）也填上：到期日是每台设备自己记的，不填的话这台到期前不会提醒
     function fromCode(text) {
       const c = parseSyncCode(text);

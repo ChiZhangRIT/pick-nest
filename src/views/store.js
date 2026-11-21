@@ -3,13 +3,12 @@
 // 下面「已买（N）」可以折起来（每家店在这台设备上各自记住），「清除已买」能撤销。归档的清单上的东西不在这里，「以后再说」的也不在。
 // 商店不在了（地址错了、删掉了）→ 回「商店」并提示。
 // 自己管更新（返回 onChange）：勾掉的行挪走以后焦点给谁、刚挪过的行这一下不算，都要跨重画记着（ui/checklist.js，和清单页一样）。
+// 顶栏右边「开始购物」进购物模式（#/s/<id>?shop=1，views/shop.js）。
 import { h, icon } from '../ui/dom.js';
 import { t } from '../i18n.js';
-import { listName, listIcon, categoryName } from '../core/store.js';
-import { liveList } from '../core/items.js';
 import { liveStore, storeCounts, groupStore, clearStoreDone, setStoreArchived } from '../core/stores.js';
-import { collatorFor, storeView, NO_STORE } from '../core/group.js';
-import { checklist, foldSec } from '../ui/checklist.js';
+import { collatorFor, storeView, storeViewPatch, NO_STORE } from '../core/group.js';
+import { checklist, foldSec, listChip, groupSections } from '../ui/checklist.js';
 
 export function render(main, params, ctx) {
   const storeId = params.id === NO_STORE ? null : params.id;
@@ -25,10 +24,11 @@ export function render(main, params, ctx) {
 
   const cl = checklist(ctx, main);
   const view = () => storeView(ctx.local, storeId);
-  const setView = (patch) => ctx.setLocal({ storeView: { ...(ctx.local.storeView || {}), [storeId || NO_STORE]: { ...view(), ...patch } } });
+  const setView = (patch) => ctx.setLocal(storeViewPatch(ctx.local, storeId, patch));
 
   // 顶栏吸顶（和清单页一样）：长的一页滚下去也能返回；宽屏有侧栏，CSS 把返回藏起来
-  const navbar = h('header.navbar.lp-nav', null, h('button.back', { type: 'button', onclick: () => ctx.back('/stores') }, icon('back'), t('nav.stores')));
+  const navbar = h('header.navbar.lp-nav', null, h('button.back', { type: 'button', onclick: () => ctx.back('/stores') }, icon('back'), t('nav.stores')),
+    h('button.tb-btn.shop-btn', { type: 'button', dataset: { fid: 'lp-shop' }, onclick: () => ctx.navigate('/s/' + encodeURIComponent(params.id) + '?shop=1') }, icon('cart'), t('shop.start')));
   const head = h('div.page.lp-head');
   function drawHead() {
     const s = store();
@@ -45,12 +45,8 @@ export function render(main, params, ctx) {
   }
 
   const body = h('div.page.lp-body');
-  // 来自哪张清单：图标给眼睛看（aria-hidden），读屏念清单名
-  const listChip = (it) => {
-    const l = liveList(ctx.state, it.listId);
-    return l ? h('span.store-chip.list-chip', null, h('span.list-chip-ic', { 'aria-hidden': 'true' }, listIcon(l)), listName(l, t)) : null;
-  };
-  const items = (arr) => h('ul.group.items', null, arr.map(it => cl.row(it, listChip(it))));
+  // 每行标来自哪张清单（ui/checklist.js 的 listChip）
+  const items = (arr) => h('ul.group.items', null, arr.map(it => cl.row(it, listChip(ctx, it))));
   function drawBody() {
     const v = view();
     const { groups, done } = groupStore(ctx.state, storeId, collatorFor(ctx.lang()));
@@ -60,12 +56,7 @@ export function render(main, params, ctx) {
         kids.push(done.length ? h('p.empty.lp-empty', null, t('store.allDone'))
           : h('div.empty.lp-empty', null, h('p', null, h('b', null, t('store.nothing'))), storeId ? h('p.small', null, t('store.nothingHint')) : null));
       }
-      // 只有一组而且是「未分类」时不写组名（和清单页一样）
-      const bare = groups.length === 1 && groups[0].id === null;
-      for (const g of groups) {
-        const label = g.id ? categoryName(ctx.state.data.categories[g.id], t) : t('list.uncategorized');
-        kids.push(h('section.grp', null, bare ? null : h('h2.group-h', null, label), items(g.items)));
-      }
+      kids.push(...groupSections(ctx, groups, 'category', items));
       if (done.length) {
         kids.push(foldSec('done', t('list.doneN', { n: done.length }), v.showDone, () => { setView({ showDone: !view().showDone }); cl.keepFocus(drawBody); }, () => items(done),
           h('button.link-btn.clear-done', { type: 'button', dataset: { fid: 'lp-clear' }, onclick: () => clear() }, t('list.clearDone'))));

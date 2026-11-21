@@ -3,15 +3,16 @@
 // 自己管更新（返回 onChange）：数据变了只重画页头和列表，输入框和联想原样留着，打字不会被打断。
 // 规则都在 core：解析和添加（items.js、parse.js）、联想（memory.js）、分组排序（group.js）、清单操作（lists.js）。
 // 点一行 = 勾掉 / 取消：行和勾选的节奏（先在原地打勾，停一下再挪）在 ui/checklist.js，商店页也用它。
+// 顶栏右边「开始购物」进购物模式（#/l/<id>?shop=1，views/shop.js）。
 import { h, icon } from '../ui/dom.js';
 import { t } from '../i18n.js';
-import { listName, listIcon, categoryName, needCounts } from '../core/store.js';
+import { listName, listIcon, needCounts } from '../core/store.js';
 import { liveList, addFromInput, addItem, clearDone, countItems, storeExists } from '../core/items.js';
 import { parseQuickAdd } from '../core/parse.js';
 import { suggestions } from '../core/memory.js';
-import { groupNeed, collatorFor, listView } from '../core/group.js';
+import { groupNeed, collatorFor, listView, listViewPatch } from '../core/group.js';
 import { setArchived, deleteList } from '../core/lists.js';
-import { checklist, foldSec } from '../ui/checklist.js';
+import { checklist, foldSec, storeChip, groupSections } from '../ui/checklist.js';
 import { listSheet } from '../ui/listEditor.js';
 import { composing } from '../ui/form.js';
 
@@ -31,14 +32,16 @@ export function render(main, params, ctx) {
   const keepFocus = cl.keepFocus;
   let sugs = [], active = -1;
   const view = () => listView(ctx.local, listId);
-  const setView = (patch) => ctx.setLocal({ view: { ...(ctx.local.view || {}), [listId]: { ...view(), ...patch } } });
+  const setView = (patch) => ctx.setLocal(listViewPatch(ctx.local, listId, patch));
   const storeName = (id) => (storeExists(ctx.state, id) ? ctx.state.data.stores[id].name : '');
 
   // ---------- 顶栏、页头 ----------
   // 顶栏和快速添加都吸顶：长清单滚下去也能返回、打开 ⋯
   const navbar = h('header.navbar.lp-nav', null,
     h('button.back', { type: 'button', onclick: () => ctx.back('/') }, icon('back'), t('nav.lists')),     // 宽屏有侧栏，CSS 藏起来
-    h('button.icon-btn', { type: 'button', 'aria-label': t('common.more'), title: t('common.more'), onclick: () => menu() }, icon('more')));
+    h('div.nav-acts', null,
+      h('button.tb-btn.shop-btn', { type: 'button', dataset: { fid: 'lp-shop' }, onclick: () => ctx.navigate('/l/' + encodeURIComponent(listId) + '?shop=1') }, icon('cart'), t('shop.start')),
+      h('button.icon-btn', { type: 'button', 'aria-label': t('common.more'), title: t('common.more'), onclick: () => menu() }, icon('more'))));
   const segBtns = ['category', 'store'].map(g => h('button', { type: 'button', dataset: { g, fid: 'lp-g-' + g },
     onclick: () => { if (view().groupBy !== g) { setView({ groupBy: g }); paintSeg(); keepFocus(drawBody); } } }, t(g === 'store' ? 'list.byStore' : 'list.byCat')));
   const seg = h('div.seg.lp-seg', { role: 'group', 'aria-label': t('list.groupBy') }, segBtns);
@@ -131,17 +134,9 @@ export function render(main, params, ctx) {
 
   // ---------- 列表 ----------
   const body = h('div.page.lp-body');
-  // 商店小标签：只标和清单默认商店不一样的（每行都写「Whole Foods」等于没写，例外的「H Mart」反而看不出来）。
+  // 商店小标签只标和清单默认商店不一样的（ui/checklist.js 的 storeChip）。
   // 按商店分组时「要买」的组名就是商店，不用标（chip 是 false）；「以后再说」「已买」不按商店分，照样标
-  function storeChip(it, chip, defaultStore) {
-    const name = chip && it.storeId && it.storeId !== defaultStore ? storeName(it.storeId) : '';
-    return name ? h('span.store-chip', null, name) : null;
-  }
-  const items = (arr, chip) => { const ds = list().defaultStoreId; return h('ul.group.items', null, arr.map(it => cl.row(it, storeChip(it, chip, ds)))); };
-  function groupLabel(id, groupBy) {
-    if (!id) return t(groupBy === 'store' ? 'list.noStoreGroup' : 'list.uncategorized');
-    return groupBy === 'store' ? storeName(id) : categoryName(ctx.state.data.categories[id], t);
-  }
+  const items = (arr, chip) => { const ds = list().defaultStoreId; return h('ul.group.items', null, arr.map(it => cl.row(it, chip ? storeChip(ctx, it, ds) : null))); };
   const fold = (key, title, open, toggle, arr, extra = null) => foldSec(key, title, open, () => { toggle(); keepFocus(drawBody); }, () => items(arr, true), extra);
   function drawBody() {
     const l = list(), v = view();
@@ -154,9 +149,7 @@ export function render(main, params, ctx) {
           : later.length ? h('p.empty.lp-empty', null, t('list.empty'))
           : h('div.empty.lp-empty', null, h('p', null, h('b', null, t('list.empty'))), h('p.small', null, t(l.kind === 'general' ? 'list.emptyHintGeneral' : 'list.emptyHint'))));
       }
-      // 只有一组而且是「未分类 / 未指定」时不写组名（一般清单常常都没分类，写一个「未分类」只是噪音）
-      const bare = groups.length === 1 && groups[0].id === null;
-      for (const g of groups) kids.push(h('section.grp', null, bare ? null : h('h2.group-h', null, groupLabel(g.id, v.groupBy)), items(g.items, v.groupBy === 'category')));
+      kids.push(...groupSections(ctx, groups, v.groupBy, arr => items(arr, v.groupBy === 'category')));
       if (later.length) kids.push(fold('later', t('list.laterN', { n: later.length }), v.showLater, () => setView({ showLater: !view().showLater }), later));
       if (done.length) {
         kids.push(fold('done', t('list.doneN', { n: done.length }), v.showDone, () => setView({ showDone: !view().showDone }), done,

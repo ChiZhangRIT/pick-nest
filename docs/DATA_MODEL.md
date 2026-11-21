@@ -202,13 +202,31 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 - 「已买」：`doneAt` 新的在前
 - 在 `core/group.js` 的 `groupNeed`；分组本身是 `groupItems`，商店页（`core/stores.js` 的 `groupStore`，按分类分组）也用它
 
+## 购物模式（core/shop.js）
+
+不存任何东西：是清单页 / 商店页的地址带上 `?shop=1`（`#/l/<id>?shop=1`、`#/s/<id>?shop=1`、`#/s/none?shop=1`），重新载入还在。显示的东西和普通页面一样分组（清单用 `groupNeed`、按这张清单的 `groupBy`；一家店用 `groupStore`），只是不显示「以后再说」。
+
+- **进度** `shopProgress(state, 'list' | 'store', id)` → `{ done, left, total, finished }`：清单 = 这张清单上没删除的 `need`（还剩）和 `done`（已买），用 `items.js` 的 `countItems`；一家店 = `groupStore` 里的（归档的清单不算，删掉的商店算「未指定」）。`以后再说` 不算。`finished` = 没有还剩的、而且有已买的（空的一页不算「买齐了」）。已买包括以前勾掉还没清除的（它们也在「已买」里），「清除已买」以后从 0 算
+- 勾掉、放回去、清除已买用的就是 `setStatus`、`clearDone`、`clearStoreDone`（勾掉时照样记 memory）
+- 「已买」每次进购物模式都是折起来的，点开只管这一次（页面里记着，不存）：不读不写普通页面的 `view[listId].showDone`、`storeView`，本机设置只读 `view[listId].groupBy`（分组和清单页一样）
+- 屏幕常亮（`core/wake.js` 的 `screenWake`，`navigator.wakeLock`、`document` 由页面传进去）：只是浏览器的 Screen Wake Lock，不存东西、不同步
+
+## 搜索（core/search.js）
+
+`#/search?q=<词>`，搜索词只在地址里，不存。
+
+- `searchItems(state, query, collator)` → `[{ list, archived, hits: [{ item, note }] }]`：搜索词经过 `normName`（NFKC、小写、繁体折成简体）后按空格拆开，每个词都要出现在名字或备注（也 `normName` 过）里，可以分在两处。没删除的清单里没删除的东西都算，归档的清单也算（`archived: true`，排在后面）；什么状态都列
+- 清单按首页的顺序（`byOrder`），归档的在后；每张里 `need` → `later` → `done`，同一种按名字（`group.js` 的 `byName`）
+- `note`：备注里第一行有命中的那一行（原文），没有就是 `''`（页面照常显示备注的第一行）
+- `highlight(text, query)` → `[{ text, hit }]`：拼起来就是原文，命中的部分 `hit: true`。逐字折（和 `normName` 同一套），一个字折成几个字（「㎏」→「kg」）时只命中一部分也标整个字；极少数要连起来才折得成的写法搜得到、标不出来
+
 ## 本机设置 picknest.local（不同步）
 
 ```js
 { lang: null, theme: 'auto', device: null, lastBackupAt: null,
   sync: null | { repo: 'owner/pick-nest-data', token: 'github_pat_…', tokenExp: null /* 用户填的到期日 23:59 */,
                  sha, etag, dirty, at /* 上次同步成功 */, err: null | { code, vars }, offline },
-  view: { [listId]: { groupBy: 'category' | 'store', showDone: true, showLater: true } },   // 认不出的值按默认（core/group.js 的 listView）
+  view: { [listId]: { groupBy: 'category' | 'store', showDone: true, showLater: true } },   // 认不出的值按默认（core/group.js 的 listView）；购物模式只用 groupBy
   storeView: { [storeId | 'none']: { showDone: true } } }                                     // 商店页「已买」折没折；'none' 是「未指定」（core/group.js 的 storeView）
 ```
 

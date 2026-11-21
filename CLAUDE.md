@@ -6,12 +6,15 @@
 
 - **无构建**：原生 ES modules，没有 `package.json`、没有 npm 依赖、没有打包。部署 = GitHub Pages 直接发布 `main` 的根目录，地址 `https://chizhangrit.github.io/pick-nest/`
 - **测试**：`node --test tests/*.test.mjs`（Node 自带，零依赖）。视图测试用假 DOM（照 `../babble/tests/helpers/dom.mjs`）。只用编出来的数据，不读令牌、不访问 GitHub
-- **结构**：`src/core/*` 纯逻辑（不碰 DOM，Node 里能 import、能测）；`src/views/*` 页面；`src/ui/*` 共用界面部件；`src/strings/*.js` 文案；`src/app.js` 外壳。关键的业务规则（解析输入、固定 id、合并、常去商店、排序分组）必须在 `core/` 里并有测试，不写在页面里；页面也不自己数（还要买几样用 `store.js` 的 `needCounts`，每家店几样用 `stores.js` 的 `storeCounts` / `storeRows`（东西算在哪家店、勾掉记在哪家用 `items.js` 的 `storeKeyOf`：删掉的商店算未指定），已买几样、清单里几样用 `items.js` 的 `countItems`，删除前「会影响几样」用 `countUsing`）。现在的分工：`parse.js` 解析快速添加、`catalog.js` 常见食材对照、`items.js` 加 / 恢复 / 勾选 / 清除 / 移动 / 编辑、`memory.js` 买过的东西和联想、`group.js` 分组排序（清单页、商店页共用 `groupItems`）、`lists.js` 清单本身、`stores.js` 商店（「商店」页、一家店、设置里管商店）、`categories.js` 设置里管分类、`sync.js` 同步（GitHub contents API、同步码、令牌规则、状态 `syncPhase`）、`backup.js` 备份的内容和读文件、`deleted.js` 最近删除列什么、能不能恢复、`dates.js` 显示时间（今天 / 昨天…，三种语言）；↑↓ 排顺序一律用 `store.js` 的 `moveInOrder`（只改挪的那一条的 `order`，别的不盖新时间），按钮的 onclick 套 `ui/dom.js` 的 `keepUnderFinger`。
-  界面上能勾的一行和勾选的节奏在 `ui/checklist.js`（清单页、商店页共用），改一样东西的面板是 `ui/itemEditor.js`，同步状态的小标签是 `ui/syncBadge.js`（`ctx.syncBadge()`），推入的页面（设置的子页面、最近删除）的顶栏用 `ui/dom.js` 的 `pushFrame`，不要在页面里再写一份。
+- **结构**：`src/core/*` 纯逻辑（不碰 DOM，Node 里能 import、能测）；`src/views/*` 页面；`src/ui/*` 共用界面部件；`src/strings/*.js` 文案；`src/app.js` 外壳。关键的业务规则（解析输入、固定 id、合并、常去商店、排序分组）必须在 `core/` 里并有测试，不写在页面里；页面也不自己数（还要买几样用 `store.js` 的 `needCounts`，每家店几样用 `stores.js` 的 `storeCounts` / `storeRows`（东西算在哪家店、勾掉记在哪家用 `items.js` 的 `storeKeyOf`：删掉的商店算未指定），已买几样、清单里几样用 `items.js` 的 `countItems`，删除前「会影响几样」用 `countUsing`）。现在的分工：`parse.js` 解析快速添加、`catalog.js` 常见食材对照、`items.js` 加 / 恢复 / 勾选 / 清除 / 移动 / 编辑、`memory.js` 买过的东西和联想、`group.js` 分组排序（清单页、商店页共用 `groupItems`）、`lists.js` 清单本身、`stores.js` 商店（「商店」页、一家店、设置里管商店）、`categories.js` 设置里管分类、`sync.js` 同步（GitHub contents API、同步码、令牌规则、状态 `syncPhase`）、`backup.js` 备份的内容和读文件、`deleted.js` 最近删除列什么、能不能恢复、`dates.js` 显示时间（今天 / 昨天…，三种语言）、`search.js` 搜索（`searchItems`、标出命中的字 `highlight`，用 `normName` 比）、`shop.js` 购物模式的进度（`shopProgress`）、`wake.js` 购物模式的屏幕常亮（navigator.wakeLock、document 由调用的地方给，测试用假的）；
+  本机的显示方式（`view`、`storeView`）改的时候用 `group.js` 的 `listViewPatch` / `storeViewPatch`（清单页、商店页；购物模式只读 `groupBy`，「已买」每次进去都折着、页面自己记）；↑↓ 排顺序一律用 `store.js` 的 `moveInOrder`（只改挪的那一条的 `order`，别的不盖新时间），按钮的 onclick 套 `ui/dom.js` 的 `keepUnderFinger`。
+  界面上能勾的一行和勾选的节奏在 `ui/checklist.js`（清单页、商店页、购物模式、搜索共用；行里的小标签 `storeChip` / `listChip`、组名 `groupTitle`、分好的组 `groupSections` 也在这里），改一样东西的面板是 `ui/itemEditor.js`，同步状态的小标签是 `ui/syncBadge.js`（`ctx.syncBadge()`），推入的页面（设置的子页面、最近删除）的顶栏用 `ui/dom.js` 的 `pushFrame`，不要在页面里再写一份。
   `el.append(…)` 会把 `null` 写成字「null」（只有 `h()` 跳过 null）：可能为空的部分先 `.filter(Boolean)`
   面板里输入框的回车用 `ui/form.js` 的 `onEnter`（输入法选字的回车不算，Safari 要看 keyCode 229）；面板里马上生效的按钮（归档、删除）用 `closeThen`（有没存的修改先问）
   这些操作函数直接改传进来的 state（页面在 `ctx.mutate(s => …)` 里调用，撤销、保存由 `state.js` 管），写记录一律用 `store.js` 的 `writeRecord`（整理字段；内容没变不盖新时间）或 `deletedRecord`
-- **页面接口**照 babble `src/app.js` 开头的约定：`render(main, params, ctx)` 返回清理函数或 `{ cleanup, onChange, flush }`（`flush`：切到后台前把点过、还没写进数据的写进去，清单页、商店页的勾选用）；改数据一律走 `ctx.mutate / put / update / remove`，app 负责保存、同步、重画。把 PickNest 实际的 `ctx` 写在 `src/app.js` 开头
+- **页面接口**照 babble `src/app.js` 开头的约定：`render(main, params, ctx)` 返回清理函数或 `{ cleanup, onChange, flush }`（`flush`：切到后台前把点过、还没写进数据的写进去，清单页、商店页、购物模式、搜索的勾选用）；改数据一律走 `ctx.mutate / put / update / remove`，app 负责保存、同步、重画。把 PickNest 实际的 `ctx` 写在 `src/app.js` 开头
+- **布局**照 babble 的三种：手机 < 720（底栏）、侧栏 720–999、双栏 ≥ 1000（`planPanes`：首页 / 「商店」在左栏，`params.pane`、`params.selected` 给左栏高亮）；换布局时有 `onChange` 的页面整个搬到另一栏（`migrate`），所以有输入框的页面一定要返回 `onChange`、不要让 app 重画。购物模式（`#/l/…?shop=1`、`#/s/…?shop=1`）永远一栏。
+  页面自己换了状态（搜索词）用 `ctx.replaceHash` 只换地址栏；`ctx.navigate` 马上画新页面（点按里 focus 输入框 iPhone 才弹键盘，链接用 `ui/dom.js` 的 `linkTo`；去搜索的用 `views/search.js` 的 `searchLink`：已经在搜索页上只给焦点，不清掉搜索词）
 - **DOM**：用 `ui/dom.js` 的 `h()`，只用 `textContent`，不拼 HTML 字符串（清单名、商品名、粘贴的链接都是用户内容）
 - **类型**：`src/core/*.js` 开头加 `// @ts-check`，用 JSDoc 写清参数和记录形状（VS Code 直接检查，不用装东西）
 - **文案**：`t(key, vars)`，三种语言 `zh-Hans`（默认）、`zh-Hant-TW`（台湾用词）、`en`，按功能分文件放在 `src/strings/`，测试检查三种语言的键和 `{占位符}` 一致。用户写的内容永远不经过 `t()`，也不做简繁转换
@@ -25,7 +28,7 @@
 
 以 `../babble` 为准（它的同步修过 house-ledger 和 virtual-bookshelf 还有的两个问题：文件超过 1 MB 要用 raw 格式读；ETag 要合并成功后再记）。移植时：
 
-- `core/util.js`、`core/hanzi.js` 基本原样（已移植）；`core/sha256.js` 等以后做图片时再移植（babble 里只给录音用，第 5 步没有录音 / 图片）
+- `core/util.js`、`core/hanzi.js` 基本原样（已移植）；`app.js` 的三种布局、双栏（`planPanes`、`migrate`、`replaceHash`）已移植；`core/sha256.js` 等以后做图片时再移植（babble 里只给录音用，第 5 步没有录音 / 图片）
 - `core/store.js`：`canon`、`pick`、`mergeStates`、`stamp`、`deletedRecord`、`restoredRecord`、`newId` 原样；`normalizeState` 和各集合的整理函数按 `docs/DATA_MODEL.md` 重写；加 `ensureSeeds`、`normName`、`hash64`、`itemId`
 - `core/state.js`、`core/persistence.js`：去掉 babble 特有的（说话人、录音、夜间、版本记录本），键名换成 `picknest.*`，`app` 标识换成 `picknest`
 - `core/sync.js`（已移植）：文件名 `picknest.json`、App 标识、同步码前缀 `picknest-sync:` 是参数（babble 的正则写死了 `babble-sync:`，没照抄）；去掉了录音上传下载、永久删除、云端历史，`run()` 里留了以后接图片的位置

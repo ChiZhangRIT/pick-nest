@@ -20,6 +20,8 @@ export const STRINGS = {
     'store.archived': '已归档「{name}」', 'store.unarchived': '已取消归档「{name}」', 'store.deleted': '已删除「{name}」',
     'store.manageHelp': '点名字可以改名、归档或删除。这里的顺序就是「商店」页和选择列表里的顺序。',
     'store.noActive': '没有在用的商店。', 'store.archivedN': '已归档（{n}）',
+    // 宽屏双栏：右栏还没选商店时
+    'store.pick': '选一家店，在那儿要买的东西显示在这里',
   },
   'zh-Hant-TW': {
     'store.manage': '管理商店', 'store.none': '未指定', 'store.archivedTag': '已封存', 'store.empty': '沒有要顯示的商店。',
@@ -35,6 +37,7 @@ export const STRINGS = {
     'store.archived': '已封存「{name}」', 'store.unarchived': '已取消封存「{name}」', 'store.deleted': '已刪除「{name}」',
     'store.manageHelp': '點名稱可以改名、封存或刪除。這裡的順序就是「商店」頁和選項裡的順序。',
     'store.noActive': '沒有使用中的商店。', 'store.archivedN': '已封存（{n}）',
+    'store.pick': '選一家店，在那裡要買的東西會顯示在這裡',
   },
   en: {
     'store.manage': 'Manage', 'store.none': 'No Store', 'store.archivedTag': 'Archived', 'store.empty': 'No stores to show.',
@@ -50,5 +53,6 @@ export const STRINGS = {
     'store.archived': 'Archived “{name}”', 'store.unarchived': 'Unarchived “{name}”', 'store.deleted': 'Deleted “{name}”',
     'store.manageHelp': 'Tap a name to rename, archive or delete it. This order is used on Stores and when you pick a store.',
     'store.noActive': 'No active stores.', 'store.archivedN': 'Archived ({n})',
+    'store.pick': 'Pick a store to see what to buy there',
   },
 };

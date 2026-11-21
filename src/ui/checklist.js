@@ -1,12 +1,14 @@
-// 能勾的一行和勾选的节奏：清单页（views/list.js）和商店页（views/store.js）共用。
+// 能勾的一行和勾选的节奏：清单页（views/list.js）、商店页（views/store.js）、购物模式（views/shop.js）、搜索（views/search.js）共用。
 // 一行：大圆勾 + 名字（下面一行是页面给的小标签——清单页标商店、商店页标来自哪张清单——和备注的第一行）+ 数量；点整行勾掉 / 取消，右边的 › 打开编辑面板（ui/itemEditor.js）。
+// 小标签（storeChip、listChip）、组名（groupTitle）和分好的组（groupSections）也在这里，几个页面画得一样。
 // 网页 App 没有震动，用动画代替：先在原地打勾、划线（或者在「已买」里去掉勾），约 0.3 秒后再挪过去；
 // 连着点几样时等最后一下之后一起挪（挪的时候行会动，手指下面换了一样东西）；减少动态效果时马上挪。
 // 刚挪了位置的行，紧接着的一下不算（连点两下不会改掉两样）；用键盘、读屏勾掉一样以后，焦点给顶替它位置的那一样。
 // 规则在 core/items.js（setStatus：勾成已买时记下这次的商店）。
 import { h, icon } from './dom.js';
 import { t } from '../i18n.js';
-import { liveItem, setStatus } from '../core/items.js';
+import { liveItem, liveList, setStatus, storeExists } from '../core/items.js';
+import { listName, listIcon, categoryName } from '../core/store.js';
 import { qtyLabel } from '../core/parse.js';
 import { itemSheet } from './itemEditor.js';
 
@@ -16,7 +18,8 @@ const firstLine = (s) => String(s || '').split('\n').map(x => x.trim()).find(Boo
 
 /**
  * checklist(ctx, main) → { row, draw, keepFocus, flash, flashNow, flush, drop }
- *   row(it, chip)   画一行（chip：页面给的小标签元素，或 null）
+ *   row(it, chip, { name, note })  画一行（chip：页面给的小标签元素（可以是几个的数组），或 null；
+ *                   name / note：代替名字、备注第一行的内容（搜索把命中的字标出来），不给就是原文）
  *   draw(fn)        重画列表：fn 里调 row() 把行放进页面；前后比一比哪些行挪了位置，画完闪一下要闪的那一行
  *   keepFocus(fn)   重画以后焦点放回同一个控件（带 data-fid 的）；勾掉的那一行挪走了就给顶替它的那一行，控件没了给页面标题
  *   flash(id)       下次画完闪这一行；flashNow() 现在就闪（数据没变、不会重画的时候）
@@ -33,16 +36,17 @@ export function checklist(ctx, main) {
 
   /** 打勾的样子：点过还没挪的按要改成的状态画（「已买」里去掉了勾的、要买里打上了勾的） */
   const checkedNow = (it) => (pending.has(it.id) ? pending.get(it.id) === 'done' : it.status === 'done');
-  function row(it, chip = null) {
+  function row(it, chip = null, { name = null, note = null } = {}) {
     const was = it.status === 'done', checked = checkedNow(it);
     const q = qtyLabel(it.qty, it.unit);
-    const note = firstLine(it.note);
+    const nt = note || firstLine(it.note);
+    const hasChip = Array.isArray(chip) ? chip.some(Boolean) : !!chip;
     const check = h('button.item-main', { type: 'button', role: 'checkbox', 'aria-checked': String(checked), dataset: { fid: 'it-' + it.id },
       onclick: () => tap(it.id) },
     h('span.check', { 'aria-hidden': 'true' }, icon('check')),
     h('span.item-text', null,
-      h('span.item-name', null, it.name),
-      chip || note ? h('span.item-sub', null, chip, note ? h('span.item-note', null, note) : null) : null),
+      h('span.item-name', null, name || it.name),
+      hasChip || nt ? h('span.item-sub', null, chip, nt ? h('span.item-note', null, nt) : null) : null),
     q ? h('span.item-qty', null, q) : null);
     const li = h('li.item-row' + (was && checked ? '.done' : '') + (!was && checked ? '.ticking' : ''), { dataset: { id: it.id } }, check,
       h('button.item-more', { type: 'button', 'aria-label': t('item.edit', { name: it.name }), title: t('item.edit', { name: it.name }), dataset: { fid: 'more-' + it.id },
@@ -172,4 +176,33 @@ export function foldSec(key, title, open, onToggle, content, extra = null) {
         icon('chev', { cls: 'sec-chev' }), h('span', null, title)),
       extra),
     open ? content() : null);
+}
+
+// ---------- 行里的小标签、组名、分好的组（清单页、商店页、购物模式、搜索一样） ----------
+const storeNameOf = (ctx, id) => (storeExists(ctx.state, id) ? ctx.state.data.stores[id].name : '');
+/**
+ * 商店小标签：只标和清单默认商店不一样的（每行都写「Whole Foods」等于没写，例外的「H Mart」反而看不出来）。
+ * 删掉的商店不标（算「未指定」）
+ */
+export function storeChip(ctx, it, defaultStoreId) {
+  const name = it.storeId && it.storeId !== defaultStoreId ? storeNameOf(ctx, it.storeId) : '';
+  return name ? h('span.store-chip', null, name) : null;
+}
+/** 来自哪张清单：图标给眼睛看（aria-hidden），读屏念清单名 */
+export function listChip(ctx, it) {
+  const l = liveList(ctx.state, it.listId);
+  return l ? h('span.store-chip.list-chip', null, h('span.list-chip-ic', { 'aria-hidden': 'true' }, listIcon(l)), listName(l, t)) : null;
+}
+/** 组名：按分类分组时是分类名，按商店分组时是店名；null 是「未分类 / 未指定商店」 */
+export function groupTitle(ctx, id, groupBy = 'category') {
+  if (!id) return t(groupBy === 'store' ? 'list.noStoreGroup' : 'list.uncategorized');
+  return groupBy === 'store' ? storeNameOf(ctx, id) : categoryName(ctx.state.data.categories[id], t);
+}
+/**
+ * 「要买」的几组（core/group.js 的 groupItems 分好的）画成 <section.grp>：组名 + 一组行（rows(items) 画）。
+ * 只有一组而且是「未分类 / 未指定」时不写组名（一般清单常常都没分类，写一个「未分类」只是噪音）
+ */
+export function groupSections(ctx, groups, groupBy, rows) {
+  const bare = groups.length === 1 && groups[0].id === null;
+  return groups.map(g => h('section.grp', null, bare ? null : h('h2.group-h', null, groupTitle(ctx, g.id, groupBy)), rows(g.items)));
 }

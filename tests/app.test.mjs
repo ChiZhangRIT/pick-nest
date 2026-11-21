@@ -33,7 +33,7 @@ test('冷启动：首页是预置的两张清单；底栏是清单、商店、�
     assert.deepEqual([body.dataset.route, body.dataset.layout, body.dataset.tabs], ['lists', 'phone', '1']);
     assert.deepEqual([root.lang, root.dataset.theme, dom.doc.title], ['zh-Hans', 'light', 'PickNest']);
     assert.deepEqual(tabs.children.map(a => [a.attrs.href, a.textContent, a.attrs['aria-current'] || null]), [['#/', '清单', 'page'], ['#/stores', '商店', null], ['#/settings', '设置', null]]);
-    assert.deepEqual(all(dom.doc.querySelector('#side'), el => el.tag === 'a').map(a => a.attrs.href), ['#/', '#/stores', '#/settings'], '侧栏也是这三项');
+    assert.deepEqual(all(dom.doc.querySelector('#side'), el => el.tag === 'a').map(a => a.attrs.href), ['#/', '#/stores', '#/search', '#/settings'], '侧栏是这三项，再加上搜索');
     assert.equal(storage.m.size, 0, '只是打开看看，不写存储');
 
     // 改数据：存进本机、首页自动重画

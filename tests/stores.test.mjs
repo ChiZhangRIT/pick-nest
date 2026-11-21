@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { ensureSeeds, blankState, normalizeRecord, deletedRecord, restoredRecord, mergeStates, SEED_STORES, GROCERY_CATEGORIES, GENERAL_CATEGORIES } from '../src/core/store.js';
 import { storeCounts, storeRows, groupStore, clearStoreDone, storeKeyOf, activeStores, archivedStores, createStore, renameStore, setStoreArchived, deleteStore, moveStore } from '../src/core/stores.js';
 import { categorySections, categoriesFor, createCategory, renameCategory, deleteCategory, moveCategory } from '../src/core/categories.js';
-import { groupNeed, collatorFor, storeView } from '../src/core/group.js';
+import { groupNeed, collatorFor, storeView, storeViewPatch } from '../src/core/group.js';
 import { createList, setArchived, deleteList } from '../src/core/lists.js';
 import { toggleDone, countUsing } from '../src/core/items.js';
 import { memoryOf } from '../src/core/memory.js';
@@ -117,6 +117,14 @@ test('一家店的显示方式（本机）：「已买」默认展开；「未�
   assert.deepEqual(storeView({ storeView: { none: { showDone: false } } }, null), { showDone: false });
   assert.deepEqual(storeView({ storeView: { s_costco: 'x' } }, 's_costco'), { showDone: true });
   assert.deepEqual(storeView(null, 's_costco'), { showDone: true });
+});
+
+test('改一家店的显示方式（storeViewPatch）：整个 storeView 换掉，别的店的原样留着；「未指定」（null）写在 none 下', () => {
+  const local = { storeView: { s_costco: { showDone: false }, none: { showDone: false } } };
+  assert.deepEqual(storeViewPatch(local, 's_hmart', { showDone: false }), { storeView: { s_costco: { showDone: false }, none: { showDone: false }, s_hmart: { showDone: false } } });
+  assert.deepEqual(storeViewPatch(local, null, { showDone: true }), { storeView: { s_costco: { showDone: false }, none: { showDone: true } } });
+  assert.deepEqual(local, { storeView: { s_costco: { showDone: false }, none: { showDone: false } } }, '不改传进来的');
+  assert.deepEqual(storeViewPatch(undefined, 's_costco', { showDone: false }), { storeView: { s_costco: { showDone: false } } });
 });
 
 // ---------- 设置 → 商店 ----------

@@ -81,6 +81,16 @@ export function listView(local, listId) {
   return { groupBy: o.groupBy === 'store' ? 'store' : 'category', showDone: o.showDone !== false, showLater: o.showLater !== false };
 }
 
+/**
+ * 改一张清单的显示方式：返回给 ctx.setLocal 的 { view }（本机设置是浅合并，view 要整个换；别的清单的原样留着）。
+ * 购物模式只读 groupBy（和清单页一样分组），「已买」折没折它自己管（每次进去都是折起来的）
+ * @param {{ view?: Record<string, any> } | null | undefined} local @param {string} listId @param {Partial<ReturnType<typeof listView>>} patch
+ */
+export function listViewPatch(local, listId, patch) {
+  const all = isObj(local && local.view) ? /** @type {any} */ (local).view : {};
+  return { view: { ...all, [listId]: { ...listView(local, listId), ...patch } } };
+}
+
 /** 「未指定」那一页在 storeView 里的键（商店的 id 都是 s_ 开头，撞不上） */
 export const NO_STORE = 'none';
 /**
@@ -92,4 +102,12 @@ export const NO_STORE = 'none';
 export function storeView(local, storeId) {
   const v = own(isObj(local && local.storeView) ? /** @type {any} */ (local).storeView : {}, storeId || NO_STORE);
   return { showDone: !(isObj(v) && v.showDone === false) };
+}
+/**
+ * 改一家店的页面的显示方式：返回给 ctx.setLocal 的 { storeView }（和 listViewPatch 一样整个换；别的店的原样留着）
+ * @param {{ storeView?: Record<string, any> } | null | undefined} local @param {string | null} storeId @param {{ showDone?: boolean }} patch
+ */
+export function storeViewPatch(local, storeId, patch) {
+  const all = isObj(local && local.storeView) ? /** @type {any} */ (local).storeView : {};
+  return { storeView: { ...all, [storeId || NO_STORE]: { ...storeView(local, storeId), ...patch } } };
 }

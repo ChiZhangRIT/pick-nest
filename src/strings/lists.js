@@ -31,6 +31,8 @@ export const STRINGS = {
     'list.allDone': '要买的都买齐了',
     'list.laterN': '以后再说（{n}）', 'list.doneN': '已买（{n}）', 'list.clearDone': '清除已买', 'list.cleared': '已清除 {n} 样',
     'list.uncategorized': '未分类', 'list.noStoreGroup': '未指定商店',
+    // 宽屏双栏：右栏还没选清单时
+    'list.pick': '选一张清单，里面的东西显示在这里',
   },
   'zh-Hant-TW': {
     'list.sys.groceries': '食材', 'list.sys.tobuy': '想買', 'list.untitled': '未命名清單',
@@ -57,6 +59,7 @@ export const STRINGS = {
     'list.allDone': '要買的都買齊了',
     'list.laterN': '以後再說（{n}）', 'list.doneN': '已買（{n}）', 'list.clearDone': '清除已買', 'list.cleared': '已清除 {n} 樣',
     'list.uncategorized': '未分類', 'list.noStoreGroup': '未指定商店',
+    'list.pick': '選一張清單，裡面的東西會顯示在這裡',
   },
   en: {
     'list.sys.groceries': 'Groceries', 'list.sys.tobuy': 'To Buy', 'list.untitled': 'Untitled list',
@@ -83,5 +86,6 @@ export const STRINGS = {
     'list.allDone': 'All bought',
     'list.laterN': 'Later ({n})', 'list.doneN': 'Bought ({n})', 'list.clearDone': 'Clear Bought', 'list.cleared': en('Cleared {n} item', 'Cleared {n} items'),
     'list.uncategorized': 'Uncategorized', 'list.noStoreGroup': 'No store',
+    'list.pick': 'Pick a list to see what’s on it',
   },
 };

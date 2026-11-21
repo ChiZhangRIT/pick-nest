@@ -2,18 +2,27 @@
 //
 // ===== 页面接口 =====
 // export function render(main, params, ctx) → 清理函数 | { cleanup?(), onChange?(info), flush?() } | undefined
-//   main    空的容器（<section class="pane view view-<name>">），页面自己画标题和内容
-//   params  { name, path, id, sub, query, hash }
-//           name: 'lists' | 'list' | 'stores' | 'store' | 'settings' | 'deleted'
+//   main    空的容器（<section class="pane view view-<name>">，双栏时 .pane-list / .pane-detail，一栏 .pane-main），页面自己画标题和内容
+//   params  { name, path, id, sub, query, pane, selected, hash }
+//           name: 'lists' | 'list' | 'stores' | 'store' | 'shop' | 'search' | 'settings' | 'deleted'
 //           #/ → lists（首页「清单」）；#/l/<listId> → list（一张清单，id；清单不在了由页面自己回首页）；
 //           #/stores → stores（「商店」）；#/s/<storeId> → store（一家店，id；#/s/none 是「未指定」；商店不在了由页面自己回「商店」）；
+//           #/l/<listId>?shop=1、#/s/<storeId>?shop=1 → shop（购物模式，id，sub 'list' | 'store'）；
+//           #/search、#/search?q=<词> → search（query.q）；
 //           #/settings → settings（sub null）；#/settings/stores、/categories、/sync、/data → settings（sub 'stores' | 'categories' | 'sync' | 'data'）；
 //           #/deleted → deleted（最近删除，从设置 → 数据进去）；不认识的地址 → lists
-//   数据变了：页面返回了 onChange 就只调 onChange(info)，页面自己更新（清单页这样做：快速添加的输入框不能被打断）；
+//           pane: 'main'（一栏）| 'list'（双栏左）| 'detail'（双栏右）；selected: 双栏时右栏正在看的清单 / 商店的 id（左栏高亮那一行）
+//   数据变了：页面返回了 onChange 就只调 onChange(info)，页面自己更新（清单页、搜索、购物模式这样做：输入框不能被打断，勾选的节奏要跨重画记着）；
 //            否则 app 把这个页面整个重画一遍（保留滚动位置；带 data-fid 的控件重画后恢复焦点）。
 //   flush：页面上点过、还没写进数据的（勾选要停一下才改数据）马上写进去。切到后台时 app 先调它，再决定要不要马上上传
-//   手机（<720px）：顶层页面（#/、#/stores、#/settings）显示底栏；推入的页面（#/l/…、#/s/…、#/settings/…、#/deleted）不显示底栏，自己画返回按钮（ctx.back）。
-//   宽屏（≥720px，iPad、Mac）：左边侧栏，内容栏自己滚动。要随布局变化的页面听 ctx.on('layout')。
+//   三种布局（照 babble）：
+//     手机（<720px）：顶层页面（#/、#/stores、#/settings）显示底栏；推入的页面（#/l/…、#/s/…、#/search、#/settings/…、#/deleted）不显示底栏，自己画返回按钮（ctx.back）。
+//     侧栏（720–999px）：左边侧栏（清单、商店、搜索、设置），内容栏自己滚动；返回按钮由 CSS 藏起来。
+//     双栏（≥1000px，iPad 横放、Mac）：侧栏 + 两栏。#/、#/l/…、#/search 左栏是首页，右栏是那张清单 / 搜索（#/ 时右栏是提示）；
+//            #/stores、#/s/… 左栏是「商店」，右栏是那家店（#/stores 时是提示）。别的页面一栏。
+//     购物模式不管哪种布局都占满整个窗口（没有底栏、侧栏）。
+//   换布局（转 iPad、拉窗口）：同一栏的页面原样留着；要换栏时，有 onChange 的页面（清单页、搜索）整个搬过去（params.pane / selected 原地更新），
+//            输入框里打了一半的字、焦点都不丢；其余重画。要随布局变化的页面听 ctx.on('layout')。
 //
 // ===== ctx =====
 // 数据（src/core/state.js 的包装；改数据一律走这些，app 会保存、重画）
@@ -32,11 +41,13 @@
 //   ctx.editVersion            本机修改计数
 //   ctx.saveOk()               最近一次数据写入是否成功
 // 导航
-//   ctx.navigate(path, { replace })  path 如 '/settings'（前面的 # 可有可无）；同一地址 = 重画
+//   ctx.navigate(path, { replace })  path 如 '/settings'（前面的 # 可有可无）；同一地址 = 重画。马上画出新页面（不等 hashchange）：
+//                              在点按里调用时，新页面 focus() 输入框 iPhone 才会弹出键盘（ui/dom.js 的 linkTo）
+//   ctx.replaceHash(path)      页面自己换了状态（搜索框里打的字）：只换地址栏，不重画、不加历史记录；挂着的页面记下新地址（下次画不当成换页）
 //   ctx.back(fallback = '/')   App 内有上一页就后退，否则换成 fallback
-//   ctx.route                  当前路由（同 params 的结构）；ctx.params 是这个页面挂载时的路由
-//   ctx.refresh()              重画当前页面（焦点在带 data-fid 的控件上时，重画后放回去）
-//   ctx.layout()               'phone'（<720）| 'side'（≥720，有侧栏）
+//   ctx.route                  当前路由（同 params 的结构，不含 pane / selected）；ctx.params 是这个页面挂载时的路由（双栏时 pane / selected 原地更新）
+//   ctx.refresh()              重画当前所有页面（焦点在带 data-fid 的控件上时，重画后放回去）
+//   ctx.layout()               'phone'（<720）| 'side'（720–999，有侧栏）| 'two'（≥1000，侧栏 + 双栏）
 // 同步（core/sync.js；令牌只在 picknest.local 的 sync 里）
 //   ctx.sync.now(opts)         立即同步一轮 → Promise<{ ok, skipped?, error?, offline? }>（本机数据有问题时不同步 → { ok: false, skipped: true }）
 //   ctx.sync.connect({ repo, token, tokenExp })  保存同步设置（只存本机）并马上同步一次 → 同上（tokenExp：用户填的令牌到期时刻，可选）
@@ -71,8 +82,10 @@ import * as stores from './views/stores.js';
 import * as store from './views/store.js';
 import * as settings from './views/settings.js';
 import * as deleted from './views/deleted.js';
+import * as shop from './views/shop.js';
+import * as search from './views/search.js';
 
-const VIEWS = { lists, list, stores, store, settings, deleted };
+const VIEWS = { lists, list, stores, store, shop, search, settings, deleted };
 const SETTINGS_SUBS = ['stores', 'categories', 'sync', 'data'];
 const THEME_COLOR = { light: '#f6f5f0', dark: '#121412' };          // 和 styles.css 的 --bg 一样：状态栏和页面连成一片
 const ID_PREFIX = { lists: 'l_', items: 'i_', stores: 's_', categories: 'c_', memory: 'm_' };
@@ -96,19 +109,37 @@ function parseRoute(hash) {
   const [a] = path;
   let r;
   // 设置里没有的子页面（以后才有的页面的旧链接）当成设置首页：不然既没有底栏、也没有返回
+  // 购物模式是清单页 / 商店页带上 ?shop=1：地址里记着，重新载入还在购物模式；去掉它就回到普通的那一页
+  const shopping = query.shop === '1';
   if (a === 'settings') r = { name: 'settings', sub: SETTINGS_SUBS.includes(path[1]) ? path[1] : null };
   else if (a === 'deleted') r = { name: 'deleted' };
-  else if (a === 'l' && path[1]) r = { name: 'list', id: path[1] };
+  else if (a === 'l' && path[1]) r = shopping ? { name: 'shop', sub: 'list', id: path[1] } : { name: 'list', id: path[1] };
   else if (a === 'stores') r = { name: 'stores' };
-  else if (a === 's' && path[1]) r = { name: 'store', id: path[1] };
+  else if (a === 's' && path[1]) r = shopping ? { name: 'shop', sub: 'store', id: path[1] } : { name: 'store', id: path[1] };
+  else if (a === 'search') r = { name: 'search' };
   else r = { name: 'lists' };                  // #/ 和不认识的地址（比如以后才有的页面的旧链接）
   return { id: null, sub: null, ...r, path, query, hash: '#/' + raw };
 }
 const route = () => parseRoute(location.hash);
 
-const mqSide = matchMedia('(min-width: 720px)');
-const layout = () => (mqSide.matches ? 'side' : 'phone');
+const mqSide = matchMedia('(min-width: 720px)'), mqTwo = matchMedia('(min-width: 1000px)');
+const layout = () => (mqTwo.matches ? 'two' : mqSide.matches ? 'side' : 'phone');
 const TOP_LEVEL = r => r.name === 'lists' || r.name === 'stores' || (r.name === 'settings' && !r.sub);
+// 双栏时左栏放什么：清单这一边（首页、一张清单、搜索）是首页，商店这一边（「商店」、一家店）是「商店」
+const LEFT = { lists: 'lists', list: 'lists', search: 'lists', stores: 'stores', store: 'stores' };
+
+/** 这个路由在这个布局下要画哪些栏（照 babble）。双栏时左栏本身的地址（#/、#/stores）右栏是提示（'empty'） */
+function planPanes(r, lay) {
+  const left = lay === 'two' ? own(LEFT, r.name) : null;
+  if (left) {
+    const home = r.name === left;
+    return [
+      { slot: 'list', name: left, params: { ...r, name: left, pane: 'list', selected: home ? null : r.id } },
+      { slot: 'detail', name: home ? 'empty' : r.name, params: { ...r, pane: 'detail', selected: r.id } },
+    ];
+  }
+  return [{ slot: 'main', name: r.name, params: { ...r, pane: 'main', selected: r.id } }];
+}
 
 // ---------- 导航（带 App 内历史：判断 ctx.back 能不能真的后退，后退时回到原来的滚动位置） ----------
 const navStack = [];
@@ -131,8 +162,23 @@ function navigate(path, { replace = false } = {}) {
     if (navStack.length) navStack[navStack.length - 1] = target; else navStack.push(target);
     currentHash = target; lastWasBack = false;
     render();
-  } else location.hash = target;
+  } else {
+    // 马上画（不等 hashchange）：还在这一下点按里，新页面把焦点给输入框时 iPhone 才弹得出键盘。随后到的 hashchange 是同一个地址，不再处理
+    location.hash = target;
+    onUrlChange();
+  }
   return true;
+}
+/** 页面自己换了状态（搜索框里打的字）：只换地址栏，不重画、不加历史记录；挂着的页面记下新地址（下次 render 不当成换页） */
+function replaceHash(path) {
+  const target = norm(path), before = route().hash;
+  if ((location.hash || '#/') === target) return;
+  // Safari 限制一会儿之内 replaceState 的次数（超了会报错）：换不成就算了，只是地址栏晚一点跟上
+  try { history.replaceState(history.state, '', target); } catch (e) { return; }
+  currentHash = location.hash || target;
+  if (navStack.length) navStack[navStack.length - 1] = currentHash; else navStack.push(currentHash);
+  const after = route().hash;
+  for (const m of Object.values(mounted)) if (m.params.hash === before) { m.params.hash = after; m.key = m.slot + '|' + m.name + '|' + after; }
 }
 function back(fallback = '/') {
   if (navStack.length > 1) history.back();
@@ -142,7 +188,7 @@ function back(fallback = '/') {
 function onUrlChange() {
   const target = location.hash || '#/';
   if (target === currentHash) return;
-  if (currentHash) scrollMemory.set(currentHash, scrollTop());
+  if (currentHash) rememberScroll();
   currentHash = target;
   track(target);
   render();
@@ -278,7 +324,7 @@ const ctx = {
   mergeIn: (other) => state.mergeIn(other),
   setLocal: (patch) => state.setLocal(patch),
 
-  navigate, back, refresh: () => refresh(), layout,
+  navigate, back, replaceHash, refresh: () => refresh(), layout,
   t, lang: getLang,
   setLang(l) { state.setLocal({ lang: l }); setLang(l); refresh(); },
   setTheme(th) { state.setLocal({ theme: th }); applyTheme(); },
@@ -298,13 +344,16 @@ function renderShell(r) {
   document.body.dataset.route = r.name;
   document.body.dataset.layout = layout();
   document.body.dataset.tabs = TOP_LEVEL(r) ? '1' : '0';
-  // 清单页算在「清单」下面，一家店算在「商店」下面，最近删除算在「设置」下面
-  const cur = r.name === 'list' ? 'lists' : r.name === 'store' ? 'stores' : r.name === 'deleted' ? 'settings' : r.name;
-  const item = (id, href, ic, label) => h('a.nav-item' + (cur === id ? '.on' : ''), { href, 'aria-current': cur === id ? 'page' : null }, ic, h('span', null, label));
+  // 清单页算在「清单」下面，一家店算在「商店」下面，购物模式算在它来的那一边，最近删除算在「设置」下面
+  const cur = r.name === 'list' ? 'lists' : r.name === 'store' ? 'stores' : r.name === 'shop' ? (r.sub === 'store' ? 'stores' : 'lists')
+    : r.name === 'deleted' ? 'settings' : r.name;
+  const item = (id, href, ic, label, onclick = null) => h('a.nav-item' + (cur === id ? '.on' : ''), { href, onclick, 'aria-current': cur === id ? 'page' : null }, ic, h('span', null, label));
   const tab = (id, href, ic, label) => h('a.tab' + (cur === id ? '.on' : ''), { href, 'aria-current': cur === id ? 'page' : null }, ic, h('span', null, label));
   $('#side').replaceChildren(
     h('div.brand', null, h('img', { src: 'icons/icon-180.png', alt: '', width: 32, height: 32, onerror: e => { e.target.style.visibility = 'hidden'; } }), h('b', null, t('common.appName'))),
-    h('nav', { 'aria-label': t('nav.label') }, item('lists', '#/', icon('list'), t('nav.lists')), item('stores', '#/stores', icon('store'), t('nav.stores'))),
+    // 搜索在点按里就换页（search.searchLink）：iPad 上搜索框的键盘才弹得出来；已经在搜索页上就只把焦点给搜索框，搜索词不清掉
+    h('nav', { 'aria-label': t('nav.label') }, item('lists', '#/', icon('list'), t('nav.lists')), item('stores', '#/stores', icon('store'), t('nav.stores')),
+      item('search', '#/search', icon('search'), t('nav.search'), search.searchLink(ctx))),
     h('div.side-foot', null, h('nav', { 'aria-label': t('nav.settings') }, item('settings', '#/settings', icon('gear'), t('nav.settings')))),
   );
   const tabs = $('#tabs');
@@ -312,10 +361,14 @@ function renderShell(r) {
   tabs.replaceChildren(tab('lists', '#/', icon('list'), t('nav.lists')), tab('stores', '#/stores', icon('store'), t('nav.stores')), tab('settings', '#/settings', icon('gear'), t('nav.settings')));
 }
 
-// ---------- 页面挂载（现在只有一栏） ----------
-let current = null;           // { name, key, params, el, handle, offs }
-const scrollTop = () => (layout() === 'phone' ? window.scrollY || 0 : current ? current.el.scrollTop : 0);
+// ---------- 页面挂载（一栏，或者双栏的左右两栏；照 babble） ----------
+const mounted = {};           // slot（'main' | 'list' | 'detail'）→ { slot, name, key, params, el, handle, offs }
 const scroller = (el) => (layout() === 'phone' ? document.scrollingElement : el);
+// 后退回来时的滚动位置：每一栏各记各的（键是 mount 的 key：栏 | 页面 | 地址）。双栏时左栏的首页、右栏的清单页滚到哪儿不一样，
+// 只记一个数的话会把右栏的位置套到左栏上（右栏只是提示时又把左栏的丢了）；换了栏、换了页面的不套
+function rememberScroll() {
+  for (const m of Object.values(mounted)) scrollMemory.set(m.key, layout() === 'phone' ? window.scrollY || 0 : m.el.scrollTop || 0);
+}
 
 function viewCtx(m) {
   const c = Object.create(ctx);
@@ -326,6 +379,12 @@ function viewCtx(m) {
 }
 function runView(m) {
   m.offs = []; m.handle = null;
+  // 双栏右边还没选的时候：一句提示（左栏是首页就说选清单，是「商店」就说选商店）
+  if (m.name === 'empty') {
+    const st = m.params.name === 'stores';
+    m.el.append(h('div.detail-empty', null, icon(st ? 'store' : 'list', { cls: 'detail-empty-ic' }), h('p', null, t(st ? 'store.pick' : 'list.pick'))));
+    return;
+  }
   try {
     const ret = VIEWS[m.name].render(m.el, m.params, viewCtx(m));
     m.handle = typeof ret === 'function' ? { cleanup: ret } : ret && typeof ret === 'object' ? ret : null;
@@ -337,26 +396,33 @@ function cleanupView(m) {
   try { if (m.handle && m.handle.cleanup) m.handle.cleanup(); } catch (e) { console.error(e); }
   m.handle = null;
 }
-function unmount() {
-  if (!current) return;
-  cleanupView(current);
-  current.el.remove();
-  current = null;
+function unmount(slot) {
+  const m = mounted[slot];
+  if (!m) return;
+  cleanupView(m);
+  m.el.remove();
+  delete mounted[slot];
 }
-/** 换页：同一个地址不重画；换了就清理旧页面、在同一个容器里画新页面，后退回来时恢复滚动位置 */
-function mount(r, main) {
-  const key = r.name + '|' + r.hash;
-  if (current && current.key === key) return false;
-  const old = current;
+function unmountAll() { for (const slot of Object.keys(mounted)) unmount(slot); }
+const keyOf = p => p.slot + '|' + p.name + '|' + p.params.hash;
+
+/** 换页：同一栏、同一个地址不重画；换了就清理旧页面、在同一个容器里画新页面，后退回来时恢复滚动位置 */
+function mount(p, main) {
+  const old = mounted[p.slot];
+  const key = keyOf(p);
+  if (old && old.key === key) return false;
+  // 双栏左边的首页 / 「商店」：右边换了一张清单（左栏跟着重画高亮）不跳回顶部
+  const keepScroll = old && old.name === p.name && p.slot === 'list' ? old.el.scrollTop : null;
   if (old) cleanupView(old);
   const el = old ? old.el : h('section.pane');
-  el.className = `pane view view-${r.name}`;
+  el.className = `pane pane-${p.slot} view view-${p.name}`;
   el.replaceChildren();
-  current = { name: r.name, key, params: r, el, handle: null, offs: [] };
+  const m = { slot: p.slot, name: p.name, key, params: p.params, el, handle: null, offs: [] };
+  mounted[p.slot] = m;
   if (!old) main.append(el);
-  runView(current);
-  const saved = lastWasBack && scrollMemory.get(r.hash);
-  const top = saved != null && saved !== false ? saved : 0;
+  runView(m);
+  const saved = lastWasBack && scrollMemory.get(key);
+  const top = keepScroll != null ? keepScroll : saved != null && saved !== false ? saved : 0;
   if (layout() === 'phone') window.scrollTo(0, top); else el.scrollTop = top;
   return true;
 }
@@ -369,6 +435,25 @@ function rerender(m) {
   runView(m);
   if (sc) sc.scrollTop = top;
   if (fid) { const el = m.el.querySelector(`[data-fid="${CSS.escape(fid)}"]`); if (el) el.focus({ preventScroll: true }); }
+}
+/**
+ * 换布局（转 iPad、拉窗口）时同一个页面要换栏（一栏的清单页 ↔ 双栏右边的清单页）：自己管更新（有 onChange）的页面整个搬过去，
+ * 快速添加、搜索框里打了一半的字、焦点、勾到一半的都不丢；params 是同一个对象，pane / selected 原地改
+ */
+function migrate(plan) {
+  for (const p of plan) {
+    if (mounted[p.slot] && mounted[p.slot].name === p.name) continue;
+    const from = Object.keys(mounted).find(s => s !== p.slot && mounted[s].name === p.name && mounted[s].params.hash === p.params.hash
+      && !plan.some(q => q.slot === s && q.name === mounted[s].name));
+    const m = from && mounted[from];
+    if (!m || !(m.handle && m.handle.onChange)) continue;
+    if (mounted[p.slot]) unmount(p.slot);
+    delete mounted[from];
+    Object.assign(m.params, { pane: p.params.pane, selected: p.params.selected });
+    Object.assign(m, { slot: p.slot, key: keyOf(p) });
+    m.el.className = `pane pane-${p.slot} view view-${p.name}`;
+    mounted[p.slot] = m;
+  }
 }
 
 // 本机数据坏了 / 存储用不了：恢复页盖在最上面，底下的 App 设成 inert（不能点、读屏跳过），修好后再画回来
@@ -394,18 +479,28 @@ function render() {
   applyTheme();
   if (recoveryScreen()) return;
   const r = route();
+  const plan = planPanes(r, layout());
   renderShell(r);
-  const changed = mount(r, $('#main'));
-  if (changed && !document.querySelector('dialog[open]') && !current.el.contains(document.activeElement)) {
-    current.el.tabIndex = -1; current.el.focus({ preventScroll: true });   // 换页后读屏、键盘从新页面开始
+  const main = $('#main');
+  main.dataset.panes = String(plan.length);
+  migrate(plan);
+  for (const slot of Object.keys(mounted)) if (!plan.some(p => p.slot === slot && mounted[slot].name === p.name)) unmount(slot);
+  let changed = false;
+  for (const p of plan) changed = mount(p, main) || changed;
+  // 栏的顺序：左栏在前（只在顺序不对时移动：移动元素会丢滚动位置）
+  plan.forEach((p, i) => { const el = mounted[p.slot].el; if (main.children[i] !== el) main.insertBefore(el, main.children[i] || null); });
+  if (changed && !document.querySelector('dialog[open]')) {
+    // 换页后读屏、键盘从新页面开始：双栏时是右栏，右栏只是提示（#/、#/stores）时是左栏
+    const to = mounted.detail && mounted.detail.name !== 'empty' ? mounted.detail : mounted.list || mounted.main;
+    if (to && !to.el.contains(document.activeElement)) { to.el.tabIndex = -1; to.el.focus({ preventScroll: true }); }
   }
 }
 /** 整页重画（换语言之类）：之前焦点在带 data-fid 的控件上（比如语言下拉框）就放回去，键盘和读屏不用从页首重新找 */
 function refresh() {
   const active = document.activeElement, fid = active && active.dataset ? active.dataset.fid : null;
-  unmount();
+  unmountAll();
   render();
-  const el = fid && current ? current.el.querySelector(`[data-fid="${CSS.escape(fid)}"]`) : null;
+  const el = fid ? $('#main')?.querySelector(`[data-fid="${CSS.escape(fid)}"]`) : null;
   if (el) el.focus({ preventScroll: true });
 }
 
@@ -424,10 +519,12 @@ state.subscribe((st, info) => {
   rerenderQueued = true;
   queueMicrotask(() => {
     rerenderQueued = false;
-    if (recoveryScreen() || !current) return;
+    if (recoveryScreen()) return;
     renderSyncBadges();                          // 待同步 / 已同步跟着数据变
-    if (current.handle && typeof current.handle.onChange === 'function') { try { current.handle.onChange(info); } catch (e) { console.error(e); } }
-    else rerender(current);
+    for (const m of Object.values(mounted)) {
+      if (m.handle && typeof m.handle.onChange === 'function') { try { m.handle.onChange(info); } catch (e) { console.error(e); } }
+      else if (m.name !== 'empty') rerender(m);
+    }
   });
 });
 
@@ -447,7 +544,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') { applyTheme(); syncIfStale(); }
   else {
     // 先把页面上点过、还没写进数据的写进去：勾选要停 0.3 秒才改数据，勾完最后一样马上锁屏的话，这一下既没存进本机也传不上去
-    try { current?.handle?.flush?.(); } catch (e) { console.error(e); }
+    for (const m of Object.values(mounted)) { try { m.handle?.flush?.(); } catch (e) { console.error(e); } }
     // 切走前把改动传上去：不等防抖，先直接上传（云端变过照样会合并），能用 keepalive 就用
     if (L().sync && L().sync.dirty) { syncSoon.cancel(); autoSync(undefined, { pushFirst: true, keepalive: true }); }
   }
@@ -456,7 +553,7 @@ window.addEventListener('online', () => autoSync());
 setInterval(() => { if (document.visibilityState === 'visible') syncIfStale(); }, 60000);
 window.addEventListener('storage', e => { if (e.key === state.KEY || e.key === state.LKEY || e.key?.startsWith(state.PENDING_PREFIX)) state.reload(); });   // 别的标签页改了数据
 prefersDark.addEventListener('change', () => applyTheme());
-mqSide.addEventListener('change', () => { render(); emit('layout', layout()); });
+for (const mq of [mqSide, mqTwo]) mq.addEventListener('change', () => { render(); emit('layout', layout()); });
 
 // ---------- 启动 ----------
 setLang(L().lang && LANGS.includes(L().lang) ? L().lang : guessLang());
@@ -464,4 +561,4 @@ currentHash = location.hash || '#/';
 track(currentHash);
 render();
 autoSync();
-window.__picknest = { state, ctx, syncer, get current() { return current; }, get S() { return S(); } };   // 方便在浏览器控制台里查看；boot.js 的看门狗也靠它判断启动好了
+window.__picknest = { state, ctx, syncer, mounted, get current() { return mounted.detail || mounted.main || null; }, get S() { return S(); } };   // 方便在浏览器控制台里查看；boot.js 的看门狗也靠它判断启动好了

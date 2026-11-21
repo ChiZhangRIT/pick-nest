@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ensureSeeds, blankState, normalizeRecord, deletedRecord, restoredRecord, homeLists, needCounts, GROCERY_CATEGORIES, SYS_CATEGORIES, DEFAULT_LIST_ICON } from '../src/core/store.js';
 import { CATALOG, catalogSys, catalogCategory, isCatalogName } from '../src/core/catalog.js';
-import { groupNeed, collatorFor, listView } from '../src/core/group.js';
+import { groupNeed, collatorFor, listView, listViewPatch } from '../src/core/group.js';
 import { createList, editList, setArchived, deleteList, moveList, archivedLists, visibleItems, firstGrapheme, LIST_ICONS } from '../src/core/lists.js';
 import { addFromInput, toggleDone, setStatus } from '../src/core/items.js';
 import { normName } from '../src/core/store.js';
@@ -123,6 +123,18 @@ test('各清单的显示方式（本机）：默认按分类、已买和以后�
   assert.deepEqual(listView({ view: { l_x: { groupBy: 'aisle', showDone: 'no' } } }, 'l_x'), { groupBy: 'category', showDone: true, showLater: true });
   assert.deepEqual(listView(null, 'l_x').groupBy, 'category');
   assert.deepEqual(listView({ view: { l_x: 'bad' } }, 'l_x').groupBy, 'category');
+});
+
+test('改一张清单的显示方式（listViewPatch）：整个 view 换掉，别的清单的原样留着；这张认不出的值按默认写回去', () => {
+  const local = { view: { l_x: { groupBy: 'store', showDone: false }, l_y: { groupBy: 'store', showLater: false, extra: 1 } } };
+  const before = JSON.stringify(local);
+  assert.deepEqual(listViewPatch(local, 'l_x', { showDone: true }), { view: {
+    l_x: { groupBy: 'store', showDone: true, showLater: true },
+    l_y: { groupBy: 'store', showLater: false, extra: 1 },
+  } });
+  assert.equal(JSON.stringify(local), before, '不改传进来的');
+  assert.deepEqual(listViewPatch(null, 'l_x', { groupBy: 'store' }), { view: { l_x: { groupBy: 'store', showDone: true, showLater: true } } });
+  assert.deepEqual(listViewPatch({ view: 'bad' }, 'l_x', {}), { view: { l_x: { groupBy: 'category', showDone: true, showLater: true } } });
 });
 
 // ---------- 清单 ----------

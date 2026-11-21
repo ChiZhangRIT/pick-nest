@@ -5,6 +5,7 @@ export class Element {
   getAttribute(key) { return this.attrs[key] ?? null; }
   removeAttribute(key) { delete this.attrs[key]; }
   appendChild(child) { child.remove(); this.children.push(child); child.parent = this; return child; }
+  insertBefore(child, ref) { if (!ref) return this.appendChild(child); child.remove(); this.children.splice(this.children.indexOf(ref), 0, child); child.parent = this; return child; }
   append(...children) { children.forEach(child => { if (!(child instanceof Element)) { const text = new Element('#text'); text.textContent = child; child = text; } this.appendChild(child); }); }
   replaceChildren(...children) { this.children.forEach(child => { child.parent = null; }); this.children = []; this.append(...children); }
   remove() { if (this.parent) this.parent.children = this.parent.children.filter(child => child !== this); this.parent = null; }
@@ -21,6 +22,7 @@ export class Element {
   removeEventListener(key, fn) { this.events[key]?.delete(fn); }
   async fire(key) { for (const fn of this.events[key] || []) await fn({ target: this, preventDefault() {} }); }
   focus() { globalThis.document.activeElement = this; }
+  blur() { if (globalThis.document.activeElement === this) globalThis.document.activeElement = null; }
   click() { this.clicks = (this.clicks || 0) + 1; return this.fire('click'); }
   contains(el) { return this === el || this.children.some(child => child.contains(el)); }
   querySelectorAll(selector) {
