@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   blankState, normalizeState, normalizeRecord, mergeStates, canon, pick, stamp, deletedRecord, restoredRecord, newId, setSetting,
   ensureSeeds, seedRecords, normName, hash64, itemId, listName, categoryName, listIcon, byOrder, live, homeLists, needCounts,
-  COLLECTIONS, SEED_STORES, SYS_CATEGORIES, DEFAULT_LIST_ICON,
+  COLLECTIONS, SEED_STORES, SYS_CATEGORIES, DEFAULT_LIST_ICON, writeRecord,
 } from '../src/core/store.js';
 
 // 测试只用编出来的数据（仓库是公开的）
@@ -341,4 +341,19 @@ test('首页清单：没删除、没归档，按 order、createdAt、id 排；�
   const n = needCounts(s);
   assert.deepEqual([n.get('l_groceries'), n.get('l_tobuy'), n.get('l_wood')], [2, undefined, 1]);
   assert.equal(byOrder({ order: 0, createdAt: 0, id: 'b' }, { order: 0, createdAt: 0, id: 'a' }) > 0, true);
+});
+
+test('writeRecord（core 的操作函数写记录用）：整理字段；内容没变不盖新时间（预置的还是 0），变了比上一版新；存不下的 id 报错', () => {
+  const s = seeded();
+  const same = writeRecord(s, 'lists', { ...s.data.lists.l_tobuy, order: '1' }, 5000);
+  assert.equal(same, s.data.lists.l_tobuy);
+  assert.equal(same.updatedAt, 0);
+  const changed = writeRecord(s, 'lists', { ...s.data.lists.l_tobuy, name: '想要的' }, 5000);
+  assert.deepEqual([changed.name, changed.updatedAt, changed.createdAt], ['想要的', 5000, 0]);
+  assert.equal(writeRecord(s, 'lists', { ...changed, name: '再改' }, 4000).updatedAt, 5001, '时钟往回走也比上一版新');
+  const fresh = writeRecord(s, 'items', { id: 'i_x', listId: 'l_groceries', name: '牛奶', createdAt: 7000 }, 7000);
+  assert.deepEqual([fresh.qty, fresh.status, fresh.updatedAt], [1, 'need', 7000]);
+  for (const id of ['milk 2', '__proto__', undefined]) assert.throws(() => writeRecord(s, 'items', { id, name: 'x' }), /bad-id/);
+  writeRecord(s, 'future', { id: 'f_1', x: 1 }, 8000);
+  assert.deepEqual(s.data.future.f_1, { id: 'f_1', x: 1, updatedAt: 8000 });
 });

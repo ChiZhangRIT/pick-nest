@@ -1,4 +1,4 @@
-// 真实 App（src/app.js）在假 DOM 里冷启动：外壳、路由、首页、改数据后重画、换语言和外观。全是编的数据
+// 真实 App（src/app.js）在假 DOM 里冷启动：外壳、路由、首页、改数据后重画、换语言和外观、进清单页、清单不在了回首页。全是编的数据
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readStoredState, STATE_KEY } from '../src/core/persistence.js';
@@ -132,5 +132,29 @@ test('冷启动：首页是预置的两张清单；底栏只有清单和设置�
     for (const fn of window.events.storage) fn({ key: STATE_KEY });      // 假 DOM 的 fire 不带 key，直接调监听函数
     await settle();
     assert.deepEqual(rows(), [['Groceries', '1'], ['想要的', '1']]);
+
+    // 点首页的一行进清单页：手机上不显示底栏（推入的页面自己画返回）；侧栏和底栏还是「清单」亮着
+    const href = main.querySelector('.list-row').attrs.href;
+    assert.equal(href, '#/l/l_groceries');
+    await go(href);
+    assert.deepEqual([body.dataset.route, body.dataset.tabs], ['list', '0']);
+    assert.equal(main.querySelector('.lp-name').textContent, 'Groceries');
+    assert.ok(main.querySelector('.back'));
+    assert.equal(tabs.children[0].attrs['aria-current'], 'page');
+    // 快速添加走 app 的 onChange：只重画列表，输入框还是同一个
+    const input = main.querySelector('.add-input');
+    input.focus(); input.value = 'oat milk 2';
+    for (const fn of input.events.keydown) fn({ key: 'Enter', preventDefault() {} });
+    await settle();
+    assert.equal(main.querySelector('.add-input'), input, '没有整页重画');
+    assert.equal(dom.doc.activeElement, input);
+    const names = () => main.querySelectorAll('.item-name').map(el => el.textContent);
+    assert.deepEqual(names(), ['oat milk', '鸡蛋', '牛奶'], '蛋奶、未分类，最后是已买');
+    assert.equal(readStoredState(storage).data.items[Object.keys(ctx.state.data.items).find(id => ctx.state.data.items[id].name === 'oat milk')].qty, 2);
+    // 地址里的清单不在了：换回首页（不留在历史里），提示一句
+    await go('#/l/l_nope');
+    await settle();
+    assert.deepEqual([loc.hash, body.dataset.route], ['#/', 'lists']);
+    assert.equal(dom.doc.querySelector('#toast').querySelector('.toast-msg').textContent, 'That list no longer exists');
   } finally { dom.restore(); }
 });

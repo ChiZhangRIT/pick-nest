@@ -43,7 +43,7 @@ test('动态字段 {x} 三种语言一致；函数文案能用示例变量算出
 });
 
 test('每个文案文件只用自己的前缀；预置清单、预置分类都有文案', () => {
-  const prefix = { core: /^(common|nav)\./, lists: /^list\./, catalog: /^cat\./, settings: /^set\./, recovery: /^recovery\./ };
+  const prefix = { core: /^(common|nav)\./, lists: /^list\./, items: /^item\./, catalog: /^cat\./, settings: /^set\./, recovery: /^recovery\./ };
   assert.deepEqual(Object.keys(TABLES).sort(), Object.keys(prefix).sort());
   for (const [name, table] of Object.entries(TABLES)) for (const key of Object.keys(table['zh-Hans'])) assert.match(key, prefix[name], `${name}: ${key}`);
   for (const sys of SYS_LISTS) assert.ok(has('list.sys.' + sys), sys);

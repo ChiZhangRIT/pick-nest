@@ -4,11 +4,11 @@
 // export function render(main, params, ctx) → 清理函数 | { cleanup?(), onChange?(info) } | undefined
 //   main    空的容器（<section class="pane view view-<name>">），页面自己画标题和内容
 //   params  { name, path, id, sub, query, hash }
-//           name: 'lists' | 'settings'
-//           #/ → lists（首页「清单」）；#/settings → settings；不认识的地址 → lists
-//   数据变了：页面返回了 onChange 就只调 onChange(info)，页面自己更新（有输入框的页面以后要这样，免得打断输入）；
+//           name: 'lists' | 'list' | 'settings'
+//           #/ → lists（首页「清单」）；#/l/<listId> → list（一张清单，id；清单不在了由页面自己回首页）；#/settings → settings；不认识的地址 → lists
+//   数据变了：页面返回了 onChange 就只调 onChange(info)，页面自己更新（清单页这样做：快速添加的输入框不能被打断）；
 //            否则 app 把这个页面整个重画一遍（保留滚动位置；带 data-fid 的控件重画后恢复焦点）。
-//   手机（<720px）：顶层页面（#/、#/settings）显示底栏；以后推入的页面自己画返回按钮（ctx.back）。
+//   手机（<720px）：顶层页面（#/、#/settings）显示底栏；推入的页面（#/l/…）不显示底栏，自己画返回按钮（ctx.back）。
 //   宽屏（≥720px，iPad、Mac）：左边侧栏，内容栏自己滚动。要随布局变化的页面听 ctx.on('layout')。
 //
 // ===== ctx =====
@@ -24,7 +24,7 @@
 //   ctx.undo()                 撤销最近一次带 undoLabel 的修改
 //   ctx.setSetting(key, value) 改一项同步的设置
 //   ctx.mergeIn(otherState)    导入备份（逐条合并、补预置记录），返回 { changed }
-//   ctx.setLocal(patch)        改本机设置（不重画页面）
+//   ctx.setLocal(patch)        改本机设置（不重画页面）；浅合并，改 view 要整个传（{ view: { ...ctx.local.view, [listId]: {...} } }）
 //   ctx.editVersion            本机修改计数
 //   ctx.saveOk()               最近一次数据写入是否成功
 // 导航
@@ -51,9 +51,10 @@ import { h, $, icon, toast, sheet, confirmDialog, download } from './ui/dom.js';
 import { recoveryPanel } from './ui/recovery.js';
 import { BUILD } from './version.js';
 import * as lists from './views/lists.js';
+import * as list from './views/list.js';
 import * as settings from './views/settings.js';
 
-const VIEWS = { lists, settings };
+const VIEWS = { lists, list, settings };
 const THEME_COLOR = { light: '#f6f5f0', dark: '#121412' };          // 和 styles.css 的 --bg 一样：状态栏和页面连成一片
 const ID_PREFIX = { lists: 'l_', items: 'i_', stores: 's_', categories: 'c_', memory: 'm_' };
 
@@ -76,6 +77,7 @@ function parseRoute(hash) {
   const [a] = path;
   let r;
   if (a === 'settings') r = { name: 'settings', sub: path[1] || null };
+  else if (a === 'l' && path[1]) r = { name: 'list', id: path[1] };
   else r = { name: 'lists' };                  // #/ 和不认识的地址（比如以后才有的页面的旧链接）
   return { id: null, sub: null, ...r, path, query, hash: '#/' + raw };
 }
@@ -210,7 +212,7 @@ function renderShell(r) {
   document.body.dataset.route = r.name;
   document.body.dataset.layout = layout();
   document.body.dataset.tabs = TOP_LEVEL(r) ? '1' : '0';
-  const cur = r.name;
+  const cur = r.name === 'list' ? 'lists' : r.name;          // 清单页算在「清单」下面
   const item = (id, href, ic, label) => h('a.nav-item' + (cur === id ? '.on' : ''), { href, 'aria-current': cur === id ? 'page' : null }, ic, h('span', null, label));
   const tab = (id, href, ic, label) => h('a.tab' + (cur === id ? '.on' : ''), { href, 'aria-current': cur === id ? 'page' : null }, ic, h('span', null, label));
   // 商店页在第 4 步才有：现在只放做好了的两个，不放点了没反应的入口

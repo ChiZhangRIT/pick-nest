@@ -31,9 +31,10 @@ import { toSimplified } from './hanzi.js';
 /** @typedef {Base & { name: string, order: number, archived: boolean }} Store 商店 */
 /** @typedef {Base & { sys: string | null, name: string, kind: ListKind | null, order: number }} Category 分类 */
 /**
- * @typedef {Base & { name: string, kind: ListKind, categoryId: string | null, unit: string, qty: number | null,
+ * @typedef {Base & { name: string, kind: ListKind, categoryId: string | null, categorySet?: true, unit: string, qty: number | null,
  *   stores: Record<string, { n: number, at: number }>, uses: number, lastAt: number }} Memory
- * 买过的东西（跨清单的习惯），每个 normName 一条，id = 'm_' + hash64(normName)
+ * 买过的东西（跨清单的习惯），每个 normName 一条，id = 'm_' + hash64(normName)。
+ * categorySet：用户在编辑面板里选过分类（包括「未分类」）；没选过的记录上没有这个键
  */
 /**
  * @typedef {object} State
@@ -169,6 +170,7 @@ export function normalizeMemory(rec, id = rec && rec.id) {
   r.name = str(r.name);
   r.kind = LIST_KINDS.includes(r.kind) ? r.kind : 'grocery';
   r.categoryId = idOrNull(r.categoryId);
+  if (r.categorySet !== true) delete r.categorySet;     // 只在选过时才有：没选过的记录不用每条都多一个 false
   r.unit = str(r.unit);
   r.qty = numOrNull(r.qty);
   /** @type {Record<string, any>} */
@@ -273,6 +275,23 @@ export function mergeStates(a, b) {
  */
 export function stamp(rec, prev, now = Date.now()) {
   return { ...rec, updatedAt: Math.max(now, ((prev && prev.updatedAt) || 0) + 1) };
+}
+
+/**
+ * core 里的操作函数（items.js、lists.js、memory.js，都在 ctx.mutate 里调用）写一条记录：整理字段；
+ * 内容和原来一样就不动（不盖新时间，重新排序时没挪动的清单不算修改），变了才 stamp。返回存好的记录
+ * @param {State} state @param {string} collection @param {Record<string, any>} rec 整条记录（改的时候是 { ...旧的, ...改动 }）
+ * @param {number} [now]
+ */
+export function writeRecord(state, collection, rec, now = Date.now()) {
+  const id = rec.id;
+  if (!safeKey(collection) || !safeKey(id)) throw new Error('bad-id');
+  if (!isObj(own(state.data, collection))) state.data[collection] = {};
+  const col = state.data[collection];
+  const prev = own(col, id);
+  const next = normalizeRecord(collection, { ...rec, id, updatedAt: prev ? prev.updatedAt : now }, id);
+  if (prev && canon(next) === canon(prev)) return prev;
+  return (col[id] = normalizeRecord(collection, stamp(next, prev, now), id));
 }
 
 /** 软删除：内容保留，照样同步，在「最近删除」里能恢复 @param {any} rec @param {number} [now] */

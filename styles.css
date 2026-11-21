@@ -1,14 +1,15 @@
-/* PickNest 的全部样式，一个文件：变量、基础、外壳、通用组件、深色 → 首页清单 → 设置 → 恢复页。
+/* PickNest 的全部样式，一个文件：变量、基础、外壳、通用组件、深色 → 首页清单 → 清单页 → 面板里的表单 → 设置 → 恢复页。
    页面样式请只用下面的变量，深色模式就自动对了：
      --bg 底色  --card 卡片 / 分组底  --ink 正文  --ink-2 次要正文  --muted 说明文字  --faint 占位 / 最淡
      --line 分隔线  --fill 浅填充（分段控件底、输入框底）  --seg-on 分段控件选中的那段  --side-bg 侧栏底  --tile 清单图标的底
      --accent 主色（按钮底）  --accent-text 主色文字和线条图标（深色下更亮）  --on-accent 主色上的文字
      --accent-soft 浅主色底  --accent-line 输入框聚焦边  --accent-ring 聚焦光圈
      --danger / --danger-soft  --tabbar-bg 底栏（半透明，后面模糊）  --toast-* 提示条  --scrim 面板后面的遮罩
-     --shadow-card 卡片阴影  --shadow-pop 浮层阴影  --radius 12px  --radius-btn 10px  --sans 系统字体（苹方）
+     --shadow-card 卡片阴影  --shadow-pop 浮层阴影  --pop 浮层底（输入联想；深色下比卡片亮一级，不然和下面的行连成一片）  --radius 12px  --radius-btn 10px  --sans 系统字体（苹方）
    外壳给的钩子：body[data-layout=phone|side]、body[data-route=<页面名>]、body[data-tabs=1|0]；页面容器 section.pane.view.view-<名字>。
-   通用组件：.page-head .lt | .page .row | .btn(.primary .ghost .danger-fill .small) .icon-btn
-             .card .group .group-row .group-h .group-foot | .seg | .empty | dialog.sheet | #toast | .ic（图标，见 ui/dom.js 的 icon()） */
+   通用组件：.navbar .back（推入的页面）| .page-head .toolbar .tb-btn .lt | .page .row | .btn(.primary .ghost .danger .danger-fill .small .block) .icon-btn .link-btn
+             .card .group .group-row(.go) .group-h .group-foot | .seg | .chips .chip | .sec-toggle .sec-chev（折叠的一组）| .empty
+             dialog.sheet .sheet-actions | .form .f-row .f-label .f-help .f-err（ui/form.js）| #toast | .ic（图标，见 ui/dom.js 的 icon()） */
 
 :root {
   --bg: #f6f5f0; --card: #ffffff; --ink: #1f2420; --ink-2: #3d453f; --muted: #6b726b; --faint: #a2a89f;
@@ -18,7 +19,7 @@
   --danger: #b3261e; --danger-soft: #fbe7e5;
   --tabbar-bg: rgba(250, 250, 247, .86); --toast-bg: #1f2420; --toast-ink: #f6f5f0; --toast-action: #8fd6a4; --scrim: rgba(20, 24, 20, .36);
   --shadow-card: 0 0 0 .5px rgba(31, 36, 32, .07), 0 1px 2px rgba(31, 36, 32, .04), 0 6px 16px -12px rgba(31, 36, 32, .16);
-  --shadow-pop: 0 0 0 .5px rgba(31, 36, 32, .10), 0 10px 26px -10px rgba(31, 36, 32, .28);
+  --shadow-pop: 0 0 0 .5px rgba(31, 36, 32, .10), 0 10px 26px -10px rgba(31, 36, 32, .28); --pop: #ffffff;
   --radius: 12px; --radius-btn: 10px;
   --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "PingFang TC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", "Segoe UI", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
   color-scheme: light;
@@ -31,7 +32,7 @@
   --danger: #ff8a80; --danger-soft: #3d1f1c;
   --tabbar-bg: rgba(28, 31, 28, .86); --toast-bg: #2f342f; --toast-ink: #eef1ec; --toast-action: #8fd6a4; --scrim: rgba(0, 0, 0, .55);
   --shadow-card: 0 0 0 .5px rgba(255, 255, 255, .06), 0 6px 16px -10px rgba(0, 0, 0, .6);
-  --shadow-pop: 0 0 0 .5px rgba(255, 255, 255, .08), 0 12px 30px -10px rgba(0, 0, 0, .7);
+  --shadow-pop: 0 0 0 .5px rgba(255, 255, 255, .08), 0 12px 30px -10px rgba(0, 0, 0, .7); --pop: #272b27;
   color-scheme: dark;
 }
 
@@ -97,9 +98,20 @@ body[data-layout="phone"][data-tabs="1"] #tabs {
 .nav-item.on .ic { color: var(--accent-text); }
 .side-foot { margin-top: auto; padding-top: 8px; }
 
-/* ---------- 顶层页面的大标题 ---------- */
+/* ---------- 顶层页面的大标题；上面可以有一行按钮（.toolbar，占掉原来留空的 44px） ---------- */
 .page-head { max-width: 720px; margin: 0 auto; padding: calc(44px + env(safe-area-inset-top)) 20px 10px; }
+.page-head:has(> .toolbar) { padding-top: env(safe-area-inset-top); }
+.toolbar { display: flex; justify-content: space-between; align-items: center; gap: 4px; min-height: 44px; margin: 0 -6px; }
+.tb-btn { display: inline-flex; align-items: center; gap: 5px; min-height: 44px; padding: 0 6px; border: 0; background: none; color: var(--accent-text); font-size: 16px; font-weight: 500; }
+.tb-btn .ic { width: 20px; height: 20px; }
 .lt { font-size: 34px; font-weight: 700; letter-spacing: .01em; line-height: 1.2; }
+
+/* ---------- 推入的页面的顶栏：返回 · 操作（宽屏有侧栏，不要返回） ---------- */
+.navbar { display: flex; justify-content: space-between; align-items: center; max-width: 752px; margin: 0 auto;
+  min-height: calc(48px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) max(6px, env(safe-area-inset-right)) 0 max(4px, env(safe-area-inset-left)); }
+.back { display: inline-flex; align-items: center; min-height: 44px; padding: 0 10px 0 2px; border: 0; background: none; color: var(--accent-text); font-size: 17px; }
+.back .ic { width: 24px; height: 24px; stroke-width: 2.2; }
+body[data-layout="side"] .navbar .back { visibility: hidden; }
 /* iPhone 横过来时刘海那一侧要让开：右边总要；左边只在单栏时（宽屏时侧栏已经让开了） */
 .page { padding-right: max(16px, env(safe-area-inset-right)); }
 .page-head { padding-right: max(20px, env(safe-area-inset-right)); }
@@ -113,21 +125,36 @@ body[data-layout="phone"] .page-head { padding-left: max(20px, env(safe-area-ins
 .btn.primary { background: var(--accent); border-color: transparent; color: var(--on-accent); }
 .btn.primary:hover { filter: brightness(1.06); }
 .btn.ghost { background: none; border-color: transparent; color: var(--accent-text); }
+.btn.danger { color: var(--danger); }
 .btn.danger-fill { background: var(--danger); border-color: transparent; color: #fff; }
+.btn.small { position: relative; min-height: 34px; padding: 4px 12px; font-size: 14px; }
+.btn.small::after { content: ""; position: absolute; inset: -5px -2px; }   /* 点按区域 44px */
+.btn.block { display: flex; width: 100%; }
 :root[data-theme="dark"] .btn.danger-fill { color: #2a0d0a; }
 .btn:disabled { opacity: .5; cursor: default; pointer-events: none; }
 .icon-btn { display: inline-grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 10px; background: none; color: var(--accent-text); }
 .icon-btn:hover { background: var(--fill); }
+.icon-btn[aria-disabled="true"] { opacity: .3; cursor: default; }
+.icon-btn[aria-disabled="true"]:hover { background: none; }
+.link-btn { min-height: 44px; padding: 6px 4px; border: 0; background: none; color: var(--accent-text); font-size: 15px; font-weight: 550; }
 
 /* ---------- 卡片、分组列表（iOS 的「圆角分组」） ---------- */
 .card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow-card); padding: 14px 16px; }
 .group { margin: 0; padding: 0; list-style: none; background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow-card); overflow: hidden; }
 .group-row { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; min-height: 50px; padding: 10px 16px; border: 0; background: none; color: var(--ink); text-align: left; }
 .group-row + .group-row::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: .5px; background: var(--line); }
+a.group-row { color: var(--ink); }
+.group-row.go::after { content: ""; flex: none; width: 8px; height: 8px; margin: 0 4px 0 2px; border: solid var(--faint); border-width: 2px 2px 0 0; transform: rotate(45deg); }
+a.group-row:hover, button.group-row:hover { background: var(--fill); }
 .group-h { margin: 24px 4px 8px; font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .02em; }
 .group-foot { margin: 6px 4px 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
 
 /* ---------- 表单 ---------- */
+:where(input:not([type=checkbox]):not([type=radio]), textarea) { width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-btn);
+  background: var(--card); color: var(--ink); font-size: 16px; }
+:where(textarea) { line-height: 1.5; resize: vertical; }
+:where(input, textarea):focus { outline: none; border-color: var(--accent-line); box-shadow: 0 0 0 3px var(--accent-ring); }
+::placeholder { color: var(--muted); opacity: 1; }
 :where(select) { min-height: 44px; padding: 8px 34px 8px 12px; border: 1px solid var(--line); border-radius: var(--radius-btn); background-color: var(--card); color: var(--ink); font-size: 16px;
   appearance: none; -webkit-appearance: none;
   background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
@@ -138,6 +165,16 @@ body[data-layout="phone"] .page-head { padding-left: max(20px, env(safe-area-ins
 .seg > button { position: relative; min-height: 34px; padding: 5px 14px; border: 0; border-radius: 8px; background: none; color: var(--muted); font-size: 14px; font-weight: 600; }
 .seg > button::after { content: ""; position: absolute; inset: -5px -1px; }
 .seg > button.on { background: var(--seg-on); color: var(--ink); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }   /* 深色下选中的那段比底亮（和 iOS 一样），不能直接用 --card */
+/* 小标签按钮（单位的快捷选项）：32px 高，点按区域放大到 44px */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { position: relative; min-height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--ink-2); font-size: 14px; }
+.chip::after { content: ""; position: absolute; inset: -6px -2px; }
+.chip[aria-pressed="true"] { background: var(--accent-soft); border-color: transparent; color: var(--accent-text); font-weight: 600; }
+/* 折叠的一组的标题（已归档、以后再说、已买）：箭头朝右是收着，朝下是展开 */
+.sec-toggle { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 8px 0 0; border: 0; background: none; color: var(--muted);
+  font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .02em; }
+.sec-chev { width: 18px; height: 18px; transition: transform .18s; }
+.sec-toggle[aria-expanded="true"] .sec-chev { transform: rotate(90deg); }
 
 /* ---------- 空状态、出错 ---------- */
 .empty { padding: 48px 24px; text-align: center; color: var(--muted); }
@@ -159,6 +196,8 @@ dialog.sheet::backdrop { background: var(--scrim); }
 .sheet-foot { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
 .sheet-body:last-child { padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
 .confirm-msg { font-size: 16px; line-height: 1.6; white-space: pre-line; }
+.sheet-actions { display: grid; gap: 8px; margin-top: 24px; }
+.sheet-actions .f-help { margin-top: -2px; }
 dialog.confirm .sheet-foot { border-top: 0; padding-top: 0; }
 dialog.confirm .sheet-head:has(> h2:empty) { display: none; }
 dialog.confirm .sheet-body { padding-top: 22px; }
@@ -185,12 +224,117 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
 }
 
 /* ================= 首页：清单（#/） ================= */
+.lists > li { position: relative; }
 .list-row { min-height: 56px; }
-.group-row.list-row + .group-row.list-row::before { left: 64px; }   /* 分隔线从文字开始，和 iOS 一样不切过图标 */
+/* 分隔线从文字开始，和 iOS 一样不切过图标（行是 <li> 里的 <a>，排顺序时 <li> 本身是行） */
+.lists > li + li > .list-row::before, .lists > li.list-row + li.list-row::before { content: ""; position: absolute; top: 0; left: 64px; right: 0; height: .5px; background: var(--line); }
 .list-icon { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: var(--tile); font-size: 21px; line-height: 1; }
 .list-name { flex: 1; min-width: 0; font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .list-count { flex: none; min-width: 1.5em; text-align: right; font-size: 17px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .list-count.zero { color: var(--muted); }   /* 0 淡一级，但还要在店里亮处看得清：--faint 对比度不到 3:1，--muted 在深浅两色下都过 4.5:1 */
+.list-row.editing { padding-right: 6px; }
+.mv { flex: none; display: flex; }
+.arch { margin-top: 22px; }
+.arch .sec-toggle { margin-left: 4px; }
+.lists.archived .list-icon, .lists.archived .list-name { opacity: .7; }
+
+/* ================= 清单页（#/l/<id>） ================= */
+.lp-head { padding-top: 2px; }
+.lp-title { display: flex; align-items: center; gap: 12px; padding: 0 4px; }
+.lp-icon { flex: none; display: grid; place-items: center; width: 46px; height: 46px; border-radius: 12px; background: var(--tile); font-size: 27px; line-height: 1; }
+.lp-name { min-width: 0; font-size: 30px; font-weight: 700; line-height: 1.2; letter-spacing: .01em; overflow-wrap: anywhere; }
+.lp-sub { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin-top: 10px; padding: 0 4px; }
+.lp-count { color: var(--muted); font-size: 14px; }
+.lp-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; padding: 10px 10px 10px 14px; border-radius: var(--radius);
+  background: var(--fill); color: var(--ink-2); font-size: 14px; }
+.lp-banner .btn { flex: none; }
+
+/* 顶栏（返回、⋯）和快速添加都吸在顶上（手机整页滚动、宽屏内容栏滚动都一样）：长清单滚下去也能返回、打开菜单。
+   刘海由顶栏让开，快速添加贴在顶栏下面（顶栏的高度写死，两条才对得齐）；滚下去以后快速添加下面一条线（.stuck，页面算） */
+.lp-nav { position: sticky; top: 0; z-index: 16; height: calc(48px + env(safe-area-inset-top)); background: var(--bg); }
+.add-bar { position: sticky; top: calc(48px + env(safe-area-inset-top)); z-index: 15; padding-top: 10px; padding-bottom: 8px; background: var(--bg); }
+.add-bar.stuck { box-shadow: 0 1px 0 var(--line); }
+.add-wrap { position: relative; display: flex; align-items: center; }
+.add-ic { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--accent-text); pointer-events: none; }
+.add-input { min-height: 50px; padding-left: 44px; border-color: transparent; border-radius: 13px; box-shadow: var(--shadow-card); font-size: 17px; }
+/* --sugs-room：到键盘上面还有多高（页面按 visualViewport 算；iPhone 弹出键盘时 vh 不变） */
+.sugs { position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 30; max-height: min(60vh, 420px, var(--sugs-room, 420px)); margin: 0; padding: 4px 0; overflow-y: auto; list-style: none;
+  background: var(--pop); border-radius: 13px; box-shadow: var(--shadow-pop); }
+.sug { display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 8px 16px; cursor: pointer; }
+.sug + .sug { border-top: .5px solid var(--line); }
+.sug.on, .sug:hover { background: var(--accent-soft); }
+.sug-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; }
+.sug-store { flex: none; color: var(--muted); font-size: 13px; }
+.sug-in { flex: none; padding: 2px 7px; border-radius: 6px; background: var(--accent-soft); color: var(--accent-text); font-size: 12px; font-weight: 600; }
+.sug.on .sug-in, .sug:hover .sug-in { background: var(--pop); box-shadow: inset 0 0 0 1px var(--accent-line); }   /* 选中的那行底色就是 --accent-soft，标签换个底才看得见 */
+
+/* 一行：大圆勾 + 名字（下面一行商店、备注）+ 数量；点整行勾掉，右边单独的 › 是编辑 */
+.lp-body { padding-bottom: 8px; }
+.grp .group-h { margin-top: 18px; }
+.grp:first-child .group-h { margin-top: 8px; }
+.grp:first-child > .group:first-child { margin-top: 4px; }
+.item-row { position: relative; display: flex; align-items: stretch;
+  /* 闪一下、滚到看得见时：让开上面吸顶的顶栏和快速添加（48 + 68，再留一点），下面让开提示条 */
+  scroll-margin-top: calc(128px + env(safe-area-inset-top)); scroll-margin-bottom: 84px; }
+.item-row + .item-row::before { content: ""; position: absolute; top: 0; left: 56px; right: 0; height: .5px; background: var(--line); }
+.item-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; min-height: 54px; padding: 10px 2px 10px 14px; border: 0; background: none; color: var(--ink); text-align: left; }
+.item-main:active { background: var(--fill); }
+.check { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--muted); color: transparent;
+  transition: background-color .18s, border-color .18s, color .18s; }
+.check .ic { width: 17px; height: 17px; stroke-width: 2.8; }
+.item-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.item-name { font-size: 17px; line-height: 1.35; overflow-wrap: anywhere; transition: color .18s; }
+.item-sub { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; line-height: 1.3; color: var(--muted); }
+.store-chip { flex: none; padding: 1px 7px; border-radius: 6px; background: var(--fill); color: var(--ink-2); font-size: 12px; font-weight: 500; }
+.item-note { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item-qty { flex: none; max-width: 38%; color: var(--muted); font-size: 15px; text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.item-more { flex: none; display: grid; place-items: center; width: 44px; padding: 0; border: 0; background: none; color: var(--muted); }
+.item-more .ic { width: 18px; height: 18px; }
+.item-more:hover { color: var(--accent-text); }
+/* 已买 / 正在勾：勾填满、名字划线变淡 */
+.item-row.done .check, .item-row.ticking .check { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.item-row.ticking .check { animation: tick-pop .28s ease-out; }
+.item-row.done .item-name, .item-row.ticking .item-name { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--muted); }
+.item-row.done .item-sub, .item-row.done .item-qty { opacity: .7; }
+@keyframes tick-pop { 0% { transform: scale(.8); } 60% { transform: scale(1.12); } 100% { transform: scale(1); } }
+/* 刚加的、已经在清单上的、从已买放回来的：底色闪一下（减少动态效果时没有动画，靠提示条和读屏） */
+.item-row.flash { animation: row-flash 1.4s ease-out; }
+@keyframes row-flash { 0%, 25% { background: var(--accent-soft); } 100% { background: transparent; } }
+
+.lp-sec { margin-top: 16px; }
+.sec-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 4px; padding-left: 4px; }
+.lp-empty { padding: 40px 20px; }
+.lp-empty p + p { margin-top: 8px; line-height: 1.6; }
+.menu .menu-row { min-height: 50px; color: var(--accent-text); font-size: 17px; }
+
+/* ================= 面板里的表单（编辑清单、编辑一样东西） ================= */
+.form .f-row + .f-row { margin-top: 16px; }
+.f-label { display: block; margin: 0 2px 6px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.f-help { margin: 6px 2px 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+.f-err { margin: 6px 2px 0; font-size: 13px; color: var(--danger); }
+select.f-in { width: 100%; }
+[aria-invalid="true"] { border-color: var(--danger); }
+.kind-pick { display: grid; gap: 8px; }
+.kind-opt { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); cursor: pointer; }
+.kind-opt:has(input:checked) { border-color: var(--accent-line); background: var(--accent-soft); }
+.kind-opt input { flex: none; width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--accent); }
+.kind-text b { display: block; font-weight: 600; }
+.kind-text small { display: block; margin-top: 2px; font-size: 13px; line-height: 1.45; color: var(--muted); }
+.icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 6px; }
+.icon-opt { height: 44px; padding: 0; border: 1px solid transparent; border-radius: 10px; background: var(--fill); font-size: 24px; line-height: 1; }
+.icon-opt.on { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+.icon-custom { margin-top: 8px; }
+.stepper { display: flex; align-items: center; gap: 8px; }
+.stepper .qty-in { flex: 0 1 140px; text-align: center; font-variant-numeric: tabular-nums; }
+.step-btn { background: var(--fill); }
+.unit-chips { margin-top: 10px; }
+.url-row { display: flex; gap: 8px; }
+.url-row .f-in { flex: 1; min-width: 0; }
+.open-link { flex: none; }
+.open-link .ic { width: 18px; height: 18px; }
+.status-seg { display: flex; }
+.status-seg > button { flex: 1; }
+.price-in { max-width: 200px; }
 
 /* ================= 设置（#/settings） ================= */
 .set .set-sec:first-child { margin-top: 4px; }

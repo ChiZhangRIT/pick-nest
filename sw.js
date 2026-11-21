@@ -1,6 +1,6 @@
 // 每次启动固定使用同一份完整缓存。新版安装时按 release.json 校验文件，等旧页面全部关闭后再启用。
 // 只管本网站的文件。同步（api.github.com，第 5 步）不经过这里，也不进缓存。
-const CACHE = 'picknest-v2';
+const CACHE = 'picknest-v4';
 // 程序文件全部预先缓存（tests/sw.test.mjs 检查这张表和磁盘上的文件、index.html、import 关系一致），第一次打开之后就能离线用
 const CORE = [
   './', './index.html', './styles.css',
@@ -8,9 +8,10 @@ const CORE = [
   './icons/icon.svg', './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png',
   './src/start.js', './src/version.js', './src/boot.js', './src/app.js', './src/i18n.js',
   './src/core/util.js', './src/core/hanzi.js', './src/core/store.js', './src/core/persistence.js', './src/core/state.js',
-  './src/strings/core.js', './src/strings/lists.js', './src/strings/catalog.js', './src/strings/settings.js', './src/strings/recovery.js',
-  './src/ui/dom.js', './src/ui/recovery.js',
-  './src/views/lists.js', './src/views/settings.js',
+  './src/core/parse.js', './src/core/catalog.js', './src/core/memory.js', './src/core/items.js', './src/core/group.js', './src/core/lists.js',
+  './src/strings/core.js', './src/strings/lists.js', './src/strings/items.js', './src/strings/catalog.js', './src/strings/settings.js', './src/strings/recovery.js',
+  './src/ui/dom.js', './src/ui/recovery.js', './src/ui/form.js', './src/ui/listEditor.js', './src/ui/itemEditor.js',
+  './src/views/lists.js', './src/views/list.js', './src/views/settings.js',
 ];
 const RELEASE = './release.json';
 const BASE = new URL('./', location).pathname;

@@ -3,13 +3,14 @@
 // 用户写的内容（清单名、商品名、备注）永远不经过 t()，也不做简繁转换。
 import { STRINGS as core } from './strings/core.js';
 import { STRINGS as lists } from './strings/lists.js';
+import { STRINGS as items } from './strings/items.js';
 import { STRINGS as catalog } from './strings/catalog.js';
 import { STRINGS as settings } from './strings/settings.js';
 import { STRINGS as recovery } from './strings/recovery.js';
 
 export const LANGS = ['zh-Hans', 'zh-Hant-TW', 'en'];
 export const LANG_LABELS = { 'zh-Hans': '简体中文', 'zh-Hant-TW': '繁體中文（台灣）', en: 'English' };
-export const TABLES = { core, lists, catalog, settings, recovery };
+export const TABLES = { core, lists, items, catalog, settings, recovery };
 
 /** 各部分合并成 { 'zh-Hans': {...}, 'zh-Hant-TW': {...}, en: {...} }；同一个键出现两次时后面的覆盖前面的（测试会查重复） */
 export const STRINGS = Object.fromEntries(LANGS.map(l => [l, Object.assign({}, ...Object.values(TABLES).map(tb => (tb && tb[l]) || {}))]));

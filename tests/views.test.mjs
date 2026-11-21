@@ -1,4 +1,4 @@
-// 页面在假 DOM 里画出来的样子（不开浏览器）：首页清单、设置。全是编的数据
+// 页面在假 DOM 里画出来的样子（不开浏览器）：首页清单、设置（清单页、编辑面板、首页的操作在 listView.test.mjs）。全是编的数据
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ensureSeeds, blankState, normalizeRecord, stamp, deletedRecord } from '../src/core/store.js';
@@ -24,12 +24,12 @@ test('首页：预置的两张清单按顺序显示名字、默认图标、还�
     const main = new Element('section');
     lists.render(main, { name: 'lists' }, { state: seededWithItems() });
     assert.equal(text(main.querySelector('h1')), '清单');
-    assert.deepEqual(rowsOf(main), [['食材', '\u{1F96C}', '2'], ['想买', '\u{1F6CD}️', '1']]);
+    assert.deepEqual(rowsOf(main), [['食材', '\u{1F96C}', '2'], ['想买', '\u{1F6CD}\uFE0F', '1']]);
     const srOnly = main.querySelectorAll('.sr-only').map(text);
     assert.deepEqual(srOnly, ['还要买 2 样', '还要买 1 样'], '读屏念整句');
-    // 第 2 步的行还不能点：不能是链接或按钮
-    assert.equal(all(main, el => el.tag === 'a' || el.tag === 'button').length, 0);
-    assert.equal(main.querySelector('.list-row').tag, 'li');
+    // 每一行是去清单页的链接；按钮只有上面的「编辑」「新建清单」
+    assert.deepEqual(main.querySelectorAll('.list-row').map(r => [r.tag, r.attrs.href]), [['a', '#/l/l_groceries'], ['a', '#/l/l_tobuy']]);
+    assert.deepEqual(all(main, el => el.tag === 'button').map(text), ['编辑', '新建清单']);
   } finally { dom.restore(); }
 });
 
@@ -45,7 +45,7 @@ test('首页：改过名的显示用户写的名字（不做简繁转换），�
       setLang(lang);
       const main = new Element('section');
       lists.render(main, { name: 'lists' }, { state: s });
-      assert.deepEqual(rowsOf(main), [[lang === 'en' ? 'Groceries' : '食材', '\u{1F96C}', '2'], ['想買的東西', '🎁', '1'], ['木工', '\u{1F6CD}️', '0']], lang);
+      assert.deepEqual(rowsOf(main), [[lang === 'en' ? 'Groceries' : '食材', '\u{1F96C}', '2'], ['想買的東西', '🎁', '1'], ['木工', '\u{1F6CD}\uFE0F', '0']], lang);
       assert.ok(main.querySelectorAll('.list-count')[2].attrs.class.includes('zero'));
     }
   } finally { setLang('zh-Hans'); dom.restore(); }
