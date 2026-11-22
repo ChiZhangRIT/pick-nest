@@ -9,7 +9,7 @@
      --hl 搜索命中的字的底色  --sel 双栏时左栏选中的那一行的底色
    外壳给的钩子：body[data-layout=phone|side|two]、body[data-route=<页面名>]、body[data-tabs=1|0]、#main[data-panes=1|2]；
    页面容器 section.pane.view.view-<名字>（双栏时 .pane-list / .pane-detail，一栏 .pane-main）。
-   通用组件：.navbar .back（推入的页面）| .page-head .toolbar .tb-btn .lt | .page .row | .btn(.primary .ghost .danger .danger-fill .small .block) .icon-btn .link-btn
+   通用组件：.navbar .back .push-nav .nb-title（推入的页面：返回 · 标题 · 操作）| .page-head .toolbar .tb-btn .lt | .page .row | .btn(.primary .ghost .danger .danger-fill .small .block) .icon-btn .link-btn
              .card .group .group-row(.go .sel) .group-h .group-foot | .seg | .chips .chip | .tag（「已归档」这种小标记）| .sec-toggle .sec-chev（折叠的一组）| .empty .detail-empty
              .sync-badge(.ok .wait .warn .err .off)（同步状态的小标签，ui/syncBadge.js）
              dialog.sheet .sheet-actions | .form .f-row .f-label .f-help .f-err（ui/form.js）| #toast | .ic（图标，见 ui/dom.js 的 icon()） */
@@ -100,8 +100,8 @@ body[data-layout="phone"][data-tabs="1"] #tabs {
   #main[data-panes="2"] .pane-detail { flex: 1 1 auto; }
 }
 /* 双栏右边还没选的时候 */
-.detail-empty { min-height: 100%; display: grid; place-content: center; justify-items: center; gap: 12px; padding: 40px 24px; color: var(--muted); text-align: center; }
-.detail-empty-ic { width: 56px; height: 56px; stroke-width: 1.4; color: var(--faint); }
+.detail-empty { min-height: 100%; display: grid; place-content: center; justify-items: center; gap: 14px; padding: 40px 24px; color: var(--muted); text-align: center; }
+.detail-empty img { width: 96px; height: 96px; border-radius: 22.37%; box-shadow: var(--shadow-card); }   /* 图标的圆角和系统一样（22.37%） */
 .detail-empty p { max-width: 20em; line-height: 1.6; }
 /* 双栏左边：窄一点，标题收一点 */
 .pane-list .page-head { padding-left: 18px; padding-right: 18px; }
@@ -125,20 +125,30 @@ body[data-layout="phone"][data-tabs="1"] #tabs {
 .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 4px; min-height: 44px; margin: 0 -6px; }
 .tb-btn { display: inline-flex; align-items: center; gap: 5px; min-height: 44px; padding: 0 6px; border: 0; background: none; color: var(--accent-text); font-size: 16px; font-weight: 500; }
 .tb-btn .ic { width: 20px; height: 20px; }
-.lt { font-size: 34px; font-weight: 700; letter-spacing: .01em; line-height: 1.2; }
+.lt { font-size: 34px; font-weight: 700; letter-spacing: .04em; line-height: 1.2; }
 /* 首页大标题右边是同步状态（一行放不下时标签掉到下面） */
 .lt-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 2px 12px; }
 .lt-row .sync-badge { margin-top: 4px; }
 
-/* ---------- 推入的页面的顶栏：返回 · 操作（宽屏有侧栏，不要返回） ---------- */
-.navbar { display: flex; justify-content: space-between; align-items: center; max-width: 752px; margin: 0 auto;
+/* ---------- 推入的页面的顶栏：返回 · 操作（只有双栏的右栏不要返回，见下面）---------- */
+/* 和 Babble 的 .navbar 一样不限宽：宽屏时返回贴着内容栏的左边、操作贴着右边，内容照样限宽居中（.page） */
+.navbar { display: flex; justify-content: space-between; align-items: center;
   min-height: calc(48px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) max(6px, env(safe-area-inset-right)) 0 max(4px, env(safe-area-inset-left)); }
 .back { display: inline-flex; align-items: center; min-height: 44px; padding: 0 10px 0 2px; border: 0; background: none; color: var(--accent-text); font-size: 17px; }
 .back .ic { width: 24px; height: 24px; stroke-width: 2.2; }
 .back { min-width: 0; max-width: 55%; }
 .back-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* 写的是回去的那一页，可能是一张清单的长名字 */
-body:not([data-layout="phone"]) .navbar .back { visibility: hidden; }
+/* 双栏右栏（清单页、一家店、搜索）不要返回：左栏就是上一页。别的推入的页面（设置的子页面、最近删除，侧栏布局里的清单页……）不管多宽都有返回 */
+.pane-detail .navbar .back { visibility: hidden; }
 .nav-acts { display: flex; align-items: center; gap: 2px; }
+/* 推入的页面（ui/dom.js 的 pushFrame）：和 Babble 一样「返回 · 标题 · 操作」三栏，标题在正中间、长了省略 */
+.push-nav { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+.push-nav > :first-child { justify-self: start; max-width: 100%; }
+.push-nav > :last-child { justify-self: end; }
+.nb-title { min-width: 0; margin: 0; padding: 0 6px; font-size: 17px; font-weight: 600; line-height: 1.3; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nb-title:focus { outline: none; }
+/* iPhone mini / SE（375 宽）以下：右边的「+ 新增……」只留 +，不然英文的字折成两行、贴着标题（按钮有 aria-label，读屏照样念全） */
+@media (max-width: 379px) { .push-nav .tb-label { display: none; } .push-nav .tb-btn { min-width: 44px; justify-content: center; } }
 /* iPhone 横过来时刘海那一侧要让开：右边总要；左边只在单栏时（宽屏时侧栏已经让开了） */
 .page { padding-right: max(16px, env(safe-area-inset-right)); }
 .page-head { padding-right: max(20px, env(safe-area-inset-right)); }
@@ -175,16 +185,16 @@ a.group-row { color: var(--ink); }
 a.group-row:hover, button.group-row:hover { background: var(--fill); }
 /* 双栏时左栏里右边正在看的那一行 */
 a.group-row.sel, a.group-row.sel:hover { background: var(--sel); }
-.group-h { margin: 24px 4px 8px; font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .02em; }
+.group-h { margin: 24px 4px 8px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
 .group-foot { margin: 6px 4px 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
 
 /* ---------- 表单 ---------- */
-:where(input:not([type=checkbox]):not([type=radio]), textarea) { width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-btn);
+:where(input:not([type=checkbox]):not([type=radio]), textarea) { width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius);
   background: var(--card); color: var(--ink); font-size: 16px; }
 :where(textarea) { line-height: 1.5; resize: vertical; }
 :where(input, textarea):focus { outline: none; border-color: var(--accent-line); box-shadow: 0 0 0 3px var(--accent-ring); }
 ::placeholder { color: var(--muted); opacity: 1; }
-:where(select) { min-height: 44px; padding: 8px 34px 8px 12px; border: 1px solid var(--line); border-radius: var(--radius-btn); background-color: var(--card); color: var(--ink); font-size: 16px;
+:where(select) { min-height: 44px; padding: 8px 34px 8px 12px; border: 1px solid var(--line); border-radius: var(--radius); background-color: var(--card); color: var(--ink); font-size: 16px;
   appearance: none; -webkit-appearance: none;
   background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
   background-position: calc(100% - 18px) 52%, calc(100% - 13px) 52%; background-size: 5px 5px; background-repeat: no-repeat; }
@@ -193,15 +203,15 @@ a.group-row.sel, a.group-row.sel:hover { background: var(--sel); }
 .seg { display: inline-flex; padding: 2px; border-radius: 10px; background: var(--fill); }
 .seg > button { position: relative; min-height: 34px; padding: 5px 14px; border: 0; border-radius: 8px; background: none; color: var(--muted); font-size: 14px; font-weight: 600; }
 .seg > button::after { content: ""; position: absolute; inset: -5px -1px; }
-.seg > button.on { background: var(--seg-on); color: var(--ink); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }   /* 深色下选中的那段比底亮（和 iOS 一样），不能直接用 --card */
+.seg > button.on { background: var(--seg-on); color: var(--accent-text); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }   /* 深色下选中的那段比底亮（和 iOS 一样），不能直接用 --card */
 /* 小标签按钮（单位的快捷选项）：32px 高，点按区域放大到 44px */
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { position: relative; min-height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--ink-2); font-size: 14px; }
 .chip::after { content: ""; position: absolute; inset: -6px -2px; }
 .chip[aria-pressed="true"] { background: var(--accent-soft); border-color: transparent; color: var(--accent-text); font-weight: 600; }
 /* 折叠的一组的标题（已归档、以后再说、已买）：箭头朝右是收着，朝下是展开 */
-.sec-toggle { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 8px 0 0; border: 0; background: none; color: var(--muted);
-  font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .02em; }
+.sec-toggle { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 8px 0 0; border: 0; background: none; color: var(--ink-2);
+  font-size: 13px; font-weight: 600; }
 .sec-chev { width: 18px; height: 18px; transition: transform .18s; }
 .sec-toggle[aria-expanded="true"] .sec-chev { transform: rotate(90deg); }
 
@@ -475,10 +485,12 @@ select.f-in { width: 100%; }
 .set-label { flex: 1 1 auto; min-width: 0; }
 .set-row:has(> .set-seg) { flex-wrap: wrap; }
 .set-seg { flex: none; margin-left: auto; max-width: 100%; }
-.set-language { cursor: pointer; }
-.set-language:hover { background: var(--fill); }
-.set-language:has(:checked) { color: var(--accent-text); font-weight: 600; }
-.set-language-radio { flex: none; width: 20px; height: 20px; margin: 0; accent-color: var(--accent-text); cursor: pointer; }
+/* 行里的下拉框（语言）：和 Babble 一样浅底、没有边框，字靠左 */
+.set-in { flex: none; min-height: 36px; padding: 6px 34px 6px 10px; border: 0; border-radius: 9px; background-color: var(--fill); font-size: 16px; }
+.set-in:focus { box-shadow: 0 0 0 3px var(--accent-ring); }
+.set-select { width: auto; max-width: 62%; text-align: left; }
+/* 「上次备份」还没备份过、30 天以上没备份：琥珀色（和 Babble 一样） */
+.set-warn, .group-foot.set-warn { color: var(--warn); }
 .set-about > * + * { margin-top: 10px; }
 .set-about-top { display: flex; align-items: center; gap: 12px; }
 .set-about-top img { border-radius: 11px; box-shadow: var(--shadow-card); }
@@ -486,9 +498,10 @@ select.f-in { width: 100%; }
 .set-about .small { line-height: 1.6; }
 .set-version { font-variant-numeric: tabular-nums; }
 
-/* ================= 设置 → 商店、分类（#/settings/stores、#/settings/categories） ================= */
+/* 搜索页（双栏时在右栏）的大标题；设置的子页面、最近删除的标题在顶栏中间（.nb-title） */
 .push-head { padding-top: 2px; }
 .push-title { padding: 0 4px; font-size: 30px; font-weight: 700; line-height: 1.2; letter-spacing: .01em; overflow-wrap: anywhere; }
+/* ================= 设置 → 商店、分类（#/settings/stores、#/settings/categories） ================= */
 .manage { margin-top: 16px; }
 .manage .set-sec + .set-sec, .manage .group-foot + .set-sec { margin-top: 22px; }
 .manage .set-sec > .group-h { margin-top: 0; }
@@ -502,7 +515,7 @@ select.f-in { width: 100%; }
 .manage-list.archived .manage-name { color: var(--ink-2); }
 .cat-empty { margin-top: 0; padding: 12px 16px; border-radius: var(--radius); background: var(--card); box-shadow: var(--shadow-card); font-size: 14px; }
 
-/* ================= 设置 → 同步（#/settings/sync）、数据（#/settings/data）、最近删除（#/deleted） ================= */
+/* ================= 设置 → 多设备同步（#/settings/sync）、备份与恢复（#/settings/data）、最近删除（#/deleted） ================= */
 .set-row .sync-badge { flex: 0 1 auto; min-width: 0; overflow: hidden; }
 .set-row .sync-text { overflow: hidden; text-overflow: ellipsis; }
 .set-count { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -538,6 +551,9 @@ select.f-in { width: 100%; }
 .del-at { white-space: nowrap; }
 .del-row .btn { flex: none; }
 .del-more { margin: 4px 0 0 4px; }
+/* 什么都没删过：淡淡的垃圾桶 + 一句话（和 Babble 一样） */
+.del-empty .ic { width: 40px; height: 40px; margin: 0 auto 12px; color: var(--faint); stroke-width: 1.5; }
+.del-empty p + p { max-width: 22em; margin: 8px auto 0; line-height: 1.6; }
 
 /* ================= 本机数据坏了：恢复页盖在整个 App 上；启动失败的提示 ================= */
 .recovery-screen { position: fixed; inset: 0; z-index: 200; overflow: auto; background: var(--bg); color: var(--ink);

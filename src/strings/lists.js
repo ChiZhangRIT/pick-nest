@@ -9,6 +9,7 @@ export const STRINGS = {
     // 首页
     'list.new': '新建清单', 'list.edit': '编辑', 'list.editDone': '完成', 'list.archivedN': '已归档（{n}）',
     'list.tabNote': '这是在浏览器里打开的 PickNest，和主屏幕上的 PickNest 不是同一份数据，浏览器还可能过一阵子清掉它。要一直用的话：分享 → 添加到主屏幕。', 'list.tabNoteOk': '知道了',
+    'list.tabNoteMac': '这是在 Safari 标签页里打开的 PickNest，和程序坞上的 PickNest 不是同一份数据，Safari 还可能过一阵子清掉它。要一直用的话：文件 → 添加到程序坞。',
     'list.moveUp': '上移「{name}」', 'list.moveDown': '下移「{name}」',
     // 新建 / 编辑清单
     'list.editTitle': '编辑清单', 'list.name': '名字', 'list.namePh': '比如：木工', 'list.kind': '类型',
@@ -40,6 +41,7 @@ export const STRINGS = {
     'list.none': '沒有要顯示的清單。', 'list.needN': '還要買 {n} 樣',
     'list.new': '新增清單', 'list.edit': '編輯', 'list.editDone': '完成', 'list.archivedN': '已封存（{n}）',
     'list.tabNote': '這是在瀏覽器裡開啟的 PickNest，和主畫面上的 PickNest 不是同一份資料，瀏覽器還可能過一陣子清掉它。要一直使用的話：分享 → 加入主畫面。', 'list.tabNoteOk': '知道了',
+    'list.tabNoteMac': '這是在 Safari 分頁裡開啟的 PickNest，和 Dock 上的 PickNest 不是同一份資料，Safari 還可能過一陣子清掉它。要一直使用的話：檔案 → 加入 Dock。',
     'list.moveUp': '上移「{name}」', 'list.moveDown': '下移「{name}」',
     'list.editTitle': '編輯清單', 'list.name': '名稱', 'list.namePh': '例如：木工', 'list.kind': '類型',
     'list.kind.grocery': '食材', 'list.kind.groceryHint': '吃的、喝的、煮飯用的；常見的東西自動分類',
@@ -68,6 +70,7 @@ export const STRINGS = {
     'list.none': 'No lists to show.', 'list.needN': en('{n} item to buy', '{n} items to buy'),
     'list.new': 'New List', 'list.edit': 'Edit', 'list.editDone': 'Done', 'list.archivedN': 'Archived ({n})',
     'list.tabNote': "This PickNest is open in the browser. It doesn't share data with the one on your Home Screen, and the browser may clear it after a while. To keep using it: Share → Add to Home Screen.", 'list.tabNoteOk': 'Got it',
+    'list.tabNoteMac': "This PickNest is open in a Safari tab. It doesn't share data with the one in your Dock, and Safari may clear it after a while. To keep using it: File → Add to Dock.",
     'list.moveUp': 'Move “{name}” up', 'list.moveDown': 'Move “{name}” down',
     'list.editTitle': 'Edit List', 'list.name': 'Name', 'list.namePh': 'e.g. Woodworking', 'list.kind': 'Type',
     'list.kind.grocery': 'Groceries', 'list.kind.groceryHint': 'Food and drinks; common items get a category automatically',

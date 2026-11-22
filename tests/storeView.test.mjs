@@ -143,7 +143,7 @@ test('一家店：要买的按分类分组，每行标着来自哪张清单；�
     await byCls(env.row('牛奶'), 'item-more').fire('click');
     assert.equal(env.sheet().opts.title, '编辑');
     find(env.sheet().el, el => cls(el, 'qty-in')).value = '3';
-    await btn(env.sheet().el, '完成').fire('click');
+    await btn(env.sheet().el, '保存').fire('click');
     await settle();
     assert.equal(itemNamed('牛奶').qty, 3);
     assert.equal(document.activeElement, byCls(env.row('牛奶'), 'item-more'));
@@ -204,7 +204,12 @@ test('设置 → 商店：新增（排在最后；空的、同名的报错不关
   const env = setup({ page: 'settings', params: { sub: 'stores' } });
   try {
     const names = () => allCls(byCls(env.main, 'manage-list'), 'manage-name').map(b => b.textContent);
-    assert.equal(byCls(env.main, 'push-title').textContent, '商店');
+    // 推入的页面：标题在吸顶的顶栏中间（和 Babble 一样），返回、新增在两边，不再有单独的大标题
+    const nav = byCls(env.main, 'push-nav');
+    assert.equal(byCls(nav, 'nb-title').textContent, '商店');
+    assert.equal(byCls(nav, 'nb-title').tag, 'h1', '读屏照样有这一页的标题');
+    assert.deepEqual(nav.children.map(c => c.tag), ['button', 'h1', 'button'], '返回 · 标题 · 新增');
+    assert.equal(byCls(env.main, 'push-title'), undefined);
     assert.deepEqual(names(), SEED_STORES.filter(([id]) => id !== 's_hmart').map(([, n]) => n), '归档的 H Mart 不在上面');
     assert.deepEqual(allCls(byCls(env.main, 'manage-arch'), 'manage-name').map(b => b.textContent), ['H Mart']);
     await byCls(env.main, 'back').fire('click');
@@ -226,7 +231,7 @@ test('设置 → 商店：新增（排在最后；空的、同名的报错不关
     assert.equal(env.sheet().opts.title, '编辑商店');
     assert.equal(env.input().value, '农贸市场');
     env.input().value = '周末市集';
-    await btn(env.sheet().el, '完成').fire('click');
+    await btn(env.sheet().el, '保存').fire('click');
     await settle();
     assert.equal(names().at(-1), '周末市集');
     // 排顺序：读屏念「上移『Costco』」；到头了标 aria-disabled；挪完焦点还在同一个按钮上，可以接着按
@@ -304,7 +309,7 @@ test('设置 → 商店：输入法选字时的回车不提交；改了名字再
     env.answer = false;
     await btn(env.sheet().el, '归档').fire('click');
     await settle();
-    assert.equal(env.confirms.at(-1).message, '放弃这次的修改？');
+    assert.equal(env.confirms.at(-1).message, '放弃没保存的修改？');
     assert.deepEqual([env.sheets.length, S().data.stores.s_costco.archived], [1, false]);
     env.answer = true;
     await btn(env.sheet().el, '归档').fire('click');
@@ -381,12 +386,12 @@ test('设置 → 分类：三组（食材 / 一般 / 两边都用），新增时
     assert.equal(env.input().attrs.placeholder, '蛋奶');
     assert.equal(byCls(env.sheet().el, 'f-help').textContent, '名字空着就用自带的（跟着界面语言）。这个分类用于食材清单，不能更改。');
     env.input().value = '奶和蛋';
-    await btn(env.sheet().el, '完成').fire('click');
+    await btn(env.sheet().el, '保存').fire('click');
     await settle();
     assert.equal(names('grocery')[2], '奶和蛋');
     await find(env.main, el => cls(el, 'manage-name') && el.textContent === '奶和蛋').fire('click');
     env.input().value = '';
-    await btn(env.sheet().el, '完成').fire('click');
+    await btn(env.sheet().el, '保存').fire('click');
     await settle();
     assert.equal(names('grocery')[2], '蛋奶');
     // 删除：东西归到未分类
@@ -413,7 +418,7 @@ test('删掉了清单的默认商店：编辑清单时显示「未指定」、�
     assert.deepEqual([env.sheets.length, env.confirms.length], [0, 0], '没改就直接关，不问');
     sh = listSheet(env.ctx, { list: S().data.lists.l_groceries });
     find(sh.el, el => el.tag === 'input' && el.attrs.type === 'text').value = '买菜';
-    await btn(sh.el, '完成').fire('click');
+    await btn(sh.el, '保存').fire('click');
     assert.deepEqual([S().data.lists.l_groceries.name, S().data.lists.l_groceries.defaultStoreId], ['买菜', 's_wholefoods']);
   } finally { env.done(); }
 });

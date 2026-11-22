@@ -1,6 +1,6 @@
 // 本机数据读不出来时盖在整个 App 上的恢复页（app.js 的 recoveryScreen）。这时修改和同步都已经暂停，原始数据不会被覆盖。
 // 按钮：下载原始数据、重新读取、从备份恢复（选一个备份文件）、从云端恢复（开过同步才有：只读地取仓库里现在的那一份）、保留读得出来的部分继续用。
-// 后三个都是 ctx.repairData：和读得出来的部分逐条合并，替换之前 persistence.recover 先把原件存档（以后在「设置 → 数据」里还能下载）。
+// 后三个都是 ctx.repairData：和读得出来的部分逐条合并，替换之前 persistence.recover 先把原件存档（以后在「设置 → 备份与恢复」里还能下载）。
 import { h, download } from './dom.js';
 import { t } from '../i18n.js';
 import { readBackup, BackupError } from '../core/backup.js';

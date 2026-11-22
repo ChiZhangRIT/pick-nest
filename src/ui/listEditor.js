@@ -1,5 +1,5 @@
 // 新建 / 编辑清单的面板（首页「新建清单」、清单页「⋯ → 编辑清单」共用）。面板不在页面里：数据变了页面重画也不会打断输入。
-// 名字、图标、默认商店点「完成」才存；类型只在新建时选（里面的东西的分类、「以后再说」都跟着类型）。
+// 名字、图标、默认商店点「保存」才存；类型只在新建时选（里面的东西的分类、「以后再说」都跟着类型）。
 // 归档、删除马上生效，由调用的页面做（它要先离开这一页，再改数据、弹「撤销」）。
 import { h } from './dom.js';
 import { t } from '../i18n.js';
@@ -66,7 +66,7 @@ export function listSheet(ctx, { list = null, onCreated = null, onArchive = null
     beforeClose: discardGuard(ctx, dirty, () => s),
     foot: [
       h('button.btn', { type: 'button', onclick: () => s.close() }, t('common.cancel')),
-      h('button.btn.primary', { type: 'button', onclick: () => save() }, editing ? t('common.done') : t('list.create')),
+      h('button.btn.primary', { type: 'button', onclick: () => save() }, editing ? t('common.save') : t('list.create')),
     ],
   });
   if (!editing) setTimeout(() => nameIn.focus(), 0);

@@ -1,9 +1,9 @@
 // 备份和从备份恢复（core/backup.js + state.js 的 mergeIn）、显示时间（core/dates.js）。全是编的数据
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildBackup, readBackup, backupFileName, backupCounts, BackupError } from '../src/core/backup.js';
+import { buildBackup, readBackup, backupFileName, backupCounts, backupAge, BackupError } from '../src/core/backup.js';
 import { blankState, ensureSeeds, normalizeRecord, stamp, deletedRecord, fileProblem, canon, normalizeState } from '../src/core/store.js';
-import { fmtClock, fmtDay, fmtWhen, fmtShort, fmtFull, ymd, endOfDay, dayValue } from '../src/core/dates.js';
+import { fmtClock, fmtDay, fmtWhen, fmtShort, fmtFull, ymd, endOfDay, dayValue, daysAgo } from '../src/core/dates.js';
 import * as state from '../src/core/state.js';
 
 const item = (id, fields = {}) => normalizeRecord('items', { id, listId: 'l_groceries', name: id, status: 'need', updatedAt: 1000, ...fields });
@@ -119,6 +119,20 @@ test('显示时间：今天 / 昨天 / 今年 / 更早，三种语言；很短�
   assert.equal(dayValue(endOfDay('2027-02-01')), '2027-02-01', '反过来：<input type=date> 的值、同步码里的到期日');
   assert.equal(dayValue(new Date(2026, 0, 5, 0, 30).getTime()), '2026-01-05');
   for (const none of [null, 0, NaN, 'x']) assert.equal(dayValue(none), '', String(none));
+});
+
+test('上次备份是几天前：按日历日数（昨晚 23:50 也是 1 天前），还没备份过、30 天以上要提醒', () => {
+  const now = new Date(2026, 10, 22, 9, 30).getTime();
+  assert.equal(daysAgo(new Date(2026, 10, 22, 0, 5).getTime(), now), 0);
+  assert.equal(daysAgo(new Date(2026, 10, 21, 23, 50).getTime(), now), 1);
+  assert.equal(daysAgo(new Date(2026, 9, 23, 12, 0).getTime(), now), 30);
+  assert.equal(daysAgo(new Date(2026, 10, 23, 8, 0).getTime(), now), 0, '时钟不准、记成了明天：当成今天');
+  assert.equal(daysAgo(null, now), null);
+  assert.deepEqual(backupAge(null, now), { days: null, stale: true });
+  assert.deepEqual(backupAge(0, now), { days: null, stale: true });
+  assert.deepEqual(backupAge(new Date(2026, 10, 22, 8, 0).getTime(), now), { days: 0, stale: false });
+  assert.deepEqual(backupAge(new Date(2026, 9, 24, 8, 0).getTime(), now), { days: 29, stale: false });
+  assert.deepEqual(backupAge(new Date(2026, 9, 23, 8, 0).getTime(), now), { days: 30, stale: true });
 });
 
 test('stamp 之后的记录照样能备份恢复（修改时间、软删除的时间都在）', () => {

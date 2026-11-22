@@ -1,4 +1,4 @@
-// 设置 → 商店 / 分类用的面板：一个名字（新增分类时还有「用在哪种清单」）。点「完成」（新增时是「添加」）才存，有改动时关面板先问一句（ui/form.js）。
+// 设置 → 商店 / 分类用的面板：一个名字（新增分类时还有「用在哪种清单」）。点「保存」（新增时是「添加」）才存，有改动时关面板先问一句（ui/form.js）。
 // 面板不在页面里：数据变了页面整页重画也不会打断输入。归档、删除这种马上生效的按钮由页面给（actions）：点了先关面板
 // （有没保存的修改时先问「放弃修改？」），再做；要确认的由页面问。
 import { h } from './dom.js';
@@ -12,7 +12,7 @@ import { field, showErr, discardGuard, closeThen, onEnter } from './form.js';
  *   actions(act) → 名字下面的一组按钮（归档、删除）；act(fn) 是按钮的 onclick：关面板（有改动先问），再 fn()
  *   focus：打开就把光标放进名字（新增时；编辑时不弹键盘挡住下面的按钮）
  */
-export function nameSheet(ctx, { title, label, value = '', placeholder = '', help = null, kinds = null, submitLabel = t('common.done'), focus = false, save, actions = null }) {
+export function nameSheet(ctx, { title, label, value = '', placeholder = '', help = null, kinds = null, submitLabel = t('common.save'), focus = false, save, actions = null }) {
   const init = { name: value.trim(), kind: kinds ? kinds.value : null };
   let kind = init.kind;
   const nameIn = h('input.f-in', { type: 'text', value, maxlength: 80, placeholder, autocomplete: 'off', enterkeyhint: 'done',

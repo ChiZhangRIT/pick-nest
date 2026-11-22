@@ -23,7 +23,7 @@ export function render(main, params, ctx) {
   let q = String((params.query && params.query.q) || '');
   const cl = checklist(ctx, main);
 
-  // 顶栏吸顶（和清单页一样），宽屏有侧栏，CSS 把返回藏起来；标题能接焦点（重画后按过的控件没了，焦点给它）
+  // 顶栏吸顶（和清单页一样），双栏右栏里 CSS 把返回藏起来（左栏就是上一页）；标题能接焦点（重画后按过的控件没了，焦点给它）
   const navbar = h('header.navbar.lp-nav', null, h('button.back', { type: 'button', onclick: () => ctx.back('/') }, icon('back'), backText(ctx, t('nav.lists'))));
   const head = h('div.page.push-head', null, h('h1.push-title', { tabindex: -1, dataset: { fid: 'lp-title' } }, t('nav.search')));
   const input = h('input.add-input.search-input', { type: 'search', value: q, 'aria-label': t('search.label'), placeholder: t('search.ph'),

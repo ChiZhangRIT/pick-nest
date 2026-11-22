@@ -1,5 +1,5 @@
 // @ts-check
-// 备份（设置 → 数据）：一个 JSON 文件 picknest-backup-YYYYMMDD.json = { app:'picknest', v:1, kind:'backup', exportedAt, state }。
+// 备份（设置 → 备份与恢复）：一个 JSON 文件 picknest-backup-YYYYMMDD.json = { app:'picknest', v:1, kind:'backup', exportedAt, state }。
 // state 就是整份同步的数据（data、settings、settingsAt）：没有同步令牌，也没有本机设置（picknest.local：语言、外观、各清单的显示方式）。
 // 「最近删除」里的东西也在里面（软删除的记录照样是数据）。
 // 恢复 = 逐条合并（state.js 的 mergeIn：每条取较新的，备份里没有的不删），页面先确认、再说改了几条。
@@ -7,7 +7,7 @@
 // 恢复页下载的原始数据、同步仓库里的 picknest.json 都能拿来恢复。
 import { normalizeState, fileProblem, live } from './store.js';
 import { liveList } from './items.js';
-import { ymd } from './dates.js';
+import { ymd, daysAgo } from './dates.js';
 import { isObj, str } from './util.js';
 
 /** @typedef {import('./store.js').State} State */
@@ -25,6 +25,17 @@ export const backupFileName = (date = new Date()) => `picknest-backup-${ymd(date
 export function buildBackup(state, now = new Date()) {
   const s = normalizeState(state);
   return JSON.stringify({ app: 'picknest', v: 1, kind: 'backup', exportedAt: now.toISOString(), state: { app: s.app, v: s.v, data: s.data, settings: s.settings, settingsAt: s.settingsAt } }, null, 1);
+}
+
+/** 隔多少天没备份就提醒（和 Babble 一样：设置里那句「上次备份」变成琥珀色） */
+export const BACKUP_STALE_DAYS = 30;
+/**
+ * 这台设备上次备份是几天前（picknest.local 的 lastBackupAt）→ { days: 0 今天 / n 天前 / null 还没备份过, stale: 要不要提醒 }
+ * @param {unknown} lastAt @param {number} [now]
+ */
+export function backupAge(lastAt, now = Date.now()) {
+  const days = Number(lastAt) > 0 ? daysAgo(lastAt, now) : null;
+  return { days, stale: days == null || days >= BACKUP_STALE_DAYS };
 }
 
 /** 看得见的有几样（确认框里说「备份里有 3 张清单、42 样东西」）：没删除的清单、在没删除的清单上的东西、商店、分类 @param {State} state */

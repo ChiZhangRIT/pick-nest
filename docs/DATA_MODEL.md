@@ -66,7 +66,7 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 
 从备份恢复 = `state.mergeIn`：逐条合并、较新的为准（各自从头建的同一条也和同步一样补字段）、补预置记录，备份里没有的不删（备份里更晚的删除照样合并进来），算本机修改（开着同步时 app 马上传，不等两秒的防抖）。读的时候认所有 `{ app: 'picknest', v: 1, state }` 形状的文件，读不出来按 `fileProblem` 说原因（`notJson`、`notApp`、`newer`、`bad`）。
 
-恢复页修本机数据（`persistence.recover`）前存的原件在 `picknest.recovery.<时刻>.*`，只留最近一次的（`archive()` 和「设置 → 数据」只给最新的，旧的只占同一个域名下共用的空间）。
+恢复页修本机数据（`persistence.recover`）前存的原件在 `picknest.recovery.<时刻>.*`，只留最近一次的（`archive()` 和「设置 → 备份与恢复」只给最新的，旧的只占同一个域名下共用的空间）。
 
 ## 最近删除（core/deleted.js）
 
@@ -140,7 +140,7 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 
 同一条记录换 `listId`。目标清单上已经有同名的（没删除的）：页面先确认（`moveConflict`），然后合并成那一条（恢复成要买），这一条软删除——同一张清单里同名的只能有一条。合并时这一条的东西不丢（`mergeMoved`）：那一条空着的链接、价格、单位、商店、分类（能给目标清单用的）用这一条的补上，两条的备注都有、不一样就接在后面；数量：那一条本来就在要买的用它的，不然用这一条的。分类不能给目标清单用时按默认值重新定；移到食材清单时「以后再说」变成要买。
 
-编辑面板的「完成」是 `editAndMove(state, id, patch, toListId)`：改和移在一起做，这次改过的字段（`patch` 里的）合并时以这一条为准、落在留下来的那一条上（不是改在随后被删掉的这一条上）；同时改名时名字只和要去的清单比（`validateItemPatch` 的 `moving`），那边有同名的就是合并。
+编辑面板的「保存」是 `editAndMove(state, id, patch, toListId)`：改和移在一起做，这次改过的字段（`patch` 里的）合并时以这一条为准、落在留下来的那一条上（不是改在随后被删掉的这一条上）；同时改名时名字只和要去的清单比（`validateItemPatch` 的 `moving`），那边有同名的就是合并。
 
 好处：清单记录的数量 ≈ 不同东西的个数，不会越买越多；两台设备离线时各加一次「牛奶」，同步后还是一条。
 
@@ -246,8 +246,8 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 ```
 
 - `device`：写进同步文件和提交说明的设备名；没设就用平台名（iPhone / iPad / Mac，`core/sync.js` 的 `platformDevice`）
-- `tabNoteOff`：iPhone / iPad 的浏览器标签页里打开时（`navigator.standalone === false`）首页那句「和主屏幕上的不是同一份数据」点过「知道了」
-- `lastBackupAt`：这台设备上次下载 / 分享备份的时刻（设置 → 数据里显示）
+- `tabNoteOff`：在浏览器标签页里打开时（`navigator.standalone` 不是 true、也不是 `display-mode: standalone`；iPhone / iPad 和 Mac 的 Safari 说法不同，见 `views/lists.js` 的 `tabNoteKind`）首页那句「和主屏幕 / 程序坞上的不是同一份数据」点过「知道了」
+- `lastBackupAt`：这台设备上次导出 / 分享备份的时刻（设置首页「数据」下面和「备份与恢复」里写「上次备份：今天 / n 天前」，`core/backup.js` 的 `backupAge`：没有或 ≥ 30 天提醒）
 - `tokenExp`：用户填的到期日那天 23:59（`dates.js` 的 `endOfDay`；2000 年以前的不收：用键盘填日期时年份是一位一位进去的，0002 也是「合法」的日期）
 - 同步码 = `picknest-sync:<owner/repo>:<令牌>[:<到期日 YYYY-MM-DD>]`（`syncCode` / `parseSyncCode`，前缀是参数）。到期日是每台设备自己的本机设置，带在同步码里，用它连上的设备也会提前提醒
 - 只收 Fine-grained 令牌（`tokenProblem`，只认 `github_pat_` 前缀）：`ghp_`、`gho_`、`ghu_`、`ghs_`、`ghr_` 开头的和以前没有前缀的 40 位十六进制（都是经典令牌，GitHub 照样收）报 `classic`，别的格式报 `notFine`，都不拿来发任何请求（`readRemote` 也一样）

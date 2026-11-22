@@ -4,6 +4,7 @@
 // 规则都在 core：解析和添加（items.js、parse.js）、联想（memory.js）、分组排序（group.js）、清单操作（lists.js）。
 // 点一行 = 勾掉 / 取消：行和勾选的节奏（先在原地打勾，停一下再挪）在 ui/checklist.js，商店页也用它。
 // 顶栏右边「开始购物」进购物模式（#/l/<id>?shop=1，views/shop.js）。
+// ⌘N（别的系统 Ctrl+N）：光标放进快速添加（Babble、房屋账本的 ⌘N 是新建一条，这里新建的就是一样东西）；一栏的清单页、双栏右栏的清单页都算。
 import { h, icon, backText } from '../ui/dom.js';
 import { t } from '../i18n.js';
 import { listName, listIcon, needCounts } from '../core/store.js';
@@ -14,7 +15,7 @@ import { groupNeed, collatorFor, listView, listViewPatch } from '../core/group.j
 import { setArchived, deleteList } from '../core/lists.js';
 import { checklist, foldSec, storeChip, groupSections } from '../ui/checklist.js';
 import { listSheet } from '../ui/listEditor.js';
-import { composing } from '../ui/form.js';
+import { composing, isNewKey, isTextField } from '../ui/form.js';
 
 export function render(main, params, ctx) {
   const listId = params.id;
@@ -38,7 +39,7 @@ export function render(main, params, ctx) {
   // ---------- 顶栏、页头 ----------
   // 顶栏和快速添加都吸顶：长清单滚下去也能返回、打开 ⋯
   const navbar = h('header.navbar.lp-nav', null,
-    h('button.back', { type: 'button', onclick: () => ctx.back('/') }, icon('back'), backText(ctx, t('nav.lists'))),     // 宽屏有侧栏，CSS 藏起来
+    h('button.back', { type: 'button', onclick: () => ctx.back('/') }, icon('back'), backText(ctx, t('nav.lists'))),     // 双栏右栏里 CSS 藏起来（左栏就是上一页）
     h('div.nav-acts', null,
       h('button.tb-btn.shop-btn', { type: 'button', dataset: { fid: 'lp-shop' }, onclick: () => ctx.navigate('/l/' + encodeURIComponent(listId) + '?shop=1') }, icon('cart'), t('shop.start')),
       h('button.icon-btn', { type: 'button', 'aria-label': t('common.more'), title: t('common.more'), onclick: () => menu() }, icon('more'))));
@@ -201,6 +202,16 @@ export function render(main, params, ctx) {
     if (!head.getBoundingClientRect) return;
     addBar.classList.toggle('stuck', head.getBoundingClientRect().bottom < addBar.getBoundingClientRect().top - 1);
   }
+  // ⌘N：面板、确认框开着，或者焦点在别的输入框里（正在打字）时不管，也不 preventDefault（照浏览器自己的来）
+  function onShortcut(e) {
+    if (!isNewKey(e) || document.querySelector('dialog[open]')) return;
+    const a = document.activeElement;
+    if (a && a !== input && isTextField(a)) return;
+    e.preventDefault();
+    input.focus({ preventScroll: true });
+    if (input.scrollIntoView) input.scrollIntoView({ block: 'nearest' });
+  }
+  document.addEventListener('keydown', onShortcut);
   const vv = globalThis.visualViewport;
   window.addEventListener('scroll', onScroll, { passive: true, capture: true });
   if (vv) { vv.addEventListener('resize', fitSugs); vv.addEventListener('scroll', fitSugs); }
@@ -216,6 +227,7 @@ export function render(main, params, ctx) {
       if (!sugBox.hidden) updateSugs();
     },
     cleanup: () => {
+      document.removeEventListener('keydown', onShortcut);
       window.removeEventListener('scroll', onScroll, { capture: true });
       if (vv) { vv.removeEventListener('resize', fitSugs); vv.removeEventListener('scroll', fitSugs); }
       // 离开时点过、还没挪的，马上改：点过的不能丢（清单删掉、归档了的不改）

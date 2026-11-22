@@ -1,19 +1,18 @@
-// 设置 → 数据（views/data.js：备份、从备份恢复、恢复前的原始数据）和最近删除（views/deleted.js）。读备份出错的说明 backup.err.<code>（core/backup.js 的 BackupError）。
+// 设置 → 备份与恢复（views/data.js：导出备份、从备份恢复、恢复前的原始数据）和最近删除（views/deleted.js）。读备份出错的说明 backup.err.<code>（core/backup.js 的 BackupError）。
 // 繁體（台灣）用台灣用語（資料、還原、檔案…）。动态字段 {x} 三种语言一致（测试会查）。
 const plural = (n, one, many) => (Number(n) === 1 ? one : many);
 
 export const STRINGS = {
   'zh-Hans': {
-    'data.backupH': '备份', 'data.restoreH': '从备份恢复', 'data.trashH': '删掉的东西', 'data.archiveH': '恢复前的原始数据',
-    'backup.download': '下载备份', 'backup.share': '分享备份…',
+    'data.backupH': '备份', 'data.restoreH': '从备份恢复', 'data.archiveH': '恢复前的原始数据',
+    'backup.download': '导出备份', 'backup.share': '分享备份…',
     'backup.what': '一个 JSON 文件：所有清单、东西、商店和分类（最近删除的也在）。没有同步令牌，也没有这台设备的设置（语言、外观）。',
-    'backup.last': '这台设备上次备份：{time}', 'backup.never': '这台设备还没备份过。',
     'backup.restore': '从备份恢复…',
     'backup.restoreHelp': '逐条合并：每一条取较新的，这台设备上有、备份里没有的不会被删掉。开着同步时，合并的结果会同步到别的设备。',
     'backup.restoreQ': '从备份恢复？',
     'backup.counts': '备份里有 {lists} 张清单、{items} 样东西。', 'backup.from': '这份备份是 {time} 的。',
     'backup.merge': '逐条合并到这台设备：每一条取较新的，备份里没有的不会被删掉。',
-    'backup.go': '合并', 'backup.restored': '合并好了：{n} 条记录有更新。',
+    'backup.go': '恢复', 'backup.restored': '合并好了：{n} 条记录有更新。',
     'backup.nothing': '备份里没有比这台设备上更新的内容，什么也没改。',
     'backup.err.notJson': '这个文件读不出来（不是 JSON）。', 'backup.err.notApp': '这不是 PickNest 的备份文件。',
     'backup.err.newer': '这份备份是新版 PickNest 做的。关掉所有 PickNest 窗口再打开，更新以后再恢复。',
@@ -32,16 +31,15 @@ export const STRINGS = {
   },
 
   'zh-Hant-TW': {
-    'data.backupH': '備份', 'data.restoreH': '從備份還原', 'data.trashH': '刪掉的東西', 'data.archiveH': '還原前的原始資料',
-    'backup.download': '下載備份', 'backup.share': '分享備份…',
+    'data.backupH': '備份', 'data.restoreH': '從備份還原', 'data.archiveH': '還原前的原始資料',
+    'backup.download': '匯出備份', 'backup.share': '分享備份…',
     'backup.what': '一個 JSON 檔案：所有清單、東西、商店和分類（最近刪除的也在）。沒有同步權杖，也沒有這臺裝置的設定（語言、外觀）。',
-    'backup.last': '這臺裝置上次備份：{time}', 'backup.never': '這臺裝置還沒備份過。',
     'backup.restore': '從備份還原…',
     'backup.restoreHelp': '逐筆合併：每一筆取較新的，這臺裝置上有、備份裡沒有的不會被刪掉。開著同步時，合併的結果會同步到其他裝置。',
     'backup.restoreQ': '從備份還原？',
     'backup.counts': '備份裡有 {lists} 張清單、{items} 樣東西。', 'backup.from': '這份備份是 {time} 的。',
     'backup.merge': '逐筆合併到這臺裝置：每一筆取較新的，備份裡沒有的不會被刪掉。',
-    'backup.go': '合併', 'backup.restored': '合併好了：{n} 筆紀錄有更新。',
+    'backup.go': '還原', 'backup.restored': '合併好了：{n} 筆紀錄有更新。',
     'backup.nothing': '備份裡沒有比這臺裝置上更新的內容，什麼都沒改。',
     'backup.err.notJson': '這個檔案讀不出來（不是 JSON）。', 'backup.err.notApp': '這不是 PickNest 的備份檔案。',
     'backup.err.newer': '這份備份是新版 PickNest 做的。關掉所有 PickNest 視窗再打開，更新之後再還原。',
@@ -60,17 +58,16 @@ export const STRINGS = {
   },
 
   en: {
-    'data.backupH': 'Backup', 'data.restoreH': 'Restore from backup', 'data.trashH': 'Deleted things', 'data.archiveH': 'Original data before recovery',
-    'backup.download': 'Download backup', 'backup.share': 'Share backup…',
+    'data.backupH': 'Backup', 'data.restoreH': 'Restore from backup', 'data.archiveH': 'Original data before recovery',
+    'backup.download': 'Export backup', 'backup.share': 'Share backup…',
     'backup.what': "A JSON file with all your lists, items, stores and categories (recently deleted ones too). It doesn't include your sync token or this device's settings (language, appearance).",
-    'backup.last': 'Last backup on this device: {time}', 'backup.never': 'No backup from this device yet.',
     'backup.restore': 'Restore from backup…',
     'backup.restoreHelp': "Merged record by record: each record keeps the newer version, and nothing on this device is deleted because it's missing from the backup. With sync on, the merged result syncs to your other devices.",
-    'backup.restoreQ': 'Restore from this backup?',
+    'backup.restoreQ': 'Restore from backup?',
     'backup.counts': v => `The backup has ${v.lists} ${plural(v.lists, 'list', 'lists')} and ${v.items} ${plural(v.items, 'item', 'items')}.`,
     'backup.from': 'This backup is from {time}.',
     'backup.merge': "It's merged into this device record by record: each record keeps the newer version, and nothing is deleted.",
-    'backup.go': 'Merge', 'backup.restored': v => `Merged: ${v.n} ${plural(v.n, 'record', 'records')} updated.`,
+    'backup.go': 'Restore', 'backup.restored': v => `Merged: ${v.n} ${plural(v.n, 'record', 'records')} updated.`,
     'backup.nothing': 'Nothing in the backup is newer than what this device has, so nothing changed.',
     'backup.err.notJson': "This file can't be read (it isn't JSON).", 'backup.err.notApp': "This isn't a PickNest backup file.",
     'backup.err.newer': 'This backup was made by a newer version of PickNest. Close every PickNest window and open it again to update, then restore.',

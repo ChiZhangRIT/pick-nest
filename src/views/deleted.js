@@ -1,9 +1,9 @@
-// 最近删除（#/deleted，从设置 → 数据进来）：删掉的清单、东西、商店、分类，分组列出，各自新删的在前（core/deleted.js 的 recentlyDeleted）。
+// 最近删除（#/deleted，从设置首页「数据」那一组进来）：删掉的清单、东西、商店、分类，分组列出，各自新删的在前（core/deleted.js 的 recentlyDeleted）。
 // 每一行：名字（清单带图标，下面说里面的东西会一起回来；东西下面是来自哪张清单，「清除已买」清掉的标「已买」）、什么时候删的、「恢复」。
 // 恢复前先问 core 会不会撞名（restoreBlock），撞了就说为什么、不恢复；能恢复就 ctx.restore（弹「已恢复」，同步时别的设备也跟着恢复）。
 // 东西可能很多（「清除已买」清掉的也在这里）：先列 50 样，「再显示 50 样」。
 // 没有输入框，数据变了由 app 整页重画；恢复之前焦点先给下一行的「恢复」（没有了给标题），重画后 app 按 data-fid 放回，键盘、读屏不掉回页首。
-import { h, pushFrame } from '../ui/dom.js';
+import { h, icon, pushFrame } from '../ui/dom.js';
 import { t } from '../i18n.js';
 import { listName, listIcon, categoryName } from '../core/store.js';
 import { liveList } from '../core/items.js';
@@ -16,7 +16,7 @@ const ui = { shown: STEP };
 
 export function render(main, params, ctx) {
   const lang = ctx.lang();
-  const page = pushFrame(main, ctx, t('deleted.title'), { back: '/settings/data', backLabel: t('set.data'), cls: 'deleted' });
+  const page = pushFrame(main, ctx, t('deleted.title'), { cls: 'deleted' });
   const groups = recentlyDeleted(ctx.state);
   const nameOf = (c, r) => (c === 'lists' ? listName(r, t) : c === 'categories' ? categoryName(r, t) : r.name);
   const fid = (c, r) => `del-${c}-${r.id}`;
@@ -52,10 +52,14 @@ export function render(main, params, ctx) {
     ctx.restore(c, r.id);
   }
 
-  const title = main.querySelector('.push-title');
+  const title = main.querySelector('.nb-title');
   if (title) { title.tabIndex = -1; title.dataset.fid = 'del-title'; }
+  // 什么都没删过：和 Babble 一样一个淡淡的图标 + 一句话，说明放到下面一小行
+  if (!DELETED_KINDS.some(c => groups[c].length)) {
+    page.append(h('div.empty.del-empty', null, icon('trash'), h('p', null, t('deleted.empty')), h('p.small', null, t('deleted.lead'))));
+    return;
+  }
   page.append(h('p.del-lead', null, t('deleted.lead')));
-  if (!DELETED_KINDS.some(c => groups[c].length)) { page.append(h('p.empty', null, t('deleted.empty'))); return; }
   for (const c of DELETED_KINDS) if (groups[c].length) page.append(section(c));
 
   /** 一组。东西那一组先列 ui.shown 样：「再显示」就地换掉这一组（不整页重画：滚动位置不动），焦点给新列出来的第一样 */

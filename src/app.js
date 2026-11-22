@@ -10,16 +10,17 @@
 //           #/l/<listId>?shop=1、#/s/<storeId>?shop=1 → shop（购物模式，id，sub 'list' | 'store'）；
 //           #/search、#/search?q=<词> → search（query.q）；
 //           #/settings → settings（sub null）；#/settings/stores、/categories、/sync、/data → settings（sub 'stores' | 'categories' | 'sync' | 'data'）；
-//           #/deleted → deleted（最近删除，从设置 → 数据进去）；不认识的地址 → lists
+//           #/deleted → deleted（最近删除，从设置首页「数据」那一组进去）；不认识的地址 → lists
 //           pane: 'main'（一栏）| 'list'（双栏左）| 'detail'（双栏右）；selected: 双栏时右栏正在看的清单 / 商店的 id（左栏高亮那一行）
-//   数据变了：页面返回了 onChange 就只调 onChange(info)，页面自己更新（清单页、一家店、搜索、购物模式、设置 → 同步这样做：输入框不能被打断，勾选的节奏要跨重画记着）；
+//   数据变了：页面返回了 onChange 就只调 onChange(info)，页面自己更新（清单页、一家店、搜索、购物模式、设置 → 多设备同步这样做：输入框不能被打断，勾选的节奏要跨重画记着；
+//            设置首页也是：只改「最近删除」的数和下面那几句，不整页重画，键盘、读屏走到一半不被打断）；
 //            否则 app 把这个页面整个重画一遍（保留滚动位置；带 data-fid 的控件重画后恢复焦点）。
 //   flush：页面上点过、还没写进数据的（勾选要停一下才改数据）马上写进去。切到后台时 app 先调它，再决定要不要马上上传
 //   三种布局（照 babble）：
 //     手机（<720px）：顶层页面（#/、#/stores、#/settings）显示底栏；推入的页面（#/l/…、#/s/…、#/search、#/settings/…、#/deleted）不显示底栏，自己画返回按钮（ctx.back）。
-//     侧栏（720–999px）：左边侧栏（清单、商店、搜索、设置），内容栏自己滚动；返回按钮由 CSS 藏起来。
+//     侧栏（720–999px）：左边侧栏（清单、商店、搜索、设置），内容栏自己滚动；推入的页面照样有返回（和 babble 一样）。
 //     双栏（≥1000px，iPad 横放、Mac）：侧栏 + 两栏。#/、#/l/…、#/search 左栏是首页，右栏是那张清单 / 搜索（#/ 时右栏是提示）；
-//            #/stores、#/s/… 左栏是「商店」，右栏是那家店（#/stores 时是提示）。别的页面一栏。
+//            #/stores、#/s/… 左栏是「商店」，右栏是那家店（#/stores 时是 App 图标 + 提示）。右栏的返回由 CSS 藏起来（左栏就是上一页）；别的页面一栏、有返回。
 //     购物模式不管哪种布局都占满整个窗口（没有底栏、侧栏）。
 //   换布局（转 iPad、拉窗口）：同一栏的页面原样留着；要换栏时，有 onChange 的页面（清单页、一家店、搜索）整个搬过去（params.pane / selected 原地更新），
 //            输入框里打了一半的字、焦点都不丢；其余重画。要随布局变化的页面听 ctx.on('layout')。
@@ -55,7 +56,8 @@
 //   ctx.sync.stop()            停止同步（只清本机的设置；本机数据、云端都不动）
 //   ctx.sync.checkRepo(repo, token) → Promise<仓库全名>（仓库名不对、经典令牌、找不到、没权限、不是私有的都抛 SyncError）
 //   ctx.sync.status()          { on, running, repo, at, err, offline, dirty, tokenExp }（at：上次同步成功；dirty：有没上传的修改）
-//   ctx.syncBadge({ link })    同步状态的小标签（元素；默认是去 #/settings/sync 的链接，link: false 是 <span>）。状态变了 app 自己换，页面不用管
+//   ctx.syncBadge({ link })    同步状态的小标签（元素；默认是去 #/settings/sync 的链接，link: false 是 <span>）。状态变了 app 自己换，页面不用管。
+//                              侧栏「设置」下面一直有一个；首页标题旁边的只在手机上画（宽屏有侧栏那个就够了）
 //   ctx.on('sync', fn)         同步状态变了（开始、结束一轮，连接、停止）
 // 界面
 //   ctx.t(key, vars)、ctx.lang()、ctx.setLang(l)、ctx.setTheme('auto'|'light'|'dark')、ctx.theme()（当前生效的 'light'|'dark'）
@@ -66,7 +68,7 @@
 //   ctx.updateReady()          新版本下载好了、等着下次打开（设置 → 关于里说一声）；ctx.on('update', fn) 下载好的时候
 // 恢复页（ui/recovery.js）用
 //   ctx.storageIssue()         本机数据读不出来 / 存储用不了 → { code, count }，正常 → null
-//   ctx.recoveryExport() / ctx.recoveryArchive()   原始数据（下载用；recoveryArchive 是上次恢复前存的，设置 → 数据里也能下载）
+//   ctx.recoveryExport() / ctx.recoveryArchive()   原始数据（下载用；recoveryArchive 是上次恢复前存的，设置 → 备份与恢复里也能下载）
 //   ctx.recoveryCloud()        只读地取云端现在的那一份 → Promise<State>（开过同步才有；没有文件抛 SyncError('nofile')）
 //   ctx.repairData(next)       用读得出来的部分（合并 next）换掉坏了的数据（原件先存档）；ctx.retryData() 重新读取
 import * as state from './core/state.js';
@@ -187,7 +189,8 @@ function back(fallback = '/') {
   if (navStack.length > 1) history.back();
   else navigate(fallback, { replace: true });
 }
-// 返回按钮写真的会回到的那一页：有上一页时 back() 是后退，从「商店」点「管理商店」、从首页的同步标签进来的，回到的不是「设置」
+// 返回按钮写真的会回到的那一页：有上一页时 back() 是后退，从「商店」点「管理商店」、从首页的同步标签进来的，回到的不是「设置」。
+// 子页面的名字和设置首页那一行一样（「多设备同步」「备份与恢复」）
 const SUB_TITLE = { stores: 'set.stores', categories: 'set.categories', sync: 'set.sync', data: 'set.data' };
 function pageTitle(r) {
   if (r.name === 'lists') return t('nav.lists');
@@ -395,10 +398,10 @@ function viewCtx(m) {
 }
 function runView(m) {
   m.offs = []; m.handle = null;
-  // 双栏右边还没选的时候：一句提示（左栏是首页就说选清单，是「商店」就说选商店）
+  // 双栏右边还没选的时候：App 图标 + 一句提示（和 Babble 一样；左栏是首页就说选清单，是「商店」就说选商店）。图标是装饰，读屏只念那句话
   if (m.name === 'empty') {
     const st = m.params.name === 'stores';
-    m.el.append(h('div.detail-empty', null, icon(st ? 'store' : 'list', { cls: 'detail-empty-ic' }), h('p', null, t(st ? 'store.pick' : 'list.pick'))));
+    m.el.append(h('div.detail-empty', null, h('img', { src: 'icons/icon.svg', alt: '', width: 96, height: 96, onerror: e => e.target.remove() }), h('p', null, t(st ? 'store.pick' : 'list.pick'))));
     return;
   }
   try {

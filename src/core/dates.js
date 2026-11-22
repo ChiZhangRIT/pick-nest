@@ -54,6 +54,14 @@ export function fmtFull(ms, lang = 'zh-Hans') {
   if (!dateOf(ms)) return '';
   return isEn(lang) ? `${fmtDay(ms, lang)}, ${fmtClock(ms, lang)}` : `${fmtDay(ms, lang)} ${fmtClock(ms, lang)}`;
 }
+/** 隔了几个日历日（本机时区；今天 0、昨天 1，「上次备份：3 天前」）：按日子数，不按 24 小时算；没有 / 不对 → null @param {unknown} ms @param {number} [now] */
+export function daysAgo(ms, now = Date.now()) {
+  const d = dateOf(ms), n = dateOf(now) || new Date();
+  if (!d) return null;
+  // 用 UTC 算两个本机日期之间差几天：夏令时那天只有 23 / 25 小时，直接除 24 小时会差一天
+  const utc = (/** @type {Date} */ x) => Date.UTC(x.getFullYear(), x.getMonth(), x.getDate());
+  return Math.max(0, Math.round((utc(n) - utc(d)) / 86400000));
+}
 /** 本机日期 YYYYMMDD（备份的文件名） @param {Date} [d] */
 export const ymd = (d = new Date()) => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
 /**

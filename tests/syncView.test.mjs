@@ -1,4 +1,4 @@
-// 设置 → 同步（views/sync.js）和设置 → 数据（views/data.js）在假 DOM 里：没开 / 开着的各种状态、连接、换令牌、停止、复制同步码；
+// 设置 → 多设备同步（views/sync.js）和设置 → 备份与恢复（views/data.js）在假 DOM 里：没开 / 开着的各种状态、连接、换令牌、停止、复制同步码；
 // 下载 / 分享备份、从备份恢复（真的 state.js，只用内存）。ctx.sync 是假的（不联网）；全是编的数据，令牌也是编的
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -69,7 +69,7 @@ test('没开同步：说明、粘贴同步码、第一次设置的步骤、仓�
   const env = setup();
   try {
     const { main } = env;
-    assert.equal(main.querySelector('.push-title').textContent, '同步');
+    assert.equal(main.querySelector('.nb-title').textContent, '多设备同步');
     assert.ok(main.textContent.includes(t('sync.intro')));
     const [code, repo, token, exp] = inputs(main);
     assert.equal(code.attrs.placeholder, '粘贴同步码（picknest-sync: 开头）');
@@ -221,8 +221,9 @@ test('开着：仓库、上次同步、有没传的修改、离线、出错的�
 
 test('令牌到期：两周内提醒（还有几天 / 今天）、过期了说怎么办；没填过到期日可以在这里补上（点「保存」才算）', async () => {
   const now = Date.now();
-  // 多留一小时：页面自己取的「现在」比这里晚几毫秒，正好 5 天整会按 4 天算（真的到期日都是那天 23:59）
-  for (const [exp, want] of [[now + 5 * 864e5 + 3600e3, '还有 5 天'], [now + 3600e3, '今天到期'], [now - 2 * 864e5, '令牌已经过期']]) {
+  // 按日历取 n 天后那天的最后一刻（真的到期日也是那天结束时）：不用「现在 + n × 24 小时」，不然晚上 11 点以后跑会算到第二天去
+  const dayEnd = (n) => { const d = new Date(now); d.setDate(d.getDate() + n); d.setHours(23, 59, 59, 999); return d.getTime(); };
+  for (const [exp, want] of [[dayEnd(5), '还有 5 天'], [dayEnd(0), '今天到期'], [dayEnd(-2), '令牌已经过期']]) {
     const env = setup({ sync: { repo: 'me/data', token: TOKEN, at: now, tokenExp: exp } });
     try {
       assert.ok(byCls(env.main, 'sy-warn').textContent.includes(want), want);
@@ -319,28 +320,30 @@ test('英文、繁体（台湾用词）的同步页', () => {
   } finally { tw.done(); setLang('zh-Hans'); }
 });
 
-// ---------- 设置 → 数据 ----------
+// ---------- 设置 → 备份与恢复 ----------
 const item = (id, fields = {}) => normalizeRecord('items', { id, listId: 'l_groceries', name: id, status: 'need', updatedAt: Date.now(), ...fields });
 
-test('数据：下载备份（文件名带日期、内容能读回来、没有令牌）、记下上次备份；能分享文件的设备上多一个「分享备份…」', async () => {
+test('备份与恢复：导出备份（文件名带日期、内容能读回来、没有令牌）、记下上次备份（还没备份过琥珀色）；能分享文件的设备上多一个「分享备份…」', async () => {
   const env = setup({ page: 'data', sync: { repo: 'me/data', token: TOKEN } });
   try {
     const { main } = env;
     state.mutate(s => { s.data.items.i_milk = item('i_milk', { name: '牛奶' }); });
-    assert.equal(main.querySelector('.push-title').textContent, '数据');
-    assert.ok(main.textContent.includes('这台设备还没备份过。'));
+    assert.equal(main.querySelector('.nb-title').textContent, '备份与恢复', '标题在顶栏中间，和设置首页那一行一样');
+    const last = byCls(main, 'data-last');
+    assert.deepEqual([last.textContent, cls(last, 'set-warn')], ['上次备份：还没备份过', true]);
     assert.equal(btn(main, '分享备份…'), undefined);
     const anchors = [];
     const append = env.doc.body.appendChild.bind(env.doc.body);
     env.doc.body.appendChild = (el) => { anchors.push(el); return append(el); };
-    await btn(main, '下载备份').fire('click');
+    await btn(main, '导出备份').fire('click');
     assert.match(anchors[0].attrs.download, /^picknest-backup-\d{8}\.json$/);
     assert.equal(anchors[0].clicks, 1);
     const text = await env.blobs[0].text();
     assert.equal(JSON.parse(text).state.data.items.i_milk.name, '牛奶');
     assert.ok(!text.includes(TOKEN));
     assert.ok(state.getLocal().lastBackupAt > 0);
-    assert.ok(main.textContent.includes('这台设备上次备份：今天 '), '就地改那一行');
+    assert.equal(byCls(main, 'data-last'), last, '就地改那一行');
+    assert.deepEqual([last.textContent, cls(last, 'set-warn')], ['上次备份：今天', false]);
   } finally { env.done(); }
   const sh = setup({ page: 'data', share: true });
   try {
@@ -353,7 +356,7 @@ test('数据：下载备份（文件名带日期、内容能读回来、没有�
   } finally { sh.done(); }
 });
 
-test('数据：从备份恢复先确认（几张清单、几样东西、什么时候的），合并后说改了几条，开着同步马上同步；读不出来的文件说清楚、不问', async () => {
+test('备份与恢复：从备份恢复先确认（几张清单、几样东西、什么时候的），合并后说改了几条，开着同步马上同步；读不出来的文件说清楚、不问', async () => {
   const env = setup({ page: 'data', sync: { repo: 'me/data', token: TOKEN } });
   try {
     const { main } = env;
@@ -372,6 +375,7 @@ test('数据：从备份恢复先确认（几张清单、几样东西、什么�
     env.answer = false;
     await pick(text);
     assert.equal(env.confirms[0].title, '从备份恢复？');
+    assert.equal(env.confirms[0].confirmLabel, '恢复');
     assert.equal(env.confirms[0].message.split('\n')[0], '备份里有 2 张清单、1 样东西。');
     assert.ok(env.confirms[0].message.includes('2026年11月1日 9:30'));
     assert.equal(state.getState().data.items.i_new, undefined, '取消了就不合并');
@@ -385,21 +389,18 @@ test('数据：从备份恢复先确认（几张清单、几样东西、什么�
   } finally { env.done(); }
 });
 
-test('数据：最近删除的入口带着几项；恢复前的原始数据只在修过本机数据以后才有', async () => {
+test('备份与恢复：最近删除的入口在设置首页，不在这一页；恢复前的原始数据只在修过本机数据以后才有', async () => {
   const env = setup({ page: 'data' });
   try {
-    const row = find(env.main, el => el.tag === 'a' && el.attrs.href === '#/deleted');
-    assert.equal(byCls(row, 'set-count').textContent, '0');
+    assert.equal(find(env.main, el => el.tag === 'a' && el.attrs.href === '#/deleted'), undefined);
     assert.equal(btn(env.main, '下载恢复前的原始数据'), undefined);
     assert.ok(!env.main.textContent.includes('null'), '没有的部分不画成字「null」');
   } finally { env.done(); }
   const env2 = setup({ page: 'data' });
   try {
-    state.mutate(s => { s.data.items.i_a = deletedRecord(item('i_a')); s.data.stores.s_costco = deletedRecord(s.data.stores.s_costco); });
     env2.archive = { app: 'picknest', v: 1, kind: 'local-recovery', records: [{ key: 'picknest.state', raw: '{broken' }] };
     env2.main.replaceChildren();
     dataPage(env2.main, { name: 'settings', sub: 'data' }, env2.ctx);
-    assert.equal(byCls(find(env2.main, el => el.tag === 'a' && el.attrs.href === '#/deleted'), 'set-count').textContent, '2');
     await btn(env2.main, '下载恢复前的原始数据').fire('click');
     assert.equal(JSON.parse(await env2.blobs.at(-1).text()).records[0].raw, '{broken');
   } finally { env2.done(); }

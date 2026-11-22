@@ -63,6 +63,7 @@ const ICONS = {
   open: { kids: [P('M13.5 4.5h6v6'), P('M19.5 4.5l-8 8'), P('M17.5 13.5v4a2 2 0 01-2 2h-9a2 2 0 01-2-2v-9a2 2 0 012-2h4')] },
   // 搜索：放大镜
   search: { kids: [C(10.5, 10.5, 6), P('M15 15l5 5')] },
+  trash: { kids: [P('M4.5 7h15M9.5 7V5a1.5 1.5 0 011.5-1.5h2A1.5 1.5 0 0114.5 5v2M6.5 7l1 12a1.5 1.5 0 001.5 1.4h6a1.5 1.5 0 001.5-1.4l1-12')] },
   // 开始购物：购物车
   cart: { kids: [P('M3 4.5h2.6l2.2 10.2a1.5 1.5 0 001.5 1.2h8.3a1.5 1.5 0 001.5-1.1L21 8H6.6'), C(10, 19.6, 1.3), C(17, 19.6, 1.3)] },
 };
@@ -328,16 +329,19 @@ export function keepUnderFinger(ctx, main, fid, fn) {
 export const backText = (ctx, fallback) => h('span.back-label', null, ctx && typeof ctx.backLabel === 'function' ? ctx.backLabel(fallback) : fallback);
 
 /**
- * 推入的页面（设置 → 商店 / 分类 / 同步 / 数据、最近删除）：吸顶的顶栏（左边返回，右边可选一个按钮 add = { label, run, fid }）和大标题，
- * 返回放内容的容器（div.page.<cls>）。顶栏和清单页一样吸顶：长的一页滚下去也要能返回；宽屏有侧栏，CSS 把返回藏起来
+ * 推入的页面（设置 → 商店 / 分类 / 多设备同步 / 备份与恢复、最近删除）：吸顶的顶栏，和 Babble 一样左边返回、中间标题（h1.nb-title，长了省略）、
+ * 右边可选一个按钮 add = { label, run, fid }（窄的手机上只显示 +）；返回放内容的容器（div.page.<cls>）。长的一页滚下去也要能返回、新增。
+ * 这些页面不管哪种布局都是一栏、没有左栏可回，所以宽屏也显示返回（只有双栏右栏的清单页、一家店、搜索把返回藏起来：左栏就是上一页）
  */
 export function pushFrame(main, ctx, title, { add = null, back = '/settings', backLabel = t('nav.settings'), cls = '' } = {}) {
   const page = h('div.page' + (cls ? '.' + cls : ''));
   main.append(
-    h('header.navbar.lp-nav', null,
+    h('header.navbar.lp-nav.push-nav', null,
       h('button.back', { type: 'button', onclick: () => ctx.back(back) }, icon('back'), backText(ctx, backLabel)),
-      add ? h('button.tb-btn', { type: 'button', dataset: { fid: add.fid || 'push-add' }, onclick: add.run }, icon('plus'), add.label) : null),
-    h('div.page.push-head', null, h('h1.push-title', null, title)),
+      h('h1.nb-title', null, title),
+      // 字放在 span 里：窄的手机（375 以下）上只留 +（英文的「+ Add Category」会折成两行、贴着中间的标题），读屏照样念 aria-label
+      add ? h('button.tb-btn', { type: 'button', 'aria-label': add.label, dataset: { fid: add.fid || 'push-add' }, onclick: add.run },
+        icon('plus'), h('span.tb-label', null, add.label)) : h('span')),
     page);
   return page;
 }

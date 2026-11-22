@@ -178,7 +178,7 @@ export function createPersistence(storage, { locks = /** @type {any} */ (globalT
         st.setItem(archiveKey, JSON.stringify(archive));
         st.setItem(STATE_KEY, JSON.stringify(merged));
         for (const { key } of records) if (key.startsWith(PENDING_PREFIX)) st.removeItem(key);
-        // 只留这一份存档：archive() 和「设置 → 数据」只给最新的，旧的下载不到，只占空间（同一个域名下的 App 共用一份配额，
+        // 只留这一份存档：archive() 和「设置 → 备份与恢复」只给最新的，旧的下载不到，只占空间（同一个域名下的 App 共用一份配额，
         // 占满了以后每次保存都失败，连下一次恢复要写的存档也写不进去）
         const old = [];
         for (let i = 0; i < st.length; i++) { const key = st.key(i); if (key && key.startsWith(ARCHIVE_PREFIX) && key !== archiveKey) old.push(key); }

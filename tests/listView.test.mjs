@@ -421,13 +421,13 @@ test('编辑：数量 −/+、单位快捷选项、分类、备注；「完成�
     assert.equal(store.value, 's_wholefoods');
     // 名字空着：报错、不关、什么也没改
     control(sh, '名字').value = '  ';
-    await btn(sh.el, '完成').fire('click');
+    await btn(sh.el, '保存').fire('click');
     assert.equal(fieldOf(sh, '名字').err.textContent, '名字不能空着');
     assert.equal(control(sh, '名字').attrs['aria-invalid'], 'true');
     assert.ok(sh.open);
     assert.equal(itemNamed('牛奶').qty, 1);
     control(sh, '名字').value = '牛奶';
-    await btn(sh.el, '完成').fire('click');
+    await btn(sh.el, '保存').fire('click');
     await settle();
     assert.equal(sh.open, false);
     const it = itemNamed('牛奶');
@@ -441,7 +441,7 @@ test('编辑：数量 −/+、单位快捷选项、分类、备注；「完成�
     await dec2.fire('click'); await dec2.fire('click');
     assert.equal(control(sh2, '数量').value, '');
     assert.equal(dec2.attrs['aria-disabled'], 'true');
-    await btn(sh2.el, '完成').fire('click');
+    await btn(sh2.el, '保存').fire('click');
     await settle();
     assert.equal(itemNamed('牛奶').qty, null);
     assert.deepEqual(env.rows(), [['牛奶', '']]);
@@ -460,7 +460,8 @@ test('编辑：有没保存的修改时关面板先问；没改直接关', async
     env.answer = false;
     sh.tryClose();
     await settle();
-    assert.equal(env.confirms.at(-1).message, '放弃这次的修改？');
+    assert.equal(env.confirms.at(-1).message, '放弃没保存的修改？');
+    assert.deepEqual([env.confirms.at(-1).cancelLabel, env.confirms.at(-1).confirmLabel, env.confirms.at(-1).danger], ['继续编辑', '放弃', true], '和别的 App 一样：[继续编辑] [放弃]，焦点先给继续编辑');
     assert.ok(sh.open);
     env.answer = true;
     sh.tryClose();
@@ -482,17 +483,17 @@ test('编辑一般清单的东西：状态（要买 / 以后再说 / 已买）�
     assert.equal(openA.hidden, true, '没有链接时不显示「打开」');
     url.value = 'javascript:alert(1)'; await url.fire('input');
     assert.equal(openA.hidden, true);
-    await btn(sh.el, '完成').fire('click');
+    await btn(sh.el, '保存').fire('click');
     assert.equal(fieldOf(sh, '商品链接').err.textContent, '链接要以 http:// 或 https:// 开头');
     url.value = 'https://example.com/lamp'; await url.fire('input');
     assert.deepEqual([openA.hidden, openA.attrs.href, openA.attrs.target, openA.attrs.rel], [false, 'https://example.com/lamp', '_blank', 'noopener noreferrer']);
     control(sh, '价格').value = '-3';
-    await btn(sh.el, '完成').fire('click');
+    await btn(sh.el, '保存').fire('click');
     assert.equal(fieldOf(sh, '价格').err.textContent, '价格要是 0 或更大的数字');
     assert.equal(fieldOf(sh, '商品链接').err.hidden, true, '改好的错误收起来');
     control(sh, '价格').value = '$39.90';
     await btn(fieldOf(sh, '状态'), '以后再说').fire('click');
-    await btn(sh.el, '完成').fire('click');
+    await btn(sh.el, '保存').fire('click');
     await settle();
     const it = itemNamed('台灯', 'l_tobuy');
     assert.deepEqual([it.url, it.price, it.status], ['https://example.com/lamp', 39.9, 'later']);
@@ -514,12 +515,12 @@ test('编辑：移到别的清单（那边已经有同名的先确认合并）�
     assert.equal(to.value, 'l_tobuy', '选着的是现在这张');
     to.value = 'l_groceries';
     env.answer = false;
-    await btn(sh.el, '完成').fire('click');
+    await btn(sh.el, '保存').fire('click');
     assert.equal(env.confirms.at(-1).message, '「食材」上已经有「电池」了，合并成一条？');
     assert.ok(sh.open);
     assert.equal(itemNamed('电池', 'l_tobuy').listId, 'l_tobuy');
     env.answer = true;
-    await btn(sh.el, '完成').fire('click');
+    await btn(sh.el, '保存').fire('click');
     await settle();
     assert.equal(sh.open, false);
     assert.equal(S().data.items.i_g.status, 'need', '合并成那一条，恢复成要买');
@@ -549,7 +550,7 @@ test('编辑：改了数量、备注再移到有同名的清单 → 合并后留
     control(sh, '数量').value = '3';
     control(sh, '备注').value = '黑色 M 码';
     control(sh, '清单').value = 'l_groceries';
-    await btn(sh.el, '完成').fire('click');
+    await btn(sh.el, '保存').fire('click');
     await settle();
     assert.equal(sh.open, false);
     const kept = S().data.items.i_g;
@@ -566,7 +567,7 @@ test('编辑：改了名字还没点完成就点「删除这一样」→ 先问�
     env.answer = false;
     await btn(sh.el, '删除这一样').fire('click');
     await settle();
-    assert.equal(env.confirms.at(-1).message, '放弃这次的修改？');
+    assert.equal(env.confirms.at(-1).message, '放弃没保存的修改？');
     assert.ok(sh.open);
     assert.ok(itemNamed('牛奶') && !itemNamed('牛奶').deleted, '没删');
     env.answer = true;
@@ -589,7 +590,7 @@ test('编辑：指定的商店、分类删掉了 → 显示未指定 / 未分类
     let sh = await open(env, '酱油');
     assert.deepEqual([control(sh, '商店').value, control(sh, '分类').value], ['', '']);
     control(sh, '备注').value = '老抽';
-    await btn(sh.el, '完成').fire('click');
+    await btn(sh.el, '保存').fire('click');
     await settle();
     const it = S().data.items.i_a;
     assert.deepEqual([it.note, it.storeId, it.categoryId], ['老抽', 's_gone', 'c_gone'], '商店、分类恢复了就回来');
@@ -617,7 +618,7 @@ test('⋯ → 编辑清单：改名、换图标；自建清单能删除（先确
     const name = find(sh.el, el => el.tag === 'input' && el.attrs.maxlength === '80');
     name.value = '木工活';
     await allCls(sh.el, 'icon-opt')[13].fire('click');
-    await btn(sh.el, '完成').fire('click');
+    await btn(sh.el, '保存').fire('click');
     await settle();
     assert.equal(byCls(env.main, 'lp-name').textContent, '木工活');
     assert.equal(S().data.lists.l_wood.icon, byCls(env.main, 'lp-icon').textContent);
@@ -722,6 +723,77 @@ test('首页：在 iPhone / iPad 的浏览器标签页里打开时说一句「�
     const e = setup({ view: 'home', extraDom: { navigator: { standalone } } });
     try { assert.equal(byCls(e.main, 'tab-note'), undefined, String(standalone)); } finally { e.done(); }
   }
+});
+
+test('首页：Mac 的 Safari 标签页里说「文件 → 添加到程序坞」；iPad（桌面版网站，UA 写的是 Mac，多点触控）照样说添加到主屏幕；程序坞上的、Mac 上别的浏览器不说', () => {
+  const SAFARI = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/19.0 Safari/605.1.15';
+  const CHROME = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
+  const mm = (standalone) => () => ({ matches: standalone, addEventListener() {} });
+  const mac = setup({ view: 'home', extraDom: { navigator: { userAgent: SAFARI, platform: 'MacIntel', maxTouchPoints: 0 }, matchMedia: mm(false) } });
+  try {
+    const note = byCls(mac.main, 'tab-note');
+    assert.ok(note && note.textContent.includes('文件 → 添加到程序坞'));
+    assert.ok(!note.textContent.includes('主屏幕'));
+  } finally { mac.done(); }
+  const ipad = setup({ view: 'home', extraDom: { navigator: { userAgent: SAFARI, platform: 'MacIntel', maxTouchPoints: 5, standalone: false }, matchMedia: mm(false) } });
+  try { assert.ok(byCls(ipad.main, 'tab-note').textContent.includes('分享 → 添加到主屏幕')); } finally { ipad.done(); }
+  const kinds = [
+    [{ userAgent: SAFARI, platform: 'MacIntel', maxTouchPoints: 0 }, true, null],       // 程序坞上的 App（display-mode: standalone）
+    // 现在的 Mac Safari 标签页里 navigator.standalone 也有、是 false：照样是 Mac；程序坞上 display-mode 是 standalone 就不说
+    [{ userAgent: SAFARI, platform: 'MacIntel', maxTouchPoints: 0, standalone: false }, false, 'mac'],
+    [{ userAgent: SAFARI, platform: 'MacIntel', maxTouchPoints: 0, standalone: false }, true, null],
+    [{ userAgent: SAFARI, platform: 'MacIntel', maxTouchPoints: 0, standalone: true }, false, null],
+    // Mac 上别的 App 里嵌的网页（UA 里没有 Safari）：没有「添加到程序坞」
+    [{ userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)', platform: 'MacIntel', maxTouchPoints: 0, standalone: false }, false, null],
+    [{ userAgent: 'iPhone', platform: 'iPhone', standalone: false }, true, null],      // 主屏幕上的（display-mode 也算）
+    [{ userAgent: CHROME, platform: 'MacIntel', maxTouchPoints: 0 }, false, null],      // Mac 上的 Chrome：没有「添加到程序坞」
+    [{ userAgent: SAFARI, platform: 'MacIntel', maxTouchPoints: 5 }, false, null],      // 别的 App 里的 iPad 浏览器（没有 standalone）：分不出来，不说
+    [{ userAgent: SAFARI, platform: 'MacIntel', maxTouchPoints: 0 }, false, 'mac'],
+    [{ userAgent: 'iPhone', platform: 'iPhone', standalone: false }, false, 'ios'],
+  ];
+  for (const [nav, installed, want] of kinds) assert.equal(home.tabNoteKind(nav, mm(installed)), want, JSON.stringify(nav));
+  setLang('en');
+  try { assert.ok(t('list.tabNoteMac').includes('File → Add to Dock')); } finally { setLang('zh-Hans'); }
+});
+
+test('清单页：⌘N（别的系统 Ctrl+N）把光标放进快速添加；面板开着、正在别的输入框里打字时不管，也不拦浏览器的快捷键', async () => {
+  const scrolled = [];
+  const env = setup({ extraDom: { navigator: { platform: 'MacIntel' } } });
+  try {
+    const input = env.input();
+    input.scrollIntoView = (o) => scrolled.push(o);
+    const press = (extra) => { let prevented = false; for (const fn of env.doc.events.keydown || []) fn({ key: 'n', preventDefault() { prevented = true; }, ...extra }); return prevented; };
+    const other = new Element('button');
+    other.focus();
+    assert.equal(press({ ctrlKey: true }), false, 'Mac 上 Ctrl+N 不算');
+    assert.notEqual(env.doc.activeElement, input);
+    assert.equal(press({ metaKey: true, shiftKey: true }), false, '⇧⌘N 是别的快捷键');
+    assert.equal(press({ metaKey: true }), true);
+    assert.equal(env.doc.activeElement, input);
+    assert.deepEqual(scrolled, [{ block: 'nearest' }], '滚到看得见的地方');
+    assert.equal(press({ metaKey: true, key: 'N' }), true, '已经在快速添加里：照样算（大写 N 也行）');
+    // 正在别的输入框里打字：不抢
+    const note = new Element('textarea');
+    note.focus();
+    assert.equal(press({ metaKey: true }), false);
+    assert.equal(env.doc.activeElement, note);
+    // 面板、确认框开着：不管
+    other.focus();
+    const dlg = new Element('dialog');
+    const realQS = env.doc.querySelector.bind(env.doc);
+    env.doc.querySelector = (q) => (q === 'dialog[open]' ? dlg : realQS(q));
+    assert.equal(press({ metaKey: true }), false);
+    assert.equal(env.doc.activeElement, other);
+    env.doc.querySelector = realQS;
+  } finally { env.done(); }
+  assert.equal((env.doc.events.keydown || new Set()).size, 0, '离开清单页就不再听');
+  const win = setup({ extraDom: { navigator: { platform: 'Win32' } } });
+  try {
+    const press = (extra) => { let prevented = false; for (const fn of win.doc.events.keydown || []) fn({ key: 'n', preventDefault() { prevented = true; }, ...extra }); return prevented; };
+    assert.equal(press({ metaKey: true }), false, '别的系统上 ⊞N 不算');
+    assert.equal(press({ ctrlKey: true }), true);
+    assert.equal(win.doc.activeElement, win.input());
+  } finally { win.done(); }
 });
 
 test('首页：新建清单（名字、类型、图标、默认商店），建好进清单页；名字空着报错', async () => {

@@ -1,4 +1,4 @@
-// 同步：状态标签（sync.off … sync.ok，app.js 的 ctx.syncBadge 和设置页共用）、设置 → 同步（views/sync.js）、出错的说明 syncErr.<code>（core/sync.js 的 SyncError）。
+// 同步：状态标签（sync.off … sync.ok，app.js 的 ctx.syncBadge 和设置页共用）、设置 → 多设备同步（views/sync.js）、出错的说明 syncErr.<code>（core/sync.js 的 SyncError）。
 // syncErr.auth 叫人点「换令牌」，只在开着同步的状态那一行用；连接、换令牌、恢复页里令牌不对用 syncErr.authNew / recovery.cloudAuth（那里没有这个按钮）。
 // 繁體（台灣）照 GitHub 台灣介面的叫法：儲存庫、存取權杖、私人。动态字段 {x} 三种语言一致（测试会查）。
 const plural = (n, one, many) => (Number(n) === 1 ? one : many);
@@ -9,7 +9,7 @@ export const STRINGS = {
     'sync.token': '令牌快到期', 'sync.pending': '待同步', 'sync.ok': '已同步 · {time}', 'sync.ok0': '已同步',
     'sync.intro': '清单、商店和分类另存一份到你自己的 GitHub 私有仓库里，每台设备打开时自动同步，不经过任何别的服务器。',
     'sync.haveH': '已经在别的设备上开了同步',
-    'sync.have': '在那台设备的「设置 → 同步」点「复制同步码」，用隔空投送或通用剪贴板送过来，粘贴到这里。',
+    'sync.have': '在那台设备的「设置 → 多设备同步」点「复制同步码」，用隔空投送或通用剪贴板送过来，粘贴到这里。',
     'sync.code': '同步码', 'sync.codePh': '粘贴同步码（picknest-sync: 开头）', 'sync.badCode': '这不是 PickNest 的同步码（应该是 picknest-sync: 开头）。',
     'sync.codeFilled': '仓库和令牌都填好了，点下面的「连接」。',
     'sync.firstH': '第一次设置', 'sync.stepsH': '怎么建仓库和令牌',
@@ -28,7 +28,7 @@ export const STRINGS = {
     'sync.last': '上次同步：{time}', 'sync.never': '还没同步成功过。',
     'sync.pendingLine': '有修改还没上传。', 'sync.offlineLine': '现在连不上 GitHub：改动先存在这台设备上，联网后自动上传。',
     'sync.now': '立即同步', 'sync.done': '已同步',
-    'sync.copyCode': '复制同步码', 'sync.codeCopied': '同步码已复制。在另一台设备的「设置 → 同步」里粘贴。同步码里就是令牌，不要发给别人。',
+    'sync.copyCode': '复制同步码', 'sync.codeCopied': '同步码已复制。在另一台设备的「设置 → 多设备同步」里粘贴。同步码里就是令牌，不要发给别人。',
     'sync.copyFail': '没能复制到剪贴板，请再试一次。',
     'sync.renew': '换令牌',
     'sync.renewHelp': '令牌快到期或者被撤销了：在 GitHub 新建一个（权限和原来一样），粘贴到这里，不用停止同步；别的设备复制来的新同步码也行。换好以后点「复制同步码」，在别的设备上也点「换令牌」，粘贴这个新的同步码。',
@@ -68,7 +68,7 @@ export const STRINGS = {
     'sync.token': '權杖快到期', 'sync.pending': '待同步', 'sync.ok': '已同步 · {time}', 'sync.ok0': '已同步',
     'sync.intro': '清單、商店和分類另存一份到你自己的 GitHub 私人儲存庫裡，每臺裝置開啟時自動同步，不經過任何其他伺服器。',
     'sync.haveH': '已經在別的裝置上開了同步',
-    'sync.have': '在那臺裝置的「設定 → 同步」點「複製同步碼」，用 AirDrop 或通用剪貼板傳過來，貼到這裡。',
+    'sync.have': '在那臺裝置的「設定 → 多裝置同步」點「複製同步碼」，用 AirDrop 或通用剪貼板傳過來，貼到這裡。',
     'sync.code': '同步碼', 'sync.codePh': '貼上同步碼（picknest-sync: 開頭）', 'sync.badCode': '這不是 PickNest 的同步碼（應該是 picknest-sync: 開頭）。',
     'sync.codeFilled': '儲存庫和權杖都填好了，點下面的「連線」。',
     'sync.firstH': '第一次設定', 'sync.stepsH': '怎麼建立儲存庫和權杖',
@@ -87,7 +87,7 @@ export const STRINGS = {
     'sync.last': '上次同步：{time}', 'sync.never': '還沒同步成功過。',
     'sync.pendingLine': '有修改還沒上傳。', 'sync.offlineLine': '現在連不上 GitHub：改動先存在這臺裝置上，連上網路後自動上傳。',
     'sync.now': '立即同步', 'sync.done': '已同步',
-    'sync.copyCode': '複製同步碼', 'sync.codeCopied': '同步碼已複製。在另一臺裝置的「設定 → 同步」裡貼上。同步碼裡就是權杖，不要傳給別人。',
+    'sync.copyCode': '複製同步碼', 'sync.codeCopied': '同步碼已複製。在另一臺裝置的「設定 → 多裝置同步」裡貼上。同步碼裡就是權杖，不要傳給別人。',
     'sync.copyFail': '無法複製到剪貼簿，請再試一次。',
     'sync.renew': '更換權杖',
     'sync.renewHelp': '權杖快到期或被撤銷了：在 GitHub 建立一個新的（權限和原本一樣），貼到這裡，不用停止同步；其他裝置複製來的新同步碼也可以。換好之後點「複製同步碼」，在其他裝置上也點「更換權杖」，貼上這個新的同步碼。',
@@ -127,7 +127,7 @@ export const STRINGS = {
     'sync.token': 'Token expiring', 'sync.pending': 'Pending', 'sync.ok': 'Synced · {time}', 'sync.ok0': 'Synced',
     'sync.intro': 'Your lists, stores and categories are also saved to your own private GitHub repository and sync whenever a device opens the app. Nothing goes through any other server.',
     'sync.haveH': 'Already syncing on another device',
-    'sync.have': 'On that device, go to Settings → Sync and tap Copy sync code, send it over with AirDrop or Universal Clipboard, and paste it here.',
+    'sync.have': 'On that device, go to Settings → Multi-device sync and tap Copy sync code, send it over with AirDrop or Universal Clipboard, and paste it here.',
     'sync.code': 'Sync code', 'sync.codePh': 'Paste a sync code (starts with picknest-sync:)', 'sync.badCode': "This isn't a PickNest sync code (it should start with picknest-sync:).",
     'sync.codeFilled': 'Repository and token are filled in. Tap Connect below.',
     'sync.firstH': 'First-time setup', 'sync.stepsH': 'How to create the repository and token',
@@ -146,7 +146,7 @@ export const STRINGS = {
     'sync.last': 'Last synced: {time}', 'sync.never': "Hasn't synced successfully yet.",
     'sync.pendingLine': "Some changes haven't been uploaded yet.", 'sync.offlineLine': "Can't reach GitHub right now. Changes are kept on this device and upload once you're back online.",
     'sync.now': 'Sync now', 'sync.done': 'Synced',
-    'sync.copyCode': 'Copy sync code', 'sync.codeCopied': 'Sync code copied. Paste it under Settings → Sync on another device. It contains your token, so keep it to yourself.',
+    'sync.copyCode': 'Copy sync code', 'sync.codeCopied': 'Sync code copied. Paste it under Settings → Multi-device sync on another device. It contains your token, so keep it to yourself.',
     'sync.copyFail': "Couldn't copy to the clipboard. Please try again.",
     'sync.renew': 'Replace token',
     'sync.renewHelp': 'Token about to expire or revoked? Create a new one on GitHub (same permissions) and paste it here — no need to stop syncing. A new sync code copied from another device works too. Then tap Copy sync code and, on each of your other devices, tap Replace token and paste the new code.',

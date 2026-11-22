@@ -114,7 +114,7 @@ test('页面：一句说明、四组（新删的在前）、每行一个「恢�
   const env = page();
   try {
     const { main } = env;
-    assert.equal(main.querySelector('.push-title').textContent, '最近删除');
+    assert.equal(main.querySelector('.nb-title').textContent, '最近删除', '标题在顶栏中间');
     assert.ok(main.textContent.includes(t('deleted.lead')));
     assert.deepEqual(env.rows(), [['lists', ['木工']], ['items', ['面包', '鸡蛋']], ['stores', ['Costco']], ['categories', ['书籍']]]);
     const restoreBtns = all(main, el => el.tag === 'button' && el.textContent === '恢复');
@@ -125,7 +125,7 @@ test('页面：一句说明、四组（新删的在前）、每行一个「恢�
     assert.ok(bread.textContent.includes('已买') && bread.textContent.includes('食材'));
     assert.ok(allCls(main, 'del-at').every(el => el.textContent.length > 0), '都写着什么时候删的');
     find(main, el => el.tag === 'button' && el.classList.contains('back')).fire('click');
-    assert.deepEqual(env.navs, ['back:/settings/data'], '返回「数据」');
+    assert.deepEqual(env.navs, ['back:/settings'], '从设置首页「数据」那一组进来：返回设置');
   } finally { env.done(); }
 });
 
@@ -167,7 +167,9 @@ test('页面：点「恢复」→ ctx.restore、这一行没了、焦点给同�
 test('页面：什么都没删 → 一句「没有删掉的东西」；东西很多时先列 50 样，「再显示」就地多列 50 样、焦点给新列出来的第一样', async () => {
   const empty = page({ seedFn: () => { state.load({ storage: null }); return {}; } });
   try {
-    assert.equal(empty.main.querySelector('.empty').textContent, '没有删掉的东西。');
+    const box = empty.main.querySelector('.del-empty');
+    assert.equal(box.children[0].tag, 'svg', '和 Babble 一样：一个淡淡的图标');
+    assert.equal(box.children[1].textContent, '没有删掉的东西。');
     assert.equal(allCls(empty.main, 'del-sec').length, 0);
   } finally { empty.done(); }
   const env = page({ lang: 'en', seedFn: () => {

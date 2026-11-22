@@ -38,9 +38,26 @@ export const composing = (e) => e.isComposing || e.keyCode === 229;
 /** 输入框的 onkeydown：回车（不是选字的）= fn() */
 export const onEnter = (fn) => (e) => { if (e.key === 'Enter' && !composing(e)) { e.preventDefault(); fn(); } };
 
-const askDiscard = (ctx) => ctx.confirm({ message: t('item.discardQ'), confirmLabel: t('item.discard'), danger: true });
+// 叫法和别的几个 App 一样：「放弃没保存的修改？」[继续编辑] [放弃]；焦点先给「继续编辑」（danger），连按两下回车不会把改的丢掉
 /**
- * 给 sheet 的 beforeClose 用：有没保存的修改时先不关，问一句「放弃这次的修改？」，确定了才关。
+ * 「新建」的快捷键：Mac、iPad、iPhone 的键盘是 ⌘N，别的系统 Ctrl+N（和 Babble、房屋账本一样）。按着 Shift / Option 的是别的快捷键，不算
+ * @param {KeyboardEvent} e @param {any} [nav] navigator（测试给假的）
+ */
+export function isNewKey(e, nav = globalThis.navigator) {
+  if (!e || e.shiftKey || e.altKey || String(e.key || '').toLowerCase() !== 'n') return false;
+  const apple = /Mac|iPhone|iPad|iPod/.test(String((nav && nav.platform) || ''));
+  return apple ? !!e.metaKey && !e.ctrlKey : !!e.ctrlKey && !e.metaKey;
+}
+/** 焦点是不是在能打字的地方（输入框、多行文本框、可编辑的元素）：快捷键不要抢走正在打的字 @param {any} el */
+export function isTextField(el) {
+  if (!el || !el.tagName) return false;
+  if (el.isContentEditable || el.tagName === 'TEXTAREA') return true;
+  return el.tagName === 'INPUT' && !/^(checkbox|radio|button|submit|reset|range|color|file|image)$/i.test(String(el.type || 'text'));
+}
+
+const askDiscard = (ctx) => ctx.confirm({ message: t('item.discardQ'), cancelLabel: t('common.keepEditing'), confirmLabel: t('item.discard'), danger: true });
+/**
+ * 给 sheet 的 beforeClose 用：有没保存的修改时先不关，问一句「放弃没保存的修改？」，确定了才关。
  * getSheet() 返回 sheet() 的结果（beforeClose 在 sheet 建好以后才会被调用）
  */
 export function discardGuard(ctx, isDirty, getSheet) {
@@ -51,7 +68,7 @@ export function discardGuard(ctx, isDirty, getSheet) {
   };
 }
 /**
- * 面板里马上生效的按钮（归档、删除）的 onclick：和关面板一样，有没保存的修改时先问「放弃这次的修改？」，
+ * 面板里马上生效的按钮（归档、删除）的 onclick：和关面板一样，有没保存的修改时先问「放弃没保存的修改？」，
  * 放弃了（或者没改过）才关面板、做 fn。不然改了名字再点「归档」，改的名字就悄悄丢了
  */
 export function closeThen(ctx, isDirty, getSheet, fn) {

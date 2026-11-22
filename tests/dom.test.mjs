@@ -29,12 +29,12 @@ const button = (root, text) => find(root, el => el.tag === 'button' && el.textCo
 test('确认框：只有一句话时那句话就是它的名字（读屏打开就念问题）；有标题时标题是名字、那句话是说明；会删东西的焦点先给「取消」', async () => {
   const env = setup();
   try {
-    let p = confirmDialog({ message: '放弃这次的修改？', confirmLabel: '放弃', danger: true });
+    let p = confirmDialog({ message: '放弃没保存的修改？', cancelLabel: '继续编辑', confirmLabel: '放弃', danger: true });
     let d = dialog(env.doc);
     const msg = find(d, el => el.tag === 'p');
     assert.equal(d.getAttribute('aria-label'), null);
     assert.equal(d.getAttribute('aria-labelledby'), msg.id);
-    assert.equal(env.doc.activeElement, button(d, '取消'), 'danger：连按两下回车不会直接放弃');
+    assert.equal(env.doc.activeElement, button(d, '继续编辑'), 'danger：连按两下回车不会直接放弃');
     await button(d, '放弃').fire('click');
     assert.equal(await p, true);
     p = confirmDialog({ title: '删除「木工」？', message: '里面的 3 样东西会跟着隐藏。', confirmLabel: '删除', danger: true });

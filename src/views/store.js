@@ -26,7 +26,7 @@ export function render(main, params, ctx) {
   const view = () => storeView(ctx.local, storeId);
   const setView = (patch) => ctx.setLocal(storeViewPatch(ctx.local, storeId, patch));
 
-  // 顶栏吸顶（和清单页一样）：长的一页滚下去也能返回；宽屏有侧栏，CSS 把返回藏起来
+  // 顶栏吸顶（和清单页一样）：长的一页滚下去也能返回；双栏右栏里 CSS 把返回藏起来（左栏就是上一页）
   const navbar = h('header.navbar.lp-nav', null, h('button.back', { type: 'button', onclick: () => ctx.back('/stores') }, icon('back'), backText(ctx, t('nav.stores'))),
     h('button.tb-btn.shop-btn', { type: 'button', dataset: { fid: 'lp-shop' }, onclick: () => ctx.navigate('/s/' + encodeURIComponent(params.id) + '?shop=1') }, icon('cart'), t('shop.start')));
   const head = h('div.page.lp-head');

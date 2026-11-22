@@ -34,7 +34,7 @@ export function recentlyDeleted(state) {
   }
   return out;
 }
-/** 一共几项（设置 → 数据「最近删除」后面的数） @param {State} state */
+/** 一共几项（设置首页「最近删除」后面的数） @param {State} state */
 export const deletedCount = state => Object.values(recentlyDeleted(state)).reduce((n, arr) => n + arr.length, 0);
 
 /** 删掉的清单恢复时一起回来的东西有几样（没删除的；分开删掉的不算，它们在「东西」里自己列着） @param {State} state @param {string} listId */

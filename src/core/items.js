@@ -312,7 +312,7 @@ export function validateItemPatch(state, item, patch, { moving = false } = {}) {
 }
 
 /**
- * 改一样东西（编辑面板的「完成」）。先检查，有错就什么也不改、返回错误；改了分类、单位记进 memory（下次同名的直接用）；
+ * 改一样东西（编辑面板的「保存」）。先检查，有错就什么也不改、返回错误；改了分类、单位记进 memory（下次同名的直接用）；
  * 改状态时已买的记账和 setStatus 一样；已买的东西改了商店或者名字，那次购买跟着挪过去（从旧的名字 / 商店减掉，记到新的上）
  * @param {State} state @param {string} id @param {ItemPatch} patch @param {number} [now]
  * @returns {{ ok: true, item: Item } | { ok: false, errors: Record<string, string> }}
@@ -346,7 +346,7 @@ export function editItem(state, id, patch, now = Date.now(), { moving = false } 
 }
 
 /**
- * 编辑面板的「完成」：改一样东西，同时换了清单就移过去（toListId；没换给 null）。在一起做：那边有同名的要合并时，
+ * 编辑面板的「保存」：改一样东西，同时换了清单就移过去（toListId；没换给 null）。在一起做：那边有同名的要合并时，
  * 这次改的（数量、备注……）要落在留下来的那一条上，不能改在随后被删掉的这一条上（页面先用 moveConflict 问过要不要合并）
  * @param {State} state @param {string} id @param {ItemPatch} patch @param {string | null} toListId @param {number} [now]
  * @returns {{ ok: true, item: Item, outcome: 'edited' | 'moved' | 'merged', id: string } | { ok: false, errors: Record<string, string> }}

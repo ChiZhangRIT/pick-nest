@@ -1,4 +1,4 @@
-// 设置 → 同步（#/settings/sync）。
+// 设置 → 多设备同步（#/settings/sync）。
 // 没开：粘贴同步码（马上填好仓库、令牌，带着到期日的话也填上）、第一次设置的步骤（建私有仓库、建 Fine-grained 令牌）、仓库 + 令牌 + 令牌到期日（可选）、「连接」。
 // 开着：仓库、状态（上次同步、有没传的修改、离线、出错的说明）、令牌到期日（两周内到期提醒；没填过可以补上，点「保存」才算）、
 //   「立即同步」「复制同步码」（带着到期日：用它连上的设备也会提醒）「换令牌」（粘贴新令牌，或者别的设备复制来的新同步码，不用停止同步）、
@@ -42,7 +42,7 @@ export function syncPage(main, params, ctx) {
   const lang = ctx.lang();
   const page = pushFrame(main, ctx, t('set.sync'), { cls: 'set sync' });
   // 标题能接焦点（tabindex -1）：按过的按钮重画后没了，焦点给它，不掉回页首的 <body>
-  const title = main.querySelector('.push-title');
+  const title = main.querySelector('.nb-title');
   if (title) { title.tabIndex = -1; title.dataset.fid = 'sy-title'; }
   // 跨重画留着：填了一半的表单、正在连接、换令牌的面板开没开、上次连接的错误
   const form = { code: '', repo: '', token: '', exp: '' };

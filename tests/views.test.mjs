@@ -64,23 +64,28 @@ test('首页：所有清单都归档了 → 显示一句说明，不是空白', 
   } finally { dom.restore(); }
 });
 
-test('设置：语言直接点选、外观立即生效且保留按钮、管理入口和版本号', () => {
+test('设置：语言是第一组的下拉框（没有组名，有读屏的名字）、同步 / 商店和分类 / 外观 / 数据 / 关于的顺序和组名、外观立即生效且保留按钮、版本号', () => {
   const dom = installDom();
   try {
     setLang('zh-Hans');
     const calls = [];
     const local = { theme: 'auto' };
-    const ctx = { local, build: 'picknest-v7', lang: () => 'zh-Hans', setLang: l => calls.push(['lang', l]), setTheme: th => { calls.push(['theme', th]); local.theme = th; } };
+    const ctx = { state: ensureSeeds(blankState()), local, build: 'picknest-v7', lang: () => 'zh-Hans', setLang: l => calls.push(['lang', l]), setTheme: th => { calls.push(['theme', th]); local.theme = th; } };
     const main = new Element('section');
     settings.render(main, { name: 'settings' }, ctx);
     assert.equal(text(main.querySelector('h1')), '设置');
-    assert.equal(main.querySelector('select'), null, '语言不经过系统下拉菜单');
-    const options = main.querySelectorAll('.set-language-radio');
-    assert.deepEqual(options.map(o => o.value), ['zh-Hans', 'zh-Hant-TW', 'en']);
-    assert.deepEqual(main.querySelectorAll('.set-language').map(o => text(o)), ['简体中文', '繁體中文（台灣）', 'English']);
-    assert.deepEqual(options.map(o => !!o.checked), [true, false, false]);
-    options[2].checked = true; options[2].fire('change');
+    // 语言：和别的 App 一样是下拉框，在最上面、没有组名；那一行的字跟着界面写（简体界面「语言 / Language」）
+    const secs = main.querySelectorAll('.set-sec');
+    assert.deepEqual(secs.map(s => text(s.querySelector('h2'))), [null, '同步', '商店和分类', '外观', '数据', '关于']);
+    const select = secs[0].querySelector('select');
+    assert.equal(select.attrs['aria-label'], '语言 / Language', '读屏念得出这是什么');
+    assert.equal(select.parent.tag, 'label', '整行是 <label>：点哪里都行');
+    assert.equal(select.dataset.fid, 'set-lang', '换语言重画后靠它把焦点放回来');
+    const options = select.querySelectorAll('option');
+    assert.deepEqual(options.map(o => [o.value, text(o), !!o.selected]), [['zh-Hans', '简体中文', true], ['zh-Hant-TW', '繁體中文（台灣）', false], ['en', 'English', false]]);
+    select.value = 'en'; select.fire('change');
     assert.deepEqual(calls.at(-1), ['lang', 'en']);
+    assert.equal(main.querySelector('.set-language-radio'), null, '不再是一排单选');
     const seg = () => main.querySelector('.seg');
     const buttons = () => seg().querySelectorAll('button');
     assert.deepEqual(buttons().map(b => [text(b), b.attrs['aria-pressed']]), [['自动', 'true'], ['浅色', 'false'], ['深色', 'false']]);
@@ -90,13 +95,58 @@ test('设置：语言直接点选、外观立即生效且保留按钮、管理�
     assert.deepEqual(buttons().map(b => b.attrs['aria-pressed']), ['false', 'false', 'true'], '换完马上更新按钮');
     assert.deepEqual(buttons().map(b => b.classList.contains('on')), [false, false, true]);
     assert.equal(buttons()[2], dark, '就地更新、不换掉按钮：焦点和读屏的位置不丢');
-    assert.equal(options[2].dataset.fid, 'set-lang-en', '换语言后焦点回到刚选中的选项');
     assert.ok(text(main.querySelector('.set-version')).includes('picknest-v7'));
     assert.ok(text(main).includes('PickNest'));
-    assert.equal(main.querySelectorAll('.set-sec').length, 5, '语言、外观、商店和分类、同步和数据、关于');
     assert.deepEqual(all(main, el => el.tag === 'a').map(a => [a.attrs.href, text(a.querySelector('.set-label'))]),
-      [['#/settings/stores', '商店'], ['#/settings/categories', '分类'], ['#/settings/sync', '同步'], ['#/settings/data', '数据']]);
+      [['#/settings/sync', '多设备同步'], ['#/settings/stores', '商店'], ['#/settings/categories', '分类'], ['#/settings/data', '备份与恢复'], ['#/deleted', '最近删除']]);
+    // 同步没开：下面说是什么；数据下面说上次备份（还没备份过：琥珀色）
+    assert.equal(text(secs[1].querySelector('.group-foot')), '用你自己的 GitHub 私有仓库，在 iPhone、iPad、Mac 之间同步。');
+    const foot = secs[4].querySelector('.group-foot');
+    assert.deepEqual([text(foot), foot.classList.contains('set-warn')], ['上次备份：还没备份过', true]);
   } finally { dom.restore(); }
+});
+
+test('设置首页：数据变了只改「最近删除」的数和下面那句（不重建、焦点不丢）；同步开着写仓库；上次备份今天 / n 天前，30 天以上提醒', () => {
+  const dom = installDom();
+  try {
+    setLang('zh-Hans');
+    const subs = {};
+    const status = { on: true, repo: 'someone/pick-nest-data' };
+    // 按日历往前推 n 天（不是 n × 24 小时：夏令时那几周半夜里跑，差一小时就会多算一天）
+    const daysBack = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.getTime(); };
+    const ctx = { state: ensureSeeds(blankState()), local: { theme: 'auto', lastBackupAt: daysBack(3) }, build: 'picknest-v7', lang: () => 'zh-Hans', setLang() {}, setTheme() {},
+      sync: { status: () => status }, on: (ev, fn) => { subs[ev] = fn; return () => {}; } };
+    const main = new Element('section');
+    const handle = settings.render(main, { name: 'settings' }, ctx);
+    const secs = main.querySelectorAll('.set-sec');
+    const deletedRow = find(main, el => el.tag === 'a' && el.attrs.href === '#/deleted');
+    assert.equal(text(deletedRow.querySelector('.set-count')), '', '没有删掉的不写 0');
+    assert.equal(text(secs[1].querySelector('.group-foot')), '仓库：someone/pick-nest-data');
+    const foot = secs[4].querySelector('.group-foot');
+    assert.deepEqual([text(foot), foot.classList.contains('set-warn')], ['上次备份：3 天前', false]);
+    // 别的设备删了一家店：只改数，选项、链接都还是原来那几个元素
+    const select = main.querySelector('select');
+    select.focus();
+    ctx.state.data.stores.s_costco = deletedRecord(ctx.state.data.stores.s_costco);
+    ctx.local.lastBackupAt = daysBack(40);
+    handle.onChange({ source: 'remote' });
+    assert.equal(text(deletedRow.querySelector('.set-count')), '1');
+    assert.deepEqual([text(foot), foot.classList.contains('set-warn')], ['上次备份：40 天前', true]);
+    assert.equal(main.querySelector('select'), select);
+    assert.equal(dom.doc.activeElement, select);
+    ctx.local.lastBackupAt = Date.now();
+    handle.onChange({ source: 'local' });
+    assert.deepEqual([text(foot), foot.classList.contains('set-warn')], ['上次备份：今天', false]);
+    // 停止同步：下面那句换成没开时的说明
+    status.on = false; status.repo = null;
+    subs.sync();
+    assert.equal(text(secs[1].querySelector('.group-foot')), '用你自己的 GitHub 私有仓库，在 iPhone、iPad、Mac 之间同步。');
+    setLang('en');
+    const en = new Element('section');
+    settings.render(en, { name: 'settings' }, { ...ctx, lang: () => 'en', local: { lastBackupAt: daysBack(1) } });
+    assert.equal(text(en.querySelector('label').querySelector('.set-label')), 'Language / 语言');
+    assert.equal(text(en.querySelectorAll('.set-sec')[4].querySelector('.group-foot')), 'Last backup: 1 day ago');
+  } finally { setLang('zh-Hans'); dom.restore(); }
 });
 
 test('设置：本机设置里的外观值不认识 → 当成「自动」', () => {
@@ -104,13 +154,13 @@ test('设置：本机设置里的外观值不认识 → 当成「自动」', () 
   try {
     setLang('en');
     const main = new Element('section');
-    settings.render(main, { name: 'settings' }, { local: { theme: 'sepia' }, build: 'picknest-v1', lang: () => 'en', setLang() {}, setTheme() {} });
+    settings.render(main, { name: 'settings' }, { state: ensureSeeds(blankState()), local: { theme: 'sepia' }, build: 'picknest-v1', lang: () => 'en', setLang() {}, setTheme() {} });
     const on = find(main.querySelector('.seg'), el => el.tag === 'button' && el.attrs['aria-pressed'] === 'true');
     assert.equal(text(on), 'Auto');
   } finally { setLang('zh-Hans'); dom.restore(); }
 });
 
-test('同步状态的小标签：首页标题旁边是去设置 → 同步的链接；设置里「同步」那一行本身是链接，里面的标签是 <span>（不套链接）', async () => {
+test('同步状态的小标签：手机上首页标题旁边是去设置 → 多设备同步的链接（iPad、Mac 上只在侧栏）；设置里「同步」那一行本身是链接，里面的标签是 <span>（不套链接）', async () => {
   const { syncBadge } = await import('../src/ui/syncBadge.js');
   const dom = installDom();
   try {
@@ -125,6 +175,12 @@ test('同步状态的小标签：首页标题旁边是去设置 → 同步的链
     assert.deepEqual([badge.tag, badge.attrs.href], ['a', '#/settings/sync']);
     assert.match(text(badge), /^已同步 · \d{1,2}:\d{2}$/);
     assert.equal(badge.parent.attrs.class, 'lt-row', '在大标题旁边');
+    // 有侧栏的布局：侧栏「设置」下面已经有一个，标题旁边不重复
+    for (const lay of ['side', 'two']) {
+      const wide = new Element('section');
+      lists.render(wide, { name: 'lists', pane: lay === 'two' ? 'list' : 'main' }, { ...ctx, syncBadge: (o) => syncBadge(st, 'zh-Hans', o), layout: () => lay });
+      assert.equal(wide.querySelector('.sync-badge'), null, lay);
+    }
     const set = new Element('section');
     settings.render(set, { name: 'settings' }, ctx);
     const row = find(set, el => el.tag === 'a' && el.attrs.href === '#/settings/sync');

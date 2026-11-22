@@ -75,7 +75,8 @@ test('预置清单的名字三种语言；英文数量分单复数', () => {
 test('台灣用語', () => {
   setLang('zh-Hant-TW');
   const want = { 'nav.settings': '設定', 'nav.lists': '清單', 'store.archive': '封存', 'store.add': '新增商店', 'cat.sec.both': '兩邊都用', 'common.undo': '復原', 'cat.sys.bakery': '麵包烘焙', 'cat.sys.frozen': '冷凍', 'set.theme.light': '淺色',
-    'sync.renew': '更換權杖', 'sync.repo': '儲存庫', 'set.data': '資料', 'deleted.restore': '還原', 'backup.download': '下載備份' };
+    'sync.renew': '更換權杖', 'sync.repo': '儲存庫', 'set.dataH': '資料', 'set.data': '備份與還原', 'deleted.restore': '還原', 'backup.download': '匯出備份',
+    'set.sync': '多裝置同步', 'common.save': '儲存', 'common.keepEditing': '繼續編輯', 'common.exportRaw': '匯出資料（JSON）' };
   for (const [key, value] of Object.entries(want)) assert.equal(t(key), value, key);
   setLang('zh-Hans');
 });

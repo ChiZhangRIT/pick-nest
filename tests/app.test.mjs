@@ -118,33 +118,44 @@ test('冷启动：首页是预置的两张清单；底栏是清单、商店、�
     assert.equal(dark.attrs['aria-pressed'], 'true');
     await find(seg(), el => el.tag === 'button' && el.textContent === '自动').fire('click');
 
-    // 后台数据变化不重建设置控件；换语言立即更新，页面容器、滚动和焦点不丢。
-    const language = main.querySelector('[data-fid="set-lang-en"]');
+    // 后台数据变化不重建设置控件（下拉框还是同一个、焦点不丢），只改「最近删除」后面的数
+    const select = () => main.querySelector('select');
+    const language = select();
     language.focus();
+    const deletedCount = () => find(main, el => el.tag === 'a' && el.attrs.href === '#/deleted').querySelector('.set-count').textContent;
+    assert.equal(deletedCount(), '');
     ctx.update('items', milk.id, { note: 'test note' });
+    ctx.remove('stores', 's_target');
     await settle();
-    assert.equal(main.querySelector('[data-fid="set-lang-en"]'), language);
+    assert.equal(select(), language);
     assert.equal(dom.doc.activeElement, language);
+    assert.equal(deletedCount(), '1');
+    ctx.restore('stores', 's_target');
+    await settle();
+    assert.equal(deletedCount(), '');
+    // 换语言（下拉框）：就地重画，页面容器、滚动不丢，焦点回到（新画的）下拉框
     const settingsPane = main.children[0];
     dom.doc.scrollingElement.scrollTop = 180;
-    language.checked = true; await language.fire('change');
+    language.value = 'en'; await language.fire('change');
     assert.equal(main.children[0], settingsPane, '换语言不拆掉页面容器');
     assert.equal(dom.doc.scrollingElement.scrollTop, 180, '保留手机滚动位置');
-    assert.equal(dom.doc.activeElement, main.querySelector('[data-fid="set-lang-en"]'));
+    assert.notEqual(select(), language, '重画过');
+    assert.equal(dom.doc.activeElement, select(), '焦点回到语言下拉框');
+    assert.equal(select().attrs['aria-label'], 'Language / 语言', '读屏的名字跟着界面');
     assert.equal(root.lang, 'en');
     assert.equal(JSON.parse(storage.getItem('picknest.local')).lang, 'en');
     assert.ok(main.textContent.includes('Appearance'));
     assert.deepEqual(tabs.children.map(a => a.textContent), ['Lists', 'Stores', 'Settings']);
-    const currentLanguage = main.querySelector('[data-fid="set-lang-en"]');
+    const current = select();
     ctx.setLang('en');
-    assert.equal(main.querySelector('[data-fid="set-lang-en"]'), currentLanguage, '重复选当前语言不用重画');
+    assert.equal(select(), current, '重复选当前语言不用重画');
     assert.equal(dom.doc.querySelector('.side-foot').children[1].textContent, 'Sync off', '侧栏同步状态一起换语言');
-    for (const [language, appearance] of [['zh-Hant-TW', '外觀'], ['zh-Hans', '外观'], ['en', 'Appearance']]) {
-      const option = main.querySelector(`[data-fid="set-lang-${language}"]`);
-      option.checked = true; await option.fire('change');
-      assert.equal(root.lang, language);
+    for (const [lang, appearance, label] of [['zh-Hant-TW', '外觀', '語言 / Language'], ['zh-Hans', '外观', '语言 / Language'], ['en', 'Appearance', 'Language / 语言']]) {
+      select().value = lang; await select().fire('change');
+      assert.equal(root.lang, lang);
       assert.ok(main.textContent.includes(appearance));
-      assert.equal(dom.doc.activeElement, main.querySelector(`[data-fid="set-lang-${language}"]`));
+      assert.equal(dom.doc.activeElement, select());
+      assert.equal(select().attrs['aria-label'], label);
     }
     // 设置入口在同一次点按里换页，不等 hashchange；修饰键点按照浏览器自己的来。
     const dataLink = find(main, el => el.tag === 'a' && el.attrs.href === '#/settings/data');
@@ -153,7 +164,8 @@ test('冷启动：首页是预置的两张清单；底栏是清单、商店、�
     assert.deepEqual([prevented, loc.hash], [false, '#/settings']);
     await dataLink.fire('click');
     assert.equal(loc.hash, '#/settings/data');
-    assert.ok(main.textContent.includes('Download backup'));
+    assert.ok(main.textContent.includes('Export backup'));
+    assert.equal(main.querySelector('.nb-title').textContent, 'Backup & Restore');
     await go('#/');
     assert.deepEqual(rows(), [['Groceries', '1'], ['想要的', '0']]);
 

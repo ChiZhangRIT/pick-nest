@@ -1,6 +1,6 @@
 // 改一样东西的面板（清单页每一行右边的 ›）：名字、数量（−/+）、单位（常用单位的快捷选项）、商店、分类、备注；
 // 一般清单还有状态（要买 / 以后再说 / 已买）、商品链接（只收 http / https，「打开」在新标签页）、价格；所在的清单（换一张就移过去）；删除（可撤销）。
-// 点「完成」才存，只交改过的字段（别的设备同时改的其它字段留着）；规则在 core/items.js（validateItemPatch、editAndMove：改和移在一起做，
+// 点「保存」才存，只交改过的字段（别的设备同时改的其它字段留着）；规则在 core/items.js（validateItemPatch、editAndMove：改和移在一起做，
 // 合并到那边同名的一条时这次改的落在留下来的那条上）。删除和关面板一样，有没存的修改先问（closeThen）。
 // 面板不在页面里：数据变了页面重画不会打断输入。
 import { h, icon } from './dom.js';
@@ -18,7 +18,7 @@ export function itemSheet(ctx, itemId) {
   const it = liveItem(st, itemId), list = it && liveList(st, it.listId);
   if (!it || !list) return null;
   const general = list.kind === 'general';
-  // 面板里的值（字符串，和输入框里一样的写法），「完成」时和它比，只交改过的
+  // 面板里的值（字符串，和输入框里一样的写法），「保存」时和它比，只交改过的
   const init = { name: it.name.trim(), qty: formatQty(it.qty), unit: it.unit.trim(), storeId: it.storeId || '', categoryId: it.categoryId || '', note: it.note,
     status: it.status, url: it.url.trim(), price: it.price == null ? '' : String(it.price), listId: it.listId };
   /** @type {Record<string, any>} */
@@ -101,7 +101,7 @@ export function itemSheet(ctx, itemId) {
     beforeClose: discardGuard(ctx, dirty, () => s),
     foot: [
       h('button.btn', { type: 'button', onclick: () => s.close() }, t('common.cancel')),
-      h('button.btn.primary', { type: 'button', onclick: () => save() }, t('common.done')),
+      h('button.btn.primary', { type: 'button', onclick: () => save() }, t('common.save')),
     ],
   });
 

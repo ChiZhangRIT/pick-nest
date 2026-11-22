@@ -60,11 +60,31 @@ test('换布局、双栏、搜索、购物模式：页面不被拆掉，左栏�
     await go('#/l/l_tobuy');
     assert.deepEqual(selected(), ['l_tobuy']);
     assert.equal(main.children[1].querySelector('.lp-name').textContent, '想买');
+    // ⌘N（测试里不是 Mac：Ctrl+N）：光标放进右栏这张清单的快速添加；不在清单页上时不拦浏览器的快捷键
+    const pressNew = () => { let prevented = false; for (const fn of dom.doc.events.keydown || []) fn({ key: 'n', ctrlKey: true, preventDefault() { prevented = true; } }); return prevented; };
+    main.children[0].querySelector('.list-row').focus();
+    assert.equal(pressNew(), true);
+    assert.equal(dom.doc.activeElement, main.children[1].querySelector('.add-input'), '右栏的快速添加');
     // #/ 时右栏是提示；商店那一边左栏是「商店」
     await go('#/');
     assert.deepEqual(panes(), ['pane pane-list view view-lists', 'pane pane-detail view view-empty']);
     assert.equal(main.children[1].querySelector('p').textContent, '选一张清单，里面的东西显示在这里');
     assert.deepEqual(selected(), []);
+    assert.equal(pressNew(), false, '右栏还没有清单：⌘N 照浏览器自己的来');
+    assert.deepEqual([main.children[1].querySelector('img').attrs.src, main.children[1].querySelector('img').attrs.width], ['icons/icon.svg', '96'], '右栏空着时是 App 图标 + 一句话');
+    // 同步状态：宽屏只在侧栏「设置」下面有一个，首页标题旁边不重复；手机上在标题旁边（侧栏藏着）
+    assert.equal(main.querySelectorAll('.sync-badge').length, 0);
+    assert.equal(dom.doc.querySelector('#side').querySelectorAll('.sync-badge').length, 1);
+    resize(390);
+    assert.equal(main.querySelectorAll('.sync-badge').length, 1, '手机：标题旁边');
+    resize(800);
+    assert.equal(main.querySelectorAll('.sync-badge').length, 0, '侧栏布局：只在侧栏');
+    resize(1180);
+    // 设置的子页面在宽屏也是一栏、有返回，标题在顶栏中间
+    await go('#/settings/stores');
+    assert.deepEqual(panes(), ['pane pane-main view view-settings']);
+    assert.deepEqual([main.querySelector('.back').textContent, main.querySelector('.nb-title').textContent], ['清单', '商店']);
+    await go('#/');
     await go('#/s/s_costco');
     assert.deepEqual(panes(), ['pane pane-list view view-stores', 'pane pane-detail view view-store']);
     assert.deepEqual(selected(), ['s_costco']);
