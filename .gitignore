@@ -5,5 +5,7 @@ PickNest*.json
 /private/
 .DS_Store
 node_modules/
+# 图标生成时留下的本地设计草稿，正式图标在 icons/
+generated_images/
 # Claude Code 的工作目录（并行开发的 worktree 放在这里）
 .claude/

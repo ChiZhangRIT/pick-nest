@@ -215,6 +215,8 @@ python3 -m http.server 8792 --bind 127.0.0.1
 
 改了图标（`icons/icon.svg`）后运行 `swift tools/render-icons.swift` 重新生成 PNG（只用 macOS 自带的 AppKit），再运行上面的 `prepare-release`。
 
+App 图标和 House Ledger、Virtual Bookshelf、Babble 使用同一套风格：渐变色底、圆润的大图形和奶油白主色。PickNest 用绿色渐变，巢里放着苹果和鸡蛋；SVG 是原稿，180 / 192 / 512px 和 maskable PNG 从它生成。更换图标时同步更新 `index.html` 和两份 manifest 的图标 URL 版本参数，方便系统重新读取。
+
 - **这个仓库是公开的**：真实的购物记录、备份、令牌都不要放进来，测试、注释、例子里也不要写
 - 新加的程序文件要写进 `sw.js` 的 `CORE`，提交前运行 `node scripts/prepare-release.mjs`（生成 `release.json` 的 SHA-256 清单，内容变了自动升级缓存版本，`sw.js` 的 `CACHE` 和 `src/version.js` 一起改，不要手改）
 - 开发约定见 [CLAUDE.md](CLAUDE.md)，数据结构见 [docs/DATA_MODEL.md](docs/DATA_MODEL.md)
