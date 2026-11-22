@@ -1,8 +1,8 @@
 // 设置（#/settings）：语言、外观、商店和分类（进 #/settings/stores、#/settings/categories，页面在 views/manage.js）、
 // 同步（#/settings/sync，views/sync.js；这一行右边是同步状态的小标签）、数据（#/settings/data，views/data.js：备份、恢复、最近删除）、关于（新版本下载好了也在这里说）。
 // 语言、外观是本机设置（picknest.local），改了不通知订阅者：外观换完就地更新这一组按钮（不换掉按钮，焦点和读屏的位置不丢），
-// 换语言由 app 整页重画（下拉框带 data-fid，重画后焦点回到它上面）。
-import { h } from '../ui/dom.js';
+// 语言直接点选，不经过系统下拉菜单的打开 / 关闭动画；换完仍保留滚动位置和选项上的焦点。
+import { h, linkTo } from '../ui/dom.js';
 import { LANGS, LANG_LABELS, t } from '../i18n.js';
 import { storesPage, categoriesPage } from './manage.js';
 import { syncPage } from './sync.js';
@@ -14,8 +14,7 @@ const LANG_ROW = { 'zh-Hans': '语言 / Language', 'zh-Hant-TW': '語言 / Langu
 
 const sec = (id, title, kids) => h('section.set-sec', { id: id ? 'set-' + id : null },
   title ? h('h2.group-h', null, title) : null, h('div.group', null, kids));
-// 只有一个下拉框时整行是 <label>（点哪里都行）；分段按钮用 <div>，免得点文字误按第一个按钮
-const row = (label, control) => h((/^(INPUT|SELECT|TEXTAREA)$/.test(control.tagName) ? 'label' : 'div') + '.group-row.set-row', null,
+const row = (label, control) => h('div.group-row.set-row', null,
   h('span.set-label', null, label), control);
 
 export function render(main, params, ctx) {
@@ -31,25 +30,34 @@ export function render(main, params, ctx) {
   function themeSeg() {
     const cur = THEMES.includes(ctx.local.theme) ? ctx.local.theme : 'auto';
     const buttons = THEMES.map(v => h('button', {
-      type: 'button', class: v === cur ? 'on' : null, 'aria-pressed': String(v === cur),
+      type: 'button', class: v === cur ? 'on' : null, 'aria-pressed': String(v === cur), dataset: { fid: 'set-theme-' + v },
       onclick: () => { ctx.setTheme(v); mark(v); },
     }, t('set.theme.' + v)));
     const mark = v => buttons.forEach((b, i) => { b.classList.toggle('on', THEMES[i] === v); b.setAttribute('aria-pressed', String(THEMES[i] === v)); });
     return h('div.seg.set-seg', { role: 'group', 'aria-label': t('set.theme') }, buttons);
   }
 
+  const go = (path, label, extra = null) => h('a.group-row.set-row.go', { href: '#' + path, onclick: linkTo(ctx, path) }, h('span.set-label', null, label), extra);
+  const languages = sec('lang', langRow, LANGS.map(l => h('label.group-row.set-row.set-language', null,
+      h('span.set-label', null, LANG_LABELS[l]),
+      h('input.set-language-radio', { type: 'radio', name: 'picknest-language', value: l, checked: l === ctx.lang(), lang: l,
+        dataset: { fid: 'set-lang-' + l }, onchange: e => {
+          if (!e.target.checked) return;
+          e.target.focus({ preventScroll: true }); ctx.setLang(l);
+        } }))));
+  languages.querySelector('.group').setAttribute('role', 'group');
+  languages.querySelector('.group').setAttribute('aria-label', langRow);
   page.append(
-    sec('lang', null, [row(langRow, h('select.set-in.set-select', { 'aria-label': langRow, dataset: { fid: 'set-lang' }, onchange: (e) => ctx.setLang(e.target.value) },
-      LANGS.map(l => h('option', { value: l, selected: l === ctx.lang() }, LANG_LABELS[l]))))]),
+    languages,
     sec('look', null, [row(t('set.theme'), themeSeg())]),
     sec('manage', null, [
-      h('a.group-row.set-row.go', { href: '#/settings/stores' }, h('span.set-label', null, t('set.stores'))),
-      h('a.group-row.set-row.go', { href: '#/settings/categories' }, h('span.set-label', null, t('set.categories'))),
+      go('/settings/stores', t('set.stores')),
+      go('/settings/categories', t('set.categories')),
     ]),
     // 同步那一行本身是链接：里面的状态标签不能再是链接（app 换新标签时照原来的样子换）
     sec('data', null, [
-      h('a.group-row.set-row.go', { href: '#/settings/sync' }, h('span.set-label', null, t('set.sync')), ctx.syncBadge ? ctx.syncBadge({ link: false }) : null),
-      h('a.group-row.set-row.go', { href: '#/settings/data' }, h('span.set-label', null, t('set.data'))),
+      go('/settings/sync', t('set.sync'), ctx.syncBadge ? ctx.syncBadge({ link: false }) : null),
+      go('/settings/data', t('set.data')),
     ]),
     h('section.set-sec#set-about', null, h('h2.group-h', null, t('set.aboutH')),
       h('div.card.set-about', null,
@@ -64,4 +72,7 @@ export function render(main, params, ctx) {
   function paintUpdate() { updateLine.hidden = !(ctx.updateReady && ctx.updateReady()); }
   paintUpdate();
   if (ctx.on) ctx.on('update', paintUpdate);
+  // 首页只有本机选项；同步标签由 app 更新，新版本提示由 update 事件更新。
+  // 后台购物数据的变化不用重建选项，按着键盘或点设置时不会被打断。
+  return { onChange() {} };
 }

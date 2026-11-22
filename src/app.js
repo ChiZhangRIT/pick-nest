@@ -47,7 +47,7 @@
 //   ctx.back(fallback = '/')   App 内有上一页就后退，否则换成 fallback
 //   ctx.backLabel(fallbackLabel)  返回按钮上写什么：后退回去的那一页的名字（从「商店」点「管理商店」进来的写「商店」）；没有上一页 → fallbackLabel
 //   ctx.route                  当前路由（同 params 的结构，不含 pane / selected）；ctx.params 是这个页面挂载时的路由（双栏时 pane / selected 原地更新）
-//   ctx.refresh()              重画当前所有页面（焦点在带 data-fid 的控件上时，重画后放回去）
+//   ctx.refresh()              重画当前所有页面（保留滚动，焦点在带 data-fid 的控件上时重画后放回去）
 //   ctx.layout()               'phone'（<720）| 'side'（720–999，有侧栏）| 'two'（≥1000，侧栏 + 双栏）
 // 同步（core/sync.js；令牌只在 picknest.local 的 sync 里）
 //   ctx.sync.now(opts)         立即同步一轮 → Promise<{ ok, skipped?, error?, offline? }>（本机数据有问题时不同步 → { ok: false, skipped: true }）
@@ -336,7 +336,12 @@ const ctx = {
 
   navigate, back, backLabel, replaceHash, refresh: () => refresh(), layout,
   t, lang: getLang,
-  setLang(l) { state.setLocal({ lang: l }); setLang(l); refresh(); },
+  setLang(l) {
+    const next = LANGS.includes(l) ? l : 'zh-Hans';
+    state.setLocal({ lang: next });
+    if (next === getLang()) return;
+    setLang(next); refresh();
+  },
   setTheme(th) { state.setLocal({ theme: th }); applyTheme(); },
   theme: () => document.documentElement.dataset.theme || 'light',
   toast, sheet, confirm: confirmDialog,
@@ -365,7 +370,7 @@ function renderShell(r) {
     // 搜索在点按里就换页（search.searchLink）：iPad 上搜索框的键盘才弹得出来；已经在搜索页上就只把焦点给搜索框，搜索词不清掉
     h('nav', { 'aria-label': t('nav.label') }, item('lists', '#/', icon('list'), t('nav.lists')), item('stores', '#/stores', icon('store'), t('nav.stores')),
       item('search', '#/search', icon('search'), t('nav.search'), search.searchLink(ctx))),
-    h('div.side-foot', null, h('nav', { 'aria-label': t('nav.settings') }, item('settings', '#/settings', icon('gear'), t('nav.settings')))),
+    h('div.side-foot', null, h('nav', { 'aria-label': t('nav.settings') }, item('settings', '#/settings', icon('gear'), t('nav.settings'))), ctx.syncBadge()),
   );
   const tabs = $('#tabs');
   tabs.setAttribute('aria-label', t('nav.label'));
@@ -414,7 +419,6 @@ function unmount(slot) {
   m.el.remove();
   delete mounted[slot];
 }
-function unmountAll() { for (const slot of Object.keys(mounted)) unmount(slot); }
 const keyOf = p => p.slot + '|' + p.name + '|' + p.params.hash;
 
 /** 换页：同一栏、同一个地址不重画；换了就清理旧页面、在同一个容器里画新页面，后退回来时恢复滚动位置 */
@@ -506,13 +510,17 @@ function render() {
     if (to && !to.el.contains(document.activeElement)) { to.el.tabIndex = -1; to.el.focus({ preventScroll: true }); }
   }
 }
-/** 整页重画（换语言之类）：之前焦点在带 data-fid 的控件上（比如语言下拉框）就放回去，键盘和读屏不用从页首重新找 */
+/** 整页重画（换语言之类）：保留各栏容器和滚动位置，焦点回到同一个选项；不卸载页面再挂载，免得先跳到页首 */
 function refresh() {
   const active = document.activeElement, fid = active && active.dataset ? active.dataset.fid : null;
-  unmountAll();
+  const focused = Object.values(mounted).find(m => m.el.contains(active));
   render();
+  for (const m of Object.values(mounted)) rerender(m);
   const el = fid ? $('#main')?.querySelector(`[data-fid="${CSS.escape(fid)}"]`) : null;
   if (el) el.focus({ preventScroll: true });
+  else if (focused && mounted[focused.slot] === focused && !focused.el.contains(document.activeElement)) {
+    focused.el.tabIndex = -1; focused.el.focus({ preventScroll: true });
+  }
 }
 
 // 数据变化 → 提示撤销 / 存储满 → 安排同步 → 页面更新

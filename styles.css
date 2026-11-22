@@ -116,7 +116,8 @@ body[data-layout="phone"][data-tabs="1"] #tabs {
 .nav-item:hover { background: var(--fill); }
 .nav-item.on { background: var(--card); color: var(--ink); box-shadow: var(--shadow-card); }
 .nav-item.on .ic { color: var(--accent-text); }
-.side-foot { margin-top: auto; padding-top: 8px; }
+.side-foot { margin-top: auto; display: flex; flex-direction: column; gap: 8px; padding-top: 8px; }
+.side-foot > .sync-badge { align-self: flex-start; margin: 0 10px; white-space: normal; }
 
 /* ---------- 顶层页面的大标题；上面可以有一行按钮（.toolbar，占掉原来留空的 44px） ---------- */
 .page-head { max-width: 720px; margin: 0 auto; padding: calc(44px + env(safe-area-inset-top)) 20px 10px; }
@@ -472,8 +473,12 @@ select.f-in { width: 100%; }
 .set-sec > .group-h { margin-top: 0; }
 .set-row { justify-content: space-between; }
 .set-label { flex: 1 1 auto; min-width: 0; }
-.set-select { flex: none; max-width: 62%; border: 0; background-color: var(--fill); }
-.set-seg { flex: none; }
+.set-row:has(> .set-seg) { flex-wrap: wrap; }
+.set-seg { flex: none; margin-left: auto; max-width: 100%; }
+.set-language { cursor: pointer; }
+.set-language:hover { background: var(--fill); }
+.set-language:has(:checked) { color: var(--accent-text); font-weight: 600; }
+.set-language-radio { flex: none; width: 20px; height: 20px; margin: 0; accent-color: var(--accent-text); cursor: pointer; }
 .set-about > * + * { margin-top: 10px; }
 .set-about-top { display: flex; align-items: center; gap: 12px; }
 .set-about-top img { border-radius: 11px; box-shadow: var(--shadow-card); }

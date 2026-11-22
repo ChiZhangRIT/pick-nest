@@ -1,4 +1,4 @@
-// 同步状态的小标签：一个圆点 + 一句话（首页标题旁边、设置里「同步」那一行、设置 → 同步页）。状态怎么算在 core/sync.js 的 syncPhase；
+// 同步状态的小标签：一个圆点 + 一句话（首页标题旁边、侧栏设置下方、设置里「同步」那一行、设置 → 同步页）。状态怎么算在 core/sync.js 的 syncPhase；
 // app.js 的 ctx.syncBadge() 画一个，同步状态变了时把页面上所有 .sync-badge 换成新的（是链接的还是链接：点了去 #/settings/sync）。
 // 设置里那一行本身就是去同步页的链接，里面的标签不能再是链接（链接套链接），用 { link: false }。
 import { h } from './dom.js';

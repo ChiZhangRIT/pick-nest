@@ -42,6 +42,7 @@ test('同步接在 App 上：启动、改数据、切到后台、切回来、联
     assert.equal(main.querySelector('.list-count').textContent, '1', '首页马上有了别的设备加的');
     assert.ok(ctx.state.data.items.i_remote);
     assert.match(badge(), /^已同步 · \d{1,2}:\d{2}$/);
+    assert.equal(dom.doc.querySelector('.side-foot').querySelector('.sync-badge').textContent, badge());
     assert.equal(pending(2000).length, 0, '拉下来的不再排一轮');
     assert.ok(local().sha && local().at, '同步状态存进本机设置');
     assert.equal(ctx.sync.status().on, true);
@@ -51,6 +52,7 @@ test('同步接在 App 上：启动、改数据、切到后台、切回来、联
     ctx.put('items', { listId: 'l_groceries', name: '面包', status: 'need' });
     await settle();
     assert.equal(badge(), '待同步');
+    assert.equal(dom.doc.querySelector('.side-foot').querySelector('.sync-badge').textContent, '待同步');
     assert.equal(gh.puts, 0);
     assert.equal(runDebounce(), 1, '连着改两次只排一次');
     await settle();
@@ -58,6 +60,7 @@ test('同步接在 App 上：启动、改数据、切到后台、切回来、联
     assert.deepEqual(Object.values(gh.json().state.data.items).map(it => it.name).sort(), ['别的设备加的牛奶', '面包', '鸡蛋']);
     assert.equal(gh.json().device, 'iPhone');
     assert.equal(local().dirty, false);
+    assert.equal(dom.doc.querySelector('.side-foot').querySelector('.sync-badge').textContent, badge());
     assert.ok(!JSON.stringify(gh.json()).includes('github_pat_test'), '令牌不上传');
 
     // 切到后台、有没传的：不等防抖，直接上传（不先拉取），带 keepalive

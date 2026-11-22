@@ -6,7 +6,7 @@
 // 归档的清单收在最下面「已归档（N）」里，点开才显示；点进去以后在「⋯ → 编辑清单」里可以取消归档。
 // 在 iPhone / iPad 的浏览器标签页里打开时，最上面说一句这里的数据和主屏幕上的不是同一份（tabNote，可以关掉）。
 // 没有输入框，数据变了由 app 整页重画；↑↓ 带 data-fid，重画后焦点还在同一个按钮上、页面滚到按钮还在手指下面，可以连着按。
-// 「编辑」「已归档」这种只改显示的开关就地重画（不走 ctx.refresh：那会回到页首），焦点照样放回同一个按钮。
+// 「编辑」「已归档」这种只改显示的开关就地重画（不用 ctx.refresh 重建所有页面），焦点照样放回同一个按钮。
 import { h, icon, keepUnderFinger } from '../ui/dom.js';
 import { t } from '../i18n.js';
 import { homeLists, needCounts, listName, listIcon } from '../core/store.js';

@@ -64,7 +64,7 @@ test('首页：所有清单都归档了 → 显示一句说明，不是空白', 
   } finally { dom.restore(); }
 });
 
-test('设置：语言三个选项（当前的选中）、外观三段（点了马上生效并更新按钮）、商店和分类的入口、关于里有版本号', () => {
+test('设置：语言直接点选、外观立即生效且保留按钮、管理入口和版本号', () => {
   const dom = installDom();
   try {
     setLang('zh-Hans');
@@ -74,12 +74,12 @@ test('设置：语言三个选项（当前的选中）、外观三段（点了�
     const main = new Element('section');
     settings.render(main, { name: 'settings' }, ctx);
     assert.equal(text(main.querySelector('h1')), '设置');
-    const select = main.querySelector('select');
-    const options = select.querySelectorAll('option');
+    assert.equal(main.querySelector('select'), null, '语言不经过系统下拉菜单');
+    const options = main.querySelectorAll('.set-language-radio');
     assert.deepEqual(options.map(o => o.value), ['zh-Hans', 'zh-Hant-TW', 'en']);
-    assert.deepEqual(options.map(o => text(o)), ['简体中文', '繁體中文（台灣）', 'English']);
-    assert.deepEqual(options.map(o => !!o.selected), [true, false, false]);
-    select.value = 'en'; select.fire('change');
+    assert.deepEqual(main.querySelectorAll('.set-language').map(o => text(o)), ['简体中文', '繁體中文（台灣）', 'English']);
+    assert.deepEqual(options.map(o => !!o.checked), [true, false, false]);
+    options[2].checked = true; options[2].fire('change');
     assert.deepEqual(calls.at(-1), ['lang', 'en']);
     const seg = () => main.querySelector('.seg');
     const buttons = () => seg().querySelectorAll('button');
@@ -90,7 +90,7 @@ test('设置：语言三个选项（当前的选中）、外观三段（点了�
     assert.deepEqual(buttons().map(b => b.attrs['aria-pressed']), ['false', 'false', 'true'], '换完马上更新按钮');
     assert.deepEqual(buttons().map(b => b.classList.contains('on')), [false, false, true]);
     assert.equal(buttons()[2], dark, '就地更新、不换掉按钮：焦点和读屏的位置不丢');
-    assert.equal(select.dataset.fid, 'set-lang', '换语言整页重画后靠它把焦点放回来');
+    assert.equal(options[2].dataset.fid, 'set-lang-en', '换语言后焦点回到刚选中的选项');
     assert.ok(text(main.querySelector('.set-version')).includes('picknest-v7'));
     assert.ok(text(main).includes('PickNest'));
     assert.equal(main.querySelectorAll('.set-sec').length, 5, '语言、外观、商店和分类、同步和数据、关于');

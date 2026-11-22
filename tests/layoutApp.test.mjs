@@ -88,6 +88,13 @@ test('换布局、双栏、搜索、购物模式：页面不被拆掉，左栏�
     await go('#/settings');
     await go('#/stores');                                  // 后退
     assert.equal(mounted.list.el.scrollTop, 200);
+    const leftPane = mounted.list.el, rightPane = mounted.detail.el;
+    ctx.setLang('en');
+    assert.equal(mounted.list.el, leftPane, '双栏切语言保留左栏容器');
+    assert.equal(mounted.detail.el, rightPane, '双栏切语言保留右栏容器');
+    assert.equal(leftPane.scrollTop, 200, '左栏滚动不跳回顶部');
+    assert.equal(rightPane.querySelector('p').textContent, 'Pick a store to see what to buy there');
+    ctx.setLang('zh-Hans');
     await go('#/settings');
     assert.deepEqual(panes(), ['pane pane-main view view-settings']);
     // 按着 ⌘ 点侧栏的「搜索」（在新标签页打开）：照浏览器自己的来，这一页不动
