@@ -24,7 +24,7 @@ test('首次安装：等待完整版本安装后重开，尚未受控制的页�
   const o = setup(null); await start(o);
   assert.deepEqual(o.calls, ['register', 'reload']);
 });
-test('已安装：核对当前版本后立即加载；离线检查更新失败不影响启动', async () => {
+test('已安装：核对当前版本后立即加载；离线时重新注册失败不影响启动', async () => {
   const o = setup(); o.nav.serviceWorker.register = async () => { throw new Error('offline'); };
   await start(o);
   assert.deepEqual(o.calls, ['version:picknest-build', 'app']);
@@ -45,6 +45,10 @@ test('安装或 App 加载失败时明确报错；开发用 http 仍直接打开
   await assert.rejects(start(first), /offline/); assert.ok(!first.calls.includes('app'));
   const dev = setup(); dev.loc.protocol = 'http:'; await start(dev);
   assert.deepEqual(dev.calls, ['app']);
+  // 别的 App 里的浏览器没有 Service Worker：照样打开（不能离线用），不报「请联网后重试」
+  const inApp = setup(); delete inApp.nav.serviceWorker; await start(inApp);
+  assert.deepEqual(inApp.calls, ['app']);
+  assert.equal(inApp.win.__picknestBootError, false);
   const broken = setup(); broken.load = async () => { throw new Error('bad-module'); };
   await assert.rejects(start(broken), /bad-module/);
   assert.equal(broken.win.__picknestBootError, true, '加载失败时看门狗不再盖一层，由启动器显示错误');

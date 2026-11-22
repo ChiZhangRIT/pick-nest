@@ -7,8 +7,6 @@ export const isObj = v => !!v && typeof v === 'object' && !Array.isArray(v);
 export const str = v => (typeof v === 'string' ? v : v == null ? '' : String(v));
 /** 只取自有属性（不顺着原型链找到 toString 之类） @param {any} o @param {string} k */
 export const own = (o, k) => (o && Object.prototype.hasOwnProperty.call(o, k) ? o[k] : undefined);
-/** @param {number} v @param {number} lo @param {number} hi */
-export const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 // 记录 id、设置的键：不许用 __proto__ 之类（同步来的文件或备份可能被人改过）
 const SAFE_KEY = /^[A-Za-z0-9_.:@-]{1,200}$/;
@@ -32,6 +30,3 @@ export function debounce(fn, ms) {
   f.pending = () => timer !== null;
   return f;
 }
-
-/** 去重（保持原顺序） @template T @param {T[]} arr */
-export const uniq = arr => [...new Set(arr)];

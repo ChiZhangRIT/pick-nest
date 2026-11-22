@@ -174,9 +174,15 @@ export function createPersistence(storage, { locks = /** @type {any} */ (globalT
         const merged = mergeStates(readableState, normalizeState(state));
         const archive = { app: APP, v: 1, kind: 'local-recovery', exportedAt: new Date().toISOString(), state: readableState, records, issues };
         // 原始数据存档成功、并且新快照真正落盘后，才移走损坏的日志；任一步失败都留下原件。
-        st.setItem(ARCHIVE_PREFIX + Date.now() + '.' + writer + '.' + (++seq), JSON.stringify(archive));
+        const archiveKey = ARCHIVE_PREFIX + Date.now() + '.' + writer + '.' + (++seq);
+        st.setItem(archiveKey, JSON.stringify(archive));
         st.setItem(STATE_KEY, JSON.stringify(merged));
         for (const { key } of records) if (key.startsWith(PENDING_PREFIX)) st.removeItem(key);
+        // 只留这一份存档：archive() 和「设置 → 数据」只给最新的，旧的下载不到，只占空间（同一个域名下的 App 共用一份配额，
+        // 占满了以后每次保存都失败，连下一次恢复要写的存档也写不进去）
+        const old = [];
+        for (let i = 0; i < st.length; i++) { const key = st.key(i); if (key && key.startsWith(ARCHIVE_PREFIX) && key !== archiveKey) old.push(key); }
+        for (const key of old) st.removeItem(key);
         return readStoredState(st);            // 整理期间新写入的日志也读回来
       });
     },

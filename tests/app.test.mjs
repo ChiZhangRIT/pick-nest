@@ -93,9 +93,13 @@ test('冷启动：首页是预置的两张清单；底栏是清单、商店、�
     assert.deepEqual([body.dataset.route, body.dataset.tabs], ['settings', '0']);
     assert.ok(main.querySelector('.back'));
     assert.equal(main.querySelectorAll('.manage-row').length, 8, '八家预置商店');
+    assert.equal(main.querySelector('.back').textContent, '清单', '返回写的是真的会回到的那一页（上一页是首页），不是固定的「设置」');
     await go('#/settings/nope');
     assert.deepEqual([body.dataset.route, body.dataset.tabs], ['settings', '1']);
     assert.ok(main.querySelector('.set-version'));
+    await go('#/stores');
+    await go('#/settings/stores');
+    assert.equal(main.querySelector('.back').textContent, '商店', '从「商店」的「管理商店」进来：返回写「商店」');
 
     // 换外观：马上生效、记在本机设置里
     await go('#/settings');
@@ -185,4 +189,53 @@ test('冷启动：首页是预置的两张清单；底栏是清单、商店、�
     assert.deepEqual([loc.hash, body.dataset.route], ['#/stores', 'stores']);
     assert.equal(dom.doc.querySelector('#toast').querySelector('.toast-msg').textContent, 'That store no longer exists');
   } finally { dom.restore(); }
+});
+
+test('装好的 App：启动后、切回来时（最多半小时一次）自己检查新版（registration.update()），下载好了在设置 → 关于里说；第一次改数据时请浏览器别清掉本机数据', async () => {
+  const storage = fakeStorage();
+  const loc = { hash: '#/settings', protocol: 'http:' };
+  let updates = 0, persists = 0;
+  const reg = { waiting: null, installing: null, events: {}, addEventListener(type, fn) { (this.events[type] ||= []).push(fn); },
+    async update() {
+      updates++;
+      if (updates === 1) return;                                     // 第一次：还没有新版
+      const w = { state: 'installing', events: [], addEventListener(type, fn) { this.events.push(fn); } };
+      reg.installing = w;
+      for (const fn of reg.events.updatefound || []) fn();
+      w.state = 'installed'; reg.waiting = w; reg.installing = null;
+      for (const fn of w.events) fn();
+    } };
+  const dom = installDom({ localStorage: storage, location: loc, history: { state: {}, replaceState(s, title, hash) { loc.hash = hash; }, back() {} },
+    navigator: { languages: ['zh-CN'], locks: { request: async (name, fn) => fn() },
+      serviceWorker: { controller: {}, getRegistration: async () => reg }, storage: { persist: async () => { persists++; return true; } } },
+    matchMedia: () => ({ matches: false, addEventListener() {} }),
+    setTimeout: () => 0, setInterval: () => 0, getComputedStyle: () => ({ bottom: '24px' }), requestAnimationFrame: () => 0,
+    MutationObserver: class { observe() {} disconnect() {} }, CSS: { escape: String } });
+  const realNow = Date.now;
+  try {
+    const shell = new Element('div'); shell.className = 'app';
+    for (const id of ['side', 'main']) { const el = new Element('div'); el.id = id; shell.append(el); }
+    const tabs = new Element('nav'); tabs.id = 'tabs';
+    dom.doc.body.append(shell, tabs);
+    dom.doc.visibilityState = 'visible';
+    await import('../src/app.js?test=update');
+    const { ctx } = window.__picknest;
+    const main = dom.doc.querySelector('#main');
+    const settle = async () => { for (let i = 0; i < 8; i++) await new Promise(r => queueMicrotask(r)); };   // 假的 setTimeout 不会跑
+    await settle();
+    assert.equal(updates, 1, '启动后检查一次');
+    assert.equal(main.querySelector('.set-update').hidden, true);
+    await dom.doc.fire('visibilitychange'); await settle();
+    assert.equal(updates, 1, '半小时内切回来不再查');
+    Date.now = () => realNow() + 31 * 60 * 1000;
+    await dom.doc.fire('visibilitychange'); await settle();
+    assert.equal(updates, 2);
+    assert.equal(ctx.updateReady(), true);
+    assert.equal(main.querySelector('.set-update').hidden, false, '设置 → 关于：新版下载好了');
+    assert.equal(persists, 0, '只是打开看看：不要');
+    ctx.put('items', { listId: 'l_groceries', name: '牛奶', status: 'need' });
+    ctx.put('items', { listId: 'l_groceries', name: '鸡蛋', status: 'need' });
+    assert.equal(persists, 1, '第一次改数据时要一次（在点按里），之后不再要');
+    await settle();
+  } finally { Date.now = realNow; dom.restore(); }
 });

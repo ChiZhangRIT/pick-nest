@@ -5,7 +5,7 @@
 // 输入法还在选字时不搜（拼音字母会先搜出一堆英文的），选好字再搜。
 // 打开时焦点放进搜索框：从首页的入口点进来时（ui/dom.js 的 linkTo，在点按里就换页）iPhone 也会弹出键盘；
 // 后退回来（不是点按）时 iPhone 不弹键盘，结果照样看得到，想改搜索词直接打字（iPad、Mac 的键盘）。
-import { h, icon, linkTo } from '../ui/dom.js';
+import { h, icon, linkTo, backText } from '../ui/dom.js';
 import { t } from '../i18n.js';
 import { listName, listIcon } from '../core/store.js';
 import { searchItems, searchTerms, hitCount, highlight } from '../core/search.js';
@@ -24,7 +24,7 @@ export function render(main, params, ctx) {
   const cl = checklist(ctx, main);
 
   // 顶栏吸顶（和清单页一样），宽屏有侧栏，CSS 把返回藏起来；标题能接焦点（重画后按过的控件没了，焦点给它）
-  const navbar = h('header.navbar.lp-nav', null, h('button.back', { type: 'button', onclick: () => ctx.back('/') }, icon('back'), t('nav.lists')));
+  const navbar = h('header.navbar.lp-nav', null, h('button.back', { type: 'button', onclick: () => ctx.back('/') }, icon('back'), backText(ctx, t('nav.lists'))));
   const head = h('div.page.push-head', null, h('h1.push-title', { tabindex: -1, dataset: { fid: 'lp-title' } }, t('nav.search')));
   const input = h('input.add-input.search-input', { type: 'search', value: q, 'aria-label': t('search.label'), placeholder: t('search.ph'),
     autocomplete: 'off', autocorrect: 'off', autocapitalize: 'off', spellcheck: 'false', enterkeyhint: 'search', maxlength: 200, dataset: { fid: 'search-q' },

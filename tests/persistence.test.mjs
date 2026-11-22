@@ -8,7 +8,8 @@ import { fakeStorage } from './helpers/dom.mjs';
 const fakeLocks = () => {
   let chain = Promise.resolve();
   const names = [];
-  return { names, request(name, fn) { names.push(name); const p = chain.then(fn); chain = p.catch(() => {}); return p; } };
+  const lk = { names, held: false, request(name, fn) { names.push(name); const p = chain.then(async () => { lk.held = true; try { return await fn(); } finally { lk.held = false; } }); chain = p.catch(() => {}); return p; } };
+  return lk;
 };
 const item = (id, name = id) => normalizeRecord('items', { id, listId: 'l_groceries', name, updatedAt: 1000 });
 const itemState = (id, name = id) => { const s = blankState(); s.data.items[id] = item(id, name); return s; };
@@ -57,12 +58,19 @@ test('只写改了的记录：日志里没有没动过的记录', () => {
 test('整理持有同一个 Web Lock；写好快照后才删日志，原有快照的数据也一起保留', async () => {
   const st = fakeStorage(), locks = fakeLocks();
   st.setItem(STATE_KEY, JSON.stringify(itemState('legacy')));
+  // 写快照、删日志时一定拿着锁（不然两个标签页同时整理，会删掉对方刚写的日志）
+  const unlocked = [];
+  const write = st.setItem, remove = st.removeItem;
+  st.setItem = (k, v) => { if (k === STATE_KEY && !locks.held) unlocked.push(k); return write(k, v); };
+  st.removeItem = (k) => { if (!locks.held) unlocked.push(k); return remove(k); };
   const a = createPersistence(st, { locks }), b = createPersistence(st, { locks });
   a.save(itemState('a')); b.save(itemState('b'));
   await Promise.all([a.idle(), b.idle()]);
   assert.deepEqual(Object.keys(JSON.parse(st.getItem(STATE_KEY)).data.items).sort(), ['a', 'b', 'legacy']);
   assert.equal(pending(st).length, 0);
+  assert.ok(locks.names.length > 0);
   assert.ok(locks.names.every(n => n === 'picknest-state-write'));
+  assert.deepEqual(unlocked, [], '整理都在锁里');
 });
 
 test('整理期间另一个标签页写入：新日志不能被前一轮删除', async () => {
@@ -313,6 +321,19 @@ test('损坏日志：健康快照和日志一起保留；恢复先存档，再�
   assert.equal(archive.records.find(r => r.key === PENDING_PREFIX + 'bad').raw, 'broken log');
   assert.equal(archive.records.find(r => r.key === STATE_KEY).raw, JSON.stringify(itemState('kept')));
   assert.equal(Object.keys(createPersistence(st).read().data.items).length, 2);
+});
+
+test('恢复了几次：只留最新的一份存档（旧的下载不到，只占同一个域名下共用的空间）', async () => {
+  const st = fakeStorage(), p = createPersistence(st, { locks: fakeLocks() });
+  const archives = () => { const out = []; for (let i = 0; i < st.length; i++) if (st.key(i).startsWith(ARCHIVE_PREFIX)) out.push(st.key(i)); return out; };
+  for (const n of [1, 2, 3]) {
+    st.setItem(PENDING_PREFIX + 'bad' + n, 'broken log ' + n);
+    await p.recover(itemState('backup' + n));
+    await new Promise(r => setTimeout(r, 2));
+  }
+  assert.equal(archives().length, 1);
+  assert.equal(p.archive().records.find(r => r.key.startsWith(PENDING_PREFIX)).raw, 'broken log 3', '留下的是最近一次的');
+  assert.deepEqual(Object.keys(p.read().data.items).sort(), ['backup1', 'backup2', 'backup3']);
 });
 
 test('存档或新快照写不下：恢复失败，原件不删除', async () => {

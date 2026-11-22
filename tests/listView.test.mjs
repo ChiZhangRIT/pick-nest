@@ -539,6 +539,70 @@ test('编辑：移到别的清单（那边已经有同名的先确认合并）�
   } finally { env.done(); }
 });
 
+test('编辑：改了数量、备注再移到有同名的清单 → 合并后留下来的那一条带着这次改的（不是改在被删掉的那条上）', async () => {
+  const env = setup({ listId: 'l_tobuy', seed: s => {
+    s.data.items.i_g = normalizeRecord('items', { id: 'i_g', listId: 'l_groceries', name: '袜子', status: 'done', doneAt: 5, updatedAt: 5 });
+  } });
+  try {
+    await env.enter('袜子');
+    const sh = await open(env, '袜子');
+    control(sh, '数量').value = '3';
+    control(sh, '备注').value = '黑色 M 码';
+    control(sh, '清单').value = 'l_groceries';
+    await btn(sh.el, '完成').fire('click');
+    await settle();
+    assert.equal(sh.open, false);
+    const kept = S().data.items.i_g;
+    assert.deepEqual([kept.status, kept.qty, kept.note], ['need', 3, '黑色 M 码']);
+  } finally { env.done(); }
+});
+
+test('编辑：改了名字还没点完成就点「删除这一样」→ 先问要不要放弃修改；不放弃就不删', async () => {
+  const env = setup();
+  try {
+    await env.enter('牛奶');
+    const sh = await open(env, '牛奶');
+    control(sh, '名字').value = '燕麦奶';
+    env.answer = false;
+    await btn(sh.el, '删除这一样').fire('click');
+    await settle();
+    assert.equal(env.confirms.at(-1).message, '放弃这次的修改？');
+    assert.ok(sh.open);
+    assert.ok(itemNamed('牛奶') && !itemNamed('牛奶').deleted, '没删');
+    env.answer = true;
+    await btn(sh.el, '删除这一样').fire('click');
+    await settle();
+    assert.equal(sh.open, false);
+    assert.equal(itemNamed('牛奶').deleted, true);
+  } finally { env.done(); }
+});
+
+test('编辑：指定的商店、分类删掉了 → 显示未指定 / 未分类，只改备注时不算改了它们（恢复了还回来）；指定的商店归档了留在选项里', async () => {
+  const env = setup({ seed: s => {
+    s.data.stores.s_gone = normalizeRecord('stores', { id: 's_gone', name: '关门的店', order: 20, deleted: true, deletedAt: 3, updatedAt: 3 });
+    s.data.stores.s_old = normalizeRecord('stores', { id: 's_old', name: '老店', order: 21, archived: true, updatedAt: 3 });
+    s.data.categories.c_gone = normalizeRecord('categories', { id: 'c_gone', name: '删掉的分类', kind: 'grocery', order: 30, deleted: true, deletedAt: 3, updatedAt: 3 });
+    s.data.items.i_a = normalizeRecord('items', { id: 'i_a', listId: 'l_groceries', name: '酱油', storeId: 's_gone', categoryId: 'c_gone', updatedAt: 4 });
+    s.data.items.i_b = normalizeRecord('items', { id: 'i_b', listId: 'l_groceries', name: '醋', storeId: 's_old', updatedAt: 4 });
+  } });
+  try {
+    let sh = await open(env, '酱油');
+    assert.deepEqual([control(sh, '商店').value, control(sh, '分类').value], ['', '']);
+    control(sh, '备注').value = '老抽';
+    await btn(sh.el, '完成').fire('click');
+    await settle();
+    const it = S().data.items.i_a;
+    assert.deepEqual([it.note, it.storeId, it.categoryId], ['老抽', 's_gone', 'c_gone'], '商店、分类恢复了就回来');
+    sh = await open(env, '醋');
+    const opts = control(sh, '商店').querySelectorAll('option');
+    assert.ok(opts.some(o => o.textContent === t('item.storeArchived', { name: '老店' })), '归档的、现在指定的那家留着');
+    assert.ok(!opts.some(o => o.textContent.includes('关门的店')));
+    assert.equal(control(sh, '商店').value, 's_old');
+    sh.tryClose();
+    assert.equal(sh.open, false, '没改：直接关');
+  } finally { env.done(); }
+});
+
 // ---------- ⋯ → 编辑清单 ----------
 test('⋯ → 编辑清单：改名、换图标；自建清单能删除（先确认，离开这一页，能撤销）；预置的只能归档', async () => {
   const env = setup({ listId: 'l_wood', seed: s => { s.data.lists.l_wood = normalizeRecord('lists', { id: 'l_wood', name: '木工', kind: 'general', order: 2, updatedAt: 1 }); } });
@@ -587,6 +651,29 @@ test('⋯ → 编辑清单：改名、换图标；自建清单能删除（先确
   } finally { env2.done(); }
 });
 
+test('点了一行、还没挪就归档了这张清单（离开这一页）：点过的那一下不改；平常离开时照样写进去', async () => {
+  const seed = s => { s.data.items.i_m = normalizeRecord('items', { id: 'i_m', listId: 'l_groceries', name: '牛奶', updatedAt: 1 }); };
+  const env = setup({ seed, extraDom: { matchMedia: () => ({ matches: false }) } });
+  try {
+    await byCls(env.row('牛奶'), 'item-main').fire('click');           // 0.3 秒后才改数据
+    const more = find(env.main, el => el.tag === 'button' && el.attrs['aria-label'] === t('common.more'));
+    await more.fire('click');
+    await btn(env.sheet().el, '编辑清单').fire('click');
+    await btn(env.sheet().el, '归档').fire('click');
+    await settle();
+    assert.equal(S().data.lists.l_groceries.archived, true);
+  } finally { env.done(); }
+  await new Promise(r => setTimeout(r, 400));
+  assert.equal(S().data.items.i_m.status, 'need', '归档了的清单上点过的不改');
+  const env2 = setup({ seed, extraDom: { matchMedia: () => ({ matches: false }) } });
+  try {
+    await byCls(env2.row('牛奶'), 'item-main').fire('click');
+    env2.handle.cleanup();
+    assert.equal(S().data.items.i_m.status, 'done', '换页离开：点过的马上写进去');
+    await settle();
+  } finally { env2.done(); }
+});
+
 // ---------- 首页 ----------
 test('首页：每张清单是去清单页的链接；「编辑」切到排顺序（带名字的 ↑↓，到头了标 aria-disabled）；已归档（N）折着', async () => {
   const env = setup({ view: 'home', seed: s => {
@@ -617,6 +704,24 @@ test('首页：每张清单是去清单页的链接；「编辑」切到排顺�
     await btn(env.main, '完成').fire('click');
     assert.equal(links().length, 4);
   } finally { env.done(); }
+});
+
+test('首页：在 iPhone / iPad 的浏览器标签页里打开时说一句「和主屏幕上的不是同一份数据」，点「知道了」以后不再说；主屏幕上的不说', async () => {
+  const env = setup({ view: 'home', extraDom: { navigator: { standalone: false } } });
+  try {
+    const note = () => byCls(env.main, 'tab-note');
+    assert.ok(note() && note().textContent.includes(t('list.tabNote')));
+    await btn(note(), t('list.tabNoteOk')).fire('click');
+    assert.equal(note(), undefined);
+    assert.equal(state.getLocal().tabNoteOff, true);
+    assert.equal(env.doc.activeElement && env.doc.activeElement.tag, 'h1', '按钮没了：焦点给标题');
+    const edit = btn(env.main, '编辑');
+    assert.equal(edit.attrs['aria-pressed'], undefined, '字本身说了状态（编辑 / 完成），不再加 aria-pressed');
+  } finally { env.done(); }
+  for (const standalone of [true, undefined]) {
+    const e = setup({ view: 'home', extraDom: { navigator: { standalone } } });
+    try { assert.equal(byCls(e.main, 'tab-note'), undefined, String(standalone)); } finally { e.done(); }
+  }
 });
 
 test('首页：新建清单（名字、类型、图标、默认商店），建好进清单页；名字空着报错', async () => {

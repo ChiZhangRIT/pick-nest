@@ -1,11 +1,12 @@
 // 改一样东西的面板（清单页每一行右边的 ›）：名字、数量（−/+）、单位（常用单位的快捷选项）、商店、分类、备注；
 // 一般清单还有状态（要买 / 以后再说 / 已买）、商品链接（只收 http / https，「打开」在新标签页）、价格；所在的清单（换一张就移过去）；删除（可撤销）。
-// 点「完成」才存，只交改过的字段（别的设备同时改的其它字段留着）；规则在 core/items.js（validateItemPatch、editItem、moveItem）。
+// 点「完成」才存，只交改过的字段（别的设备同时改的其它字段留着）；规则在 core/items.js（validateItemPatch、editAndMove：改和移在一起做，
+// 合并到那边同名的一条时这次改的落在留下来的那条上）。删除和关面板一样，有没存的修改先问（closeThen）。
 // 面板不在页面里：数据变了页面重画不会打断输入。
 import { h, icon } from './dom.js';
 import { t } from '../i18n.js';
-import { field, showErr, discardGuard, onEnter } from './form.js';
-import { liveItem, liveList, validateItemPatch, editItem, moveItem, moveConflict, categoryFits, cleanUrl } from '../core/items.js';
+import { field, showErr, discardGuard, closeThen, onEnter } from './form.js';
+import { liveItem, liveList, validateItemPatch, editAndMove, moveConflict, categoryFits, cleanUrl } from '../core/items.js';
 import { formatQty, readQty, stepQty, UNIT_SUGGESTIONS } from '../core/parse.js';
 import { listName, categoryName, live, byOrder } from '../core/store.js';
 
@@ -95,7 +96,7 @@ export function itemSheet(ctx, itemId) {
   const dirty = () => changed().length > 0;
 
   const s = ctx.sheet(h('div.form', null, Object.values(rows),
-    h('div.sheet-actions', null, h('button.btn.block.danger', { type: 'button', onclick: remove }, t('item.delete')))), {
+    h('div.sheet-actions', null, h('button.btn.block.danger', { type: 'button', onclick: closeThen(ctx, dirty, () => s, remove) }, t('item.delete')))), {
     title: t('item.editTitle'), cls: 'item-sheet',
     beforeClose: discardGuard(ctx, dirty, () => s),
     foot: [
@@ -106,7 +107,6 @@ export function itemSheet(ctx, itemId) {
 
   function remove() {
     const cur = liveItem(ctx.state, itemId);
-    s.close();
     if (cur) ctx.remove('items', itemId, { undoLabel: t('item.deleted', { name: cur.name }) });
   }
 
@@ -119,12 +119,12 @@ export function itemSheet(ctx, itemId) {
     for (const k of changed()) if (k !== 'listId') patch[k] = k === 'storeId' || k === 'categoryId' ? v[k] || null : v[k];
     const cur = liveItem(ctx.state, itemId);
     if (!cur) { s.close(); ctx.toast(t('item.err.gone')); return; }
-    // 先在不改数据的情况下查一遍：有错就标在字段下面，面板不关
-    const check = validateItemPatch(ctx.state, cur, patch);
+    const to = v.listId !== cur.listId ? liveList(ctx.state, v.listId) : null;
+    // 先在不改数据的情况下查一遍：有错就标在字段下面，面板不关。同时换了清单的，名字不和这张清单比（移走了不会重名）
+    const check = validateItemPatch(ctx.state, cur, patch, { moving: !!to });
     for (const [k, row] of Object.entries(rows)) showErr(row, check.errors[k]);
     const bad = Object.keys(check.errors)[0];
     if (bad) { rows[bad].control.focus(); return; }
-    const to = v.listId !== cur.listId ? liveList(ctx.state, v.listId) : null;
     if (to) {
       const name = check.clean.name ?? cur.name;
       const other = moveConflict(ctx.state, itemId, to.id, name);
@@ -134,11 +134,7 @@ export function itemSheet(ctx, itemId) {
       if (!ok) return;
     }
     const now = Date.now();
-    const res = ctx.mutate(state => {
-      const r = editItem(state, itemId, patch, now);
-      if (r.ok && to) moveItem(state, itemId, to.id, now);
-      return r;
-    }, { undoLabel: to ? t('item.moved', { list: listName(to, t) }) : null });
+    const res = ctx.mutate(state => editAndMove(state, itemId, patch, to ? to.id : null, now), { undoLabel: to ? t('item.moved', { list: listName(to, t) }) : null });
     if (!res.ok) { for (const [k, row] of Object.entries(rows)) showErr(row, res.errors[k]); if (res.errors.item) { s.close(); ctx.toast(t('item.err.gone')); } return; }
     s.close();
   }

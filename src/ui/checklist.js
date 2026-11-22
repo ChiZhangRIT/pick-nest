@@ -7,7 +7,7 @@
 // 规则在 core/items.js（setStatus：勾成已买时记下这次的商店）。
 import { h, icon } from './dom.js';
 import { t } from '../i18n.js';
-import { liveItem, liveList, setStatus, storeExists } from '../core/items.js';
+import { liveItem, liveList, setStatus, untickStatus, storeExists } from '../core/items.js';
 import { listName, listIcon, categoryName } from '../core/store.js';
 import { qtyLabel } from '../core/parse.js';
 import { itemSheet } from './itemEditor.js';
@@ -27,7 +27,7 @@ const firstLine = (s) => String(s || '').split('\n').map(x => x.trim()).find(Boo
  */
 export function checklist(ctx, main) {
   const reduced = () => !globalThis.matchMedia || matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const pending = new Map();            // 点过、还没挪的：id → 要改成的状态（'done' | 'need'）
+  const pending = new Map();            // 点过、还没挪的：id → 要改成的状态（'done' | 'need' | 'later'：刚从以后再说勾掉的放回去，core 的 untickStatus）
   let tickTimer = null;
   let rowEls = new Map();               // id → { li, check, sec }，按页面上的顺序（闪一下、滚到看得见、挪走以后焦点给谁）
   let moved = new Set(), movedUntil = 0;  // 上次重画时挪了位置的行（SETTLE_MS 之内点它不算）
@@ -105,13 +105,13 @@ export function checklist(ctx, main) {
     if (el.scrollIntoView) el.scrollIntoView({ block: 'nearest', behavior: reduced() ? 'auto' : 'smooth' });
   }
 
-  // 要买、以后再说 → 已买；已买 → 要买。先只改这一行的样子，停一下（TICK_MS）再一起改数据、挪位置；还没挪之前再点一下 = 不改了
+  // 要买、以后再说 → 已买；已买 → 要买（刚从以后再说勾掉的回以后再说）。先只改这一行的样子，停一下（TICK_MS）再一起改数据、挪位置；还没挪之前再点一下 = 不改了
   function tap(id) {
     const it = liveItem(ctx.state, id);
     if (!it) return;
     if (moved.has(id) && Date.now() < movedUntil) return;
     if (pending.has(id)) pending.delete(id);
-    else pending.set(id, it.status === 'done' ? 'need' : 'done');
+    else pending.set(id, it.status === 'done' ? untickStatus(ctx.state, it) : 'done');
     paintRow(id);
     clearTimeout(tickTimer);
     tickTimer = null;
@@ -138,7 +138,7 @@ export function checklist(ctx, main) {
       let last = null;
       for (const [id, st] of batch) {
         const was = liveItem(s, id);
-        if (was && was.status !== st && setStatus(s, id, st, now) && st === 'need') last = id;
+        if (was && was.status !== st && setStatus(s, id, st, now) && st !== 'done') last = id;
       }
       return last;
     });

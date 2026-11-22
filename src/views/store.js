@@ -4,7 +4,7 @@
 // 商店不在了（地址错了、删掉了）→ 回「商店」并提示。
 // 自己管更新（返回 onChange）：勾掉的行挪走以后焦点给谁、刚挪过的行这一下不算，都要跨重画记着（ui/checklist.js，和清单页一样）。
 // 顶栏右边「开始购物」进购物模式（#/s/<id>?shop=1，views/shop.js）。
-import { h, icon } from '../ui/dom.js';
+import { h, icon, backText } from '../ui/dom.js';
 import { t } from '../i18n.js';
 import { liveStore, storeCounts, groupStore, clearStoreDone, setStoreArchived } from '../core/stores.js';
 import { collatorFor, storeView, storeViewPatch, NO_STORE } from '../core/group.js';
@@ -27,7 +27,7 @@ export function render(main, params, ctx) {
   const setView = (patch) => ctx.setLocal(storeViewPatch(ctx.local, storeId, patch));
 
   // 顶栏吸顶（和清单页一样）：长的一页滚下去也能返回；宽屏有侧栏，CSS 把返回藏起来
-  const navbar = h('header.navbar.lp-nav', null, h('button.back', { type: 'button', onclick: () => ctx.back('/stores') }, icon('back'), t('nav.stores')),
+  const navbar = h('header.navbar.lp-nav', null, h('button.back', { type: 'button', onclick: () => ctx.back('/stores') }, icon('back'), backText(ctx, t('nav.stores'))),
     h('button.tb-btn.shop-btn', { type: 'button', dataset: { fid: 'lp-shop' }, onclick: () => ctx.navigate('/s/' + encodeURIComponent(params.id) + '?shop=1') }, icon('cart'), t('shop.start')));
   const head = h('div.page.lp-head');
   function drawHead() {

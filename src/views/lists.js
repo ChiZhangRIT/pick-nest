@@ -4,6 +4,7 @@
 // 标题下面是搜索的入口（去 #/search，views/search.js 的 searchLink：在点按里就换页，iPhone 上搜索框的键盘才弹得出来）。
 // 宽屏双栏时在左栏（params.pane === 'list'）：右栏正在看的那张清单（params.selected）高亮，右栏是搜索时入口高亮（再点它只是把焦点给右栏的搜索框）。
 // 归档的清单收在最下面「已归档（N）」里，点开才显示；点进去以后在「⋯ → 编辑清单」里可以取消归档。
+// 在 iPhone / iPad 的浏览器标签页里打开时，最上面说一句这里的数据和主屏幕上的不是同一份（tabNote，可以关掉）。
 // 没有输入框，数据变了由 app 整页重画；↑↓ 带 data-fid，重画后焦点还在同一个按钮上、页面滚到按钮还在手指下面，可以连着按。
 // 「编辑」「已归档」这种只改显示的开关就地重画（不走 ctx.refresh：那会回到页首），焦点照样放回同一个按钮。
 import { h, icon, keepUnderFinger } from '../ui/dom.js';
@@ -46,7 +47,8 @@ export function render(main, params, ctx) {
 
     const head = h('header.page-head', null,
       h('div.toolbar', null,
-        lists.length > 1 ? h('button.tb-btn', { type: 'button', 'aria-pressed': String(ui.editing), dataset: { fid: 'lists-edit' },
+        // 字本身就说了状态（编辑 → 完成）：不再加 aria-pressed，不然读屏念「完成，切换按钮，已选中」
+        lists.length > 1 ? h('button.tb-btn', { type: 'button', dataset: { fid: 'lists-edit' },
           onclick: () => { ui.editing = !ui.editing; redraw(); } }, t(ui.editing ? 'list.editDone' : 'list.edit')) : h('span'),
         h('button.tb-btn', { type: 'button', onclick: () => listSheet(ctx, { onCreated: id => ctx.navigate('/l/' + encodeURIComponent(id)) }) },
           icon('plus'), t('list.new'))),
@@ -62,10 +64,24 @@ export function render(main, params, ctx) {
         archived.map(l => linkRow(l, counts.get(l.id) || 0))) : null) : null;
 
     main.append(head, h('div.page', null,
+      tabNote(),
       lists.length
         ? h('ul.group.lists', { 'aria-label': t('nav.lists') }, lists.map((l, i) => (ui.editing ? editRow(l, i) : linkRow(l, counts.get(l.id) || 0))))
         : h('p.empty', null, t('list.none')),
       archivedSec));
+  }
+  // 在 Safari 标签页（或别的 App 里的浏览器）里打开的：和主屏幕上的不是同一份数据，Safari 还会清掉一阵子没打开的网站的数据。
+  // 只有 iPhone / iPad 的 WebKit 有 navigator.standalone（主屏幕上是 true）；点「知道了」以后这台设备上不再说（记在本机设置）
+  function tabNote() {
+    const nav = globalThis.navigator;
+    if (!nav || nav.standalone !== false || ctx.local.tabNoteOff) return null;
+    return h('div.card.tab-note', { role: 'note' }, h('p.small', null, t('list.tabNote')),
+      h('button.btn.small', { type: 'button', onclick: () => {
+        ctx.setLocal({ tabNoteOff: true });
+        redraw();
+        const title = main.querySelector('h1');
+        if (title) { title.tabIndex = -1; title.focus({ preventScroll: true }); }
+      } }, t('list.tabNoteOk')));
   }
   function redraw() {
     const a = document.activeElement, fid = a && a.dataset ? a.dataset.fid : null;

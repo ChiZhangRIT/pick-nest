@@ -12,7 +12,7 @@
 //           #/settings → settings（sub null）；#/settings/stores、/categories、/sync、/data → settings（sub 'stores' | 'categories' | 'sync' | 'data'）；
 //           #/deleted → deleted（最近删除，从设置 → 数据进去）；不认识的地址 → lists
 //           pane: 'main'（一栏）| 'list'（双栏左）| 'detail'（双栏右）；selected: 双栏时右栏正在看的清单 / 商店的 id（左栏高亮那一行）
-//   数据变了：页面返回了 onChange 就只调 onChange(info)，页面自己更新（清单页、搜索、购物模式这样做：输入框不能被打断，勾选的节奏要跨重画记着）；
+//   数据变了：页面返回了 onChange 就只调 onChange(info)，页面自己更新（清单页、一家店、搜索、购物模式、设置 → 同步这样做：输入框不能被打断，勾选的节奏要跨重画记着）；
 //            否则 app 把这个页面整个重画一遍（保留滚动位置；带 data-fid 的控件重画后恢复焦点）。
 //   flush：页面上点过、还没写进数据的（勾选要停一下才改数据）马上写进去。切到后台时 app 先调它，再决定要不要马上上传
 //   三种布局（照 babble）：
@@ -21,7 +21,7 @@
 //     双栏（≥1000px，iPad 横放、Mac）：侧栏 + 两栏。#/、#/l/…、#/search 左栏是首页，右栏是那张清单 / 搜索（#/ 时右栏是提示）；
 //            #/stores、#/s/… 左栏是「商店」，右栏是那家店（#/stores 时是提示）。别的页面一栏。
 //     购物模式不管哪种布局都占满整个窗口（没有底栏、侧栏）。
-//   换布局（转 iPad、拉窗口）：同一栏的页面原样留着；要换栏时，有 onChange 的页面（清单页、搜索）整个搬过去（params.pane / selected 原地更新），
+//   换布局（转 iPad、拉窗口）：同一栏的页面原样留着；要换栏时，有 onChange 的页面（清单页、一家店、搜索）整个搬过去（params.pane / selected 原地更新），
 //            输入框里打了一半的字、焦点都不丢；其余重画。要随布局变化的页面听 ctx.on('layout')。
 //
 // ===== ctx =====
@@ -45,6 +45,7 @@
 //                              在点按里调用时，新页面 focus() 输入框 iPhone 才会弹出键盘（ui/dom.js 的 linkTo）
 //   ctx.replaceHash(path)      页面自己换了状态（搜索框里打的字）：只换地址栏，不重画、不加历史记录；挂着的页面记下新地址（下次画不当成换页）
 //   ctx.back(fallback = '/')   App 内有上一页就后退，否则换成 fallback
+//   ctx.backLabel(fallbackLabel)  返回按钮上写什么：后退回去的那一页的名字（从「商店」点「管理商店」进来的写「商店」）；没有上一页 → fallbackLabel
 //   ctx.route                  当前路由（同 params 的结构，不含 pane / selected）；ctx.params 是这个页面挂载时的路由（双栏时 pane / selected 原地更新）
 //   ctx.refresh()              重画当前所有页面（焦点在带 data-fid 的控件上时，重画后放回去）
 //   ctx.layout()               'phone'（<720）| 'side'（720–999，有侧栏）| 'two'（≥1000，侧栏 + 双栏）
@@ -59,16 +60,18 @@
 // 界面
 //   ctx.t(key, vars)、ctx.lang()、ctx.setLang(l)、ctx.setTheme('auto'|'light'|'dark')、ctx.theme()（当前生效的 'light'|'dark'）
 //   ctx.toast(msg, { ms, action: { label, run } })、ctx.sheet(content, opts)、ctx.confirm(opts) → Promise<boolean>（见 ui/dom.js）
-//   ctx.on(event, fn)          'change'(info) | 'sync'(status) | 'layout'(layout) | 'theme'(theme)；返回取消函数，页面清理时自动取消
+//   ctx.on(event, fn)          'change'(info) | 'sync'(status) | 'layout'(layout) | 'theme'(theme) | 'update'；返回取消函数，页面清理时自动取消
 //   ctx.onChange(fn)           = ctx.on('change', fn)
 //   ctx.build                  当前版本（src/version.js，和 sw.js 的 CACHE 一样）
+//   ctx.updateReady()          新版本下载好了、等着下次打开（设置 → 关于里说一声）；ctx.on('update', fn) 下载好的时候
 // 恢复页（ui/recovery.js）用
 //   ctx.storageIssue()         本机数据读不出来 / 存储用不了 → { code, count }，正常 → null
 //   ctx.recoveryExport() / ctx.recoveryArchive()   原始数据（下载用；recoveryArchive 是上次恢复前存的，设置 → 数据里也能下载）
 //   ctx.recoveryCloud()        只读地取云端现在的那一份 → Promise<State>（开过同步才有；没有文件抛 SyncError('nofile')）
 //   ctx.repairData(next)       用读得出来的部分（合并 next）换掉坏了的数据（原件先存档）；ctx.retryData() 重新读取
 import * as state from './core/state.js';
-import { stamp, deletedRecord, restoredRecord, setSetting, normalizeRecord, newId } from './core/store.js';
+import { stamp, deletedRecord, restoredRecord, setSetting, normalizeRecord, newId, listName } from './core/store.js';
+import { liveList } from './core/items.js';
 import { isObj, own, safeKey, debounce } from './core/util.js';
 import { createSync, platformDevice } from './core/sync.js';
 import { t, setLang, getLang, guessLang, LANGS } from './i18n.js';
@@ -184,6 +187,19 @@ function back(fallback = '/') {
   if (navStack.length > 1) history.back();
   else navigate(fallback, { replace: true });
 }
+// 返回按钮写真的会回到的那一页：有上一页时 back() 是后退，从「商店」点「管理商店」、从首页的同步标签进来的，回到的不是「设置」
+const SUB_TITLE = { stores: 'set.stores', categories: 'set.categories', sync: 'set.sync', data: 'set.data' };
+function pageTitle(r) {
+  if (r.name === 'lists') return t('nav.lists');
+  if (r.name === 'stores') return t('nav.stores');
+  if (r.name === 'search') return t('nav.search');
+  if (r.name === 'settings') return t(r.sub ? SUB_TITLE[r.sub] : 'nav.settings');
+  if (r.name === 'deleted') return t('deleted.title');
+  if (r.name === 'list') { const l = liveList(S(), r.id); return l ? listName(l, t) : null; }
+  if (r.name === 'store') { if (r.id === 'none') return t('store.none'); const st = own(S().data.stores, r.id); return st && !st.deleted ? st.name : null; }
+  return null;
+}
+const backLabel = (fallback) => (navStack.length > 1 && pageTitle(parseRoute(navStack[navStack.length - 2]))) || fallback;
 // 地址变了（点链接、后退前进）：hashchange 和 popstate 都听（WebKit 后退时有时只先来 popstate），同一个地址只处理一次
 function onUrlChange() {
   const target = location.hash || '#/';
@@ -223,14 +239,8 @@ const syncer = createSync({
   getState: S,
   applyRemote: (merged, info) => state.applyRemote(merged, info),
   getConfig: () => (state.storageIssue() ? null : L().sync),
-  saveConfig: (cfg) => {
-    if (L().sync === cfg) {
-      // 数据没存进本机（空间满）：本机存的比云端旧，不记云端版本号——下次启动完整拉取、合并，不会被 304 / 同一个 sha 当成「没变化」
-      if (state.saveOk()) state.saveLocal();
-      else { const { sha, etag } = cfg; cfg.sha = cfg.etag = null; state.saveLocal(); Object.assign(cfg, { sha, etag }); }
-    }
-    syncChanged();
-  },
+  // 数据没存进本机（空间满）时 state.saveLocal 不写云端版本号：下次启动完整拉取、合并，不会被 304 / 同一个 sha 当成「没变化」
+  saveConfig: (cfg) => { if (L().sync === cfg) state.saveLocal(); syncChanged(); },
   editVersion: state.editVersion,
   device: deviceName,
   onStatus: () => syncChanged(),
@@ -324,7 +334,7 @@ const ctx = {
   mergeIn: (other) => state.mergeIn(other),
   setLocal: (patch) => state.setLocal(patch),
 
-  navigate, back, replaceHash, refresh: () => refresh(), layout,
+  navigate, back, backLabel, replaceHash, refresh: () => refresh(), layout,
   t, lang: getLang,
   setLang(l) { state.setLocal({ lang: l }); setLang(l); refresh(); },
   setTheme(th) { state.setLocal({ theme: th }); applyTheme(); },
@@ -332,6 +342,7 @@ const ctx = {
   toast, sheet, confirm: confirmDialog,
   on, onChange: (fn) => on('change', fn),
   build: BUILD,
+  updateReady: () => updateReady,
   sync: syncApi,
   syncBadge: (opts) => syncBadge(syncStatus(), getLang(), opts),
 };
@@ -509,8 +520,10 @@ let rerenderQueued = false;
 state.subscribe((st, info) => {
   const wasBlocked = !!recoveryRoot;
   if (recoveryScreen()) return;
-  // 同步拉下来的（remote）不再排一次：不然每一轮都会接着再来一轮。修好本机数据（merge）也要排：合并的结果传上去
+  // 同步拉下来的（remote）不再排一次：不然每一轮都会接着再来一轮。从备份恢复、修好本机数据（merge）马上传：合并的结果要尽快到别的设备
   if (info.source === 'local' || info.source === 'undo' || info.source === 'merge' || (info.source === 'storage' && info.changed)) syncSoon();
+  if (info.source === 'merge') syncSoon.flush();
+  if (info.source === 'local') askPersist();
   if (wasBlocked) { refresh(); return; }       // 本页或别的标签页修好数据后，重新挂载页面
   if (info.saved === false) toast(t('common.storageFull'), { ms: 10000 });
   else if (info.undoLabel) toast(info.undoLabel, { ms: 10000, action: { label: t('common.undo'), run: () => ctx.undo() } });
@@ -539,9 +552,46 @@ function safeMode(el, e) {
       L().sync ? h('button.btn', { type: 'button', onclick: () => { syncApi.stop(); refresh(); } }, t('sync.stop')) : null))));
 }
 
+// ---------- 本机数据别被系统清掉 ----------
+// 请浏览器把这个网站的存储标成「持久的」：空间紧张时 WebKit 会清掉不是持久的网站数据（没开同步的话清单就没了）。
+// 主屏幕上的网页 App 一般直接答应；有的浏览器只在用户操作时才给，所以在第一次改数据时（点按里）要，一次打开只要一次
+let persistAsked = false;
+function askPersist() {
+  if (persistAsked) return;
+  persistAsked = true;
+  try { const p = globalThis.navigator?.storage?.persist?.(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* 不支持就算了 */ }
+}
+
+// ---------- 新版本 ----------
+// 已经装好的 App 里 navigator.serviceWorker.register() 不检查更新（注册没变就直接返回），只有冷启动（导航）时浏览器才去看；
+// 主屏幕上的 App 常常几天都只是切回来，不是重新打开。所以启动后、切回来时（最多半小时一次）自己 update()：
+// 新版在后台下载、校验好（sw.js），等下次关掉再打开时启用（不 skipWaiting），下载好了在「设置 → 关于」里说一声
+const UPDATE_EVERY = 30 * 60 * 1000;
+let updateReady = false, lastUpdateCheck = 0, watchedReg = null;
+function checkUpdate() {
+  const sw = globalThis.navigator?.serviceWorker;
+  if (!sw || !sw.controller || typeof sw.getRegistration !== 'function' || Date.now() - lastUpdateCheck < UPDATE_EVERY) return;
+  lastUpdateCheck = Date.now();
+  sw.getRegistration().then(reg => {
+    if (!reg) return;
+    watchUpdate(reg);
+    return reg.update();
+  }).catch(() => { /* 离线、GitHub Pages 出错：下次再看 */ });
+}
+function watchUpdate(reg) {
+  if (watchedReg === reg) return;
+  watchedReg = reg;
+  const mark = () => { if (reg.waiting && !updateReady) { updateReady = true; emit('update', true); } };
+  mark();
+  reg.addEventListener?.('updatefound', () => {
+    const w = reg.installing;
+    if (w) w.addEventListener('statechange', () => { if (w.state === 'installed') mark(); });
+  });
+}
+
 // ---------- 系统事件 ----------
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') { applyTheme(); syncIfStale(); }
+  if (document.visibilityState === 'visible') { applyTheme(); syncIfStale(); checkUpdate(); }
   else {
     // 先把页面上点过、还没写进数据的写进去：勾选要停 0.3 秒才改数据，勾完最后一样马上锁屏的话，这一下既没存进本机也传不上去
     for (const m of Object.values(mounted)) { try { m.handle?.flush?.(); } catch (e) { console.error(e); } }
@@ -561,4 +611,5 @@ currentHash = location.hash || '#/';
 track(currentHash);
 render();
 autoSync();
+checkUpdate();
 window.__picknest = { state, ctx, syncer, mounted, get current() { return mounted.detail || mounted.main || null; }, get S() { return S(); } };   // 方便在浏览器控制台里查看；boot.js 的看门狗也靠它判断启动好了

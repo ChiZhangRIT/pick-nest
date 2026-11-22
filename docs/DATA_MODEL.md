@@ -32,6 +32,14 @@
 
 V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间相同按 `canon()` 序列化比较，保证每台设备结果一样。设置按键合并（`settingsAt`）。
 
+例外（`store.js` 的 `mergeRecord`）：`items`、`memory` 的 id 是算出来的（清单 + 名字、名字），一台设备还没拉到云端那条（新设备还没连同步、Safari 清掉了存储、店里离线）就又加了同名的，建的是同一个 id 上一条空白的新记录。整条取较新的话，云端那条（可能是几个月前的）的备注、链接、价格、常去的商店、记住的单位就永远没了。所以两条的 **`createdAt` 不一样**（同一条记录改来改去、恢复、移动，`createdAt` 都不变）时：
+
+- 以较新的为底（状态、数量、名字的写法、删除标记都是它的）
+- `items`（还要同一张清单、`normName` 一样；不然是另一样东西占了这个 id，照旧整条取较新的）：它空着的 `note`、`url`、`price`、`unit`、`storeId`、`categoryId`、`needs` 用另一条的补上
+- `memory`：`stores` 两边合在一起，同一家店 `n`、`at` 取大的；`uses`、`lastAt` 取大的；较新的没选过分类（`categorySet`）就用另一条选过的；空着的 `unit`、`qty` 补上
+- `createdAt` 取早的（以后两边就是同一条，不再走这个例外）；补到了东西的结果 `updatedAt` 是较新那条 + 1（还拿着较新那条的设备合并时它赢），没补到东西就是较新的那条。顺序无关，再合并几次结果都一样
+- 同一条记录（`createdAt` 一样）照旧整条取较新的：清空的备注不会被旧的补回来，点错了减回去的购买次数也不会被旧的加回去
+
 现在只有自己用，同一时刻在两台设备上改同一样东西的情况很少，整条覆盖可以接受。以后多人共用时改成按字段合并（见 ROADMAP），数据形状不用变。
 
 ## 同步（core/sync.js）
@@ -44,10 +52,10 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 
 - 每一轮：确认仓库是私有的（`visibility === 'private'`，5 分钟内确认过不再问；要新建文件时一定再问）→ 拉取（`Accept: application/vnd.github.object+json`，带 `If-None-Match`；超过 1 MB 时内容是空的，再用 raw 格式取原文）→ 两边都 `normalizeState`，`mergeStates`，`ensureSeeds`，交给 `state.applyRemote` 保存（不算本机修改）→ 本机有云端没有的才上传（PUT 整个文件，带上次的 `sha`）
 - 409 / 422（别的设备抢先改过、已经有文件了）、带着 sha 却 404（文件被删了）：重新拉取、合并再传，最多传 4 次，重传前等一下（150 毫秒起、每次加倍，再加一点随机）；还不行报 `mergeFail`，下一轮再来
-- ETag 只在合并成功以后记；保存合并结果失败（空间满）时本机设置里不记云端版本号，下次完整拉取
+- ETag 只在合并成功以后记；数据最近一次没存进本机（空间满）时，`state.saveLocal` 写本机设置时一律不写云端版本号（`sync.sha`、`etag`；不管是同步一轮结束、改显示方式还是标「待同步」时存的），被关掉以后下次完整拉取。内存里留着，这次打开期间照常用
 - 「有没传的修改」：`state.js` 每次本机修改都标 `sync.dirty`；上传前记下 `editVersion`，上传完它变了（上传期间又改过）就还是 dirty
-- 同一时间只跑一轮。切到后台时（`pushFirst`）：知道云端版本、有改动就直接上传（不先拉取），请求体小于 60 KB 时用 `fetch` 的 `keepalive`
-- 出错：`SyncError` 的 `code`——`net`（断网，只标离线）、`auth`（401）、`perm`（403）、`notfound`（404）、`public`、`classic`（经典令牌）、`notFine`（不是 `github_pat_` 开头的别的格式）、`badFile`（不是这个 App 的 / 读不出来，不覆盖）、`newer`（新版写的）、`mergeFail`、`rate`（429 或 403 + 剩余 0：带着能再试的时刻 `until`，app 在那之前不自动同步）、`http`（别的状态码）。`net`、`rate`、`mergeFail`、`http` 5xx 是暂时的，状态标签显示「稍后重试」，别的要用户处理
+- 同一时间只跑一轮。切到后台时（`pushFirst`）：知道云端版本、有改动就直接上传（不先拉取），请求体小于 60 KB 时用 `fetch` 的 `keepalive`。页面随时会被挂起，所以：「仓库是私有的」30 分钟内确认过就不再先问（平常的一轮还是 5 分钟）；正在跑一轮（比如刚切回来时的拉取）就先打断它（它的请求作废，算 `aborted`：不算出错、不标离线），不排在它后面
+- 出错：`SyncError` 的 `code`——`net`（断网，只标离线）、`auth`（401）、`perm`（403）、`notfound`（404）、`public`、`classic`（经典令牌）、`notFine`（不是 `github_pat_` 开头的别的格式）、`noToken`（没填令牌）、`badToken`（令牌中间有空白）、`badRepo`（仓库名不对，`checkRepo`）、`badFile`（不是这个 App 的 / 读不出来，不覆盖）、`newer`（新版写的）、`mergeFail`、`rate`（429，或 403 + 剩余 0，或 403 + `Retry-After`：带着能再试的时刻 `until`，app 在那之前不自动同步）、`http`（别的状态码）；只读的 `readRemote` 还有 `off`（没开同步）、`nofile`（云端没有文件）。`net`、`rate`、`mergeFail`、`http` 5xx 是暂时的，状态标签显示「稍后重试」，别的要用户处理。`aborted`（被切到后台的直接上传打断）不存、不显示
 - 本机数据读不出来（恢复页）时 `getConfig` 返回 null：一律不同步。「从云端恢复」另开一个只读的（`readRemote`，raw 格式），只读不写
 - 以后有图片：照 babble 的录音，在拉取之后、上传 `picknest.json` 之前传本机还没上传的图片（按内容的 sha256 命名，只增不改），`core/sha256.js` 到那时再移植
 
@@ -55,7 +63,9 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 
 `picknest-backup-YYYYMMDD.json` = `{ app: 'picknest', v: 1, kind: 'backup', exportedAt, state }`。`state` 就是整份同步的数据（软删除的记录、不认识的集合和设置都在），没有令牌和本机设置。
 
-从备份恢复 = `state.mergeIn`：逐条合并、较新的为准、补预置记录，备份里没有的不删（备份里更晚的删除照样合并进来），算本机修改（开着同步会传上去）。读的时候认所有 `{ app: 'picknest', v: 1, state }` 形状的文件，读不出来按 `fileProblem` 说原因（`notJson`、`notApp`、`newer`、`bad`）。
+从备份恢复 = `state.mergeIn`：逐条合并、较新的为准（各自从头建的同一条也和同步一样补字段）、补预置记录，备份里没有的不删（备份里更晚的删除照样合并进来），算本机修改（开着同步时 app 马上传，不等两秒的防抖）。读的时候认所有 `{ app: 'picknest', v: 1, state }` 形状的文件，读不出来按 `fileProblem` 说原因（`notJson`、`notApp`、`newer`、`bad`）。
+
+恢复页修本机数据（`persistence.recover`）前存的原件在 `picknest.recovery.<时刻>.*`，只留最近一次的（`archive()` 和「设置 → 数据」只给最新的，旧的只占同一个域名下共用的空间）。
 
 ## 最近删除（core/deleted.js）
 
@@ -97,13 +107,15 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
   categoryId: null, storeId: null,
   status: 'need' | 'done' | 'later', doneAt: null,
   url: '', price: null,
-  needs: {} }
+  needs: {},
+  fromLater: true /* 只在从「以后再说」勾成已买时有 */ }
 ```
 
 - `qty`：数字或 `null`（不写数量）。新加的默认 1。显示时 `null` 不显示数量。编辑时只收 `null` 或 0 < q ≤ 9999
 - `unit`：任意文字，空字符串是没有单位。常用单位在界面里给选项（个、袋、盒、瓶、包、罐、把、根、斤、磅、lb、oz、g、kg、mL、L……）
 - `storeId`：**这次**打算在哪买，`null` 是未指定。长期习惯记在 `memory` 里，改这一项不影响习惯
 - `status`：`need` 要买、`done` 已买、`later` 以后再说（只在 `kind: 'general'` 的清单里出现）
+- `fromLater`：从「以后再说」勾成已买的（`setStatus` 记，不是已买时 `normalizeItem` 去掉）。取消勾选时回哪由 `items.js` 的 `untickStatus` 定：有这个标记、勾上 30 分钟内（`UNTICK_MS`）、还在一般清单上 → 回「以后再说」（点错了再点一下就是没点过）；别的回「要买」
 - `url`、`price`：一般物品可选填（手动粘贴链接，V1 不抓取网页）。`url` 只收 `http:` / `https:`（或空），`price` 是 `null` 或 ≥ 0
 - `needs`：**预留给食谱和计划**：`{ [来源]: { qty, unit, label } }`。V1 永远是 `{}`，但读写时原样保留。到时 `qty` 表示手动加的那一部分，总数 = 手动 + 各来源（同单位才相加）
 
@@ -113,7 +125,7 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 
 1. 先找这张清单里同名（`normName` 一样）的记录，已买、已清除的也算。改名改成「牛奶」的、从别的清单移过来的、以前分到随机 id 的，都已经是「这张清单里的牛奶」。有几条时：没删除的优先，再固定 id 优先，再按 id 排（每台设备选的一样）
 2. 没有同名的：用固定 id
-3. 固定 id 已经被别的东西占了（那条记录改过名或移到了别的清单）：用随机 id `newId('i_')`
+3. 固定 id 已经被别的东西占了（那条记录改过名或移到了别的清单）：用 `'i_' + hash64(listId + '\n' + normName(name) + '\n' + n)` 里第一个空着的（n = 1、2……）。也是算出来的：两台设备同步过的数据一样，离线各加一次还是同一个 id（不用随机 id，不然同步后是两条）
 
 调用的地方拿到 id 以后：
 
@@ -125,7 +137,9 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 
 ### 移到别的清单
 
-同一条记录换 `listId`。目标清单上已经有同名的（没删除的）：页面先确认（`moveConflict`），然后合并成那一条（恢复成要买），这一条软删除——同一张清单里同名的只能有一条。分类不能给目标清单用时按默认值重新定；移到食材清单时「以后再说」变成要买。
+同一条记录换 `listId`。目标清单上已经有同名的（没删除的）：页面先确认（`moveConflict`），然后合并成那一条（恢复成要买），这一条软删除——同一张清单里同名的只能有一条。合并时这一条的东西不丢（`mergeMoved`）：那一条空着的链接、价格、单位、商店、分类（能给目标清单用的）用这一条的补上，两条的备注都有、不一样就接在后面；数量：那一条本来就在要买的用它的，不然用这一条的。分类不能给目标清单用时按默认值重新定；移到食材清单时「以后再说」变成要买。
+
+编辑面板的「完成」是 `editAndMove(state, id, patch, toListId)`：改和移在一起做，这次改过的字段（`patch` 里的）合并时以这一条为准、落在留下来的那一条上（不是改在随后被删掉的这一条上）；同时改名时名字只和要去的清单比（`validateItemPatch` 的 `moving`），那边有同名的就是合并。
 
 好处：清单记录的数量 ≈ 不同东西的个数，不会越买越多；两台设备离线时各加一次「牛奶」，同步后还是一条。
 
@@ -223,7 +237,7 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 ## 本机设置 picknest.local（不同步）
 
 ```js
-{ lang: null, theme: 'auto', device: null, lastBackupAt: null,
+{ lang: null, theme: 'auto', device: null, lastBackupAt: null, tabNoteOff: false,
   sync: null | { repo: 'owner/pick-nest-data', token: 'github_pat_…', tokenExp: null /* 用户填的到期日 23:59 */,
                  sha, etag, dirty, at /* 上次同步成功 */, err: null | { code, vars }, offline },
   view: { [listId]: { groupBy: 'category' | 'store', showDone: true, showLater: true } },   // 认不出的值按默认（core/group.js 的 listView）；购物模式只用 groupBy
@@ -231,6 +245,7 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 ```
 
 - `device`：写进同步文件和提交说明的设备名；没设就用平台名（iPhone / iPad / Mac，`core/sync.js` 的 `platformDevice`）
+- `tabNoteOff`：iPhone / iPad 的浏览器标签页里打开时（`navigator.standalone === false`）首页那句「和主屏幕上的不是同一份数据」点过「知道了」
 - `lastBackupAt`：这台设备上次下载 / 分享备份的时刻（设置 → 数据里显示）
 - `tokenExp`：用户填的到期日那天 23:59（`dates.js` 的 `endOfDay`；2000 年以前的不收：用键盘填日期时年份是一位一位进去的，0002 也是「合法」的日期）
 - 同步码 = `picknest-sync:<owner/repo>:<令牌>[:<到期日 YYYY-MM-DD>]`（`syncCode` / `parseSyncCode`，前缀是参数）。到期日是每台设备自己的本机设置，带在同步码里，用它连上的设备也会提前提醒

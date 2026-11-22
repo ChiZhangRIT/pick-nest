@@ -257,6 +257,61 @@ test('401 → auth；断网不算错误，只标离线；403 → perm；请求�
   r = await c.run();
   assert.equal(r.ok, true, '过后照常同步');
   assert.equal(c.cfg.err, null);
+  // 403 带着 Retry-After（GitHub 的「次级限流」）也是请求太多，不是权限问题
+  const before2 = Date.now();
+  gh.faults.push({ path: '/repos/me/data', status: 403, headers: { 'Retry-After': '60' } });
+  c.sync = c.open();
+  r = await c.run();
+  assert.deepEqual([r.error.code, r.error.vars.status], ['rate', 403]);
+  assert.ok(r.error.vars.until >= before2 + 60000);
+});
+
+test('令牌到期的天数按本地日历日算：夏令时开始的前一晚，明天到期还是「还有 1 天」', () => {
+  const tz = process.env.TZ;
+  process.env.TZ = 'America/Los_Angeles';
+  try {
+    const now = new Date(2027, 2, 13, 23, 30).getTime();             // 3 月 14 日凌晨开始夏令时，那一天只有 23 小时
+    const end = (y, m, d) => new Date(y, m, d, 23, 59, 59, 999).getTime();
+    assert.deepEqual([tokenDaysLeft(end(2027, 2, 14), now), tokenDaysLeft(end(2027, 2, 13), now), tokenDaysLeft(end(2027, 2, 12), now)], [1, 0, -1]);
+    assert.equal(tokenDaysLeft(end(2027, 10, 8), new Date(2027, 10, 6, 0, 10).getTime()), 2, '夏令时结束（那一天 25 小时）也对');
+  } finally { if (tz === undefined) delete process.env.TZ; else process.env.TZ = tz; }
+});
+
+test('带着 sha 上传却 404（文件被删了）、重新拉取还是没有：新建之前一定再确认仓库是私有的，变成公开的就不传', async () => {
+  const gh = mockGitHub(), mac = device(gh, 'Mac');
+  mac.item('i_1'); await mac.run();
+  mac.item('i_2');
+  // 拉取时文件还在；上传前文件被删、仓库被改成了公开的（5 分钟的确认还没过期）
+  gh.onPut = () => { gh.files.delete(DATA); gh.private = false; };
+  gh.log.length = 0;
+  const r = await mac.run();
+  assert.deepEqual([r.ok, r.error && r.error.code], [false, 'public']);
+  assert.equal(gh.writes().length, 1, '只有那一次 404，没有新建');
+  assert.equal(gh.files.has(DATA), false);
+});
+
+test('一台新设备（或存储被清掉的设备）连同步之前先加了同名的东西：合并后备注、链接、价格、常去的商店、记住的单位都还在', async () => {
+  const { addFromInput, editItem, setStatus, clearDone } = await import('../src/core/items.js');
+  const gh = mockGitHub(), mac = device(gh, 'Mac');
+  const change = (d, fn) => { fn(d.state); d.version++; if (d.cfg) d.cfg.dirty = true; };
+  let shoe, milk;
+  change(mac, s => { shoe = addFromInput(s, 'l_tobuy', '跑鞋').id; milk = addFromInput(s, 'l_groceries', '牛奶').id; });
+  change(mac, s => editItem(s, shoe, { note: '42 码', url: 'https://example.com/shoe', price: '129', storeId: 's_target' }));
+  change(mac, s => editItem(s, milk, { unit: '盒', storeId: 's_costco' }));
+  change(mac, s => { setStatus(s, shoe, 'done'); setStatus(s, milk, 'done'); clearDone(s, 'l_tobuy'); clearDone(s, 'l_groceries'); });
+  await mac.run();
+  await new Promise(r => setTimeout(r, 5));
+  const ipad = device(gh, 'iPad');
+  const cfg = ipad.cfg; ipad.cfg = null;                              // 还没粘贴同步码
+  change(ipad, s => { addFromInput(s, 'l_tobuy', '跑鞋'); addFromInput(s, 'l_groceries', '牛奶'); });
+  ipad.cfg = { ...cfg, dirty: true };
+  await ipad.run(); await mac.run();
+  for (const d of [mac, ipad]) {
+    const sh = d.state.data.items[shoe], m = Object.values(d.state.data.memory).find(x => x.name === '牛奶');
+    assert.deepEqual([sh.status, sh.note, sh.url, sh.price, sh.storeId], ['need', '42 码', 'https://example.com/shoe', 129, 's_target'], d.name);
+    assert.deepEqual([m.unit, m.stores.s_costco && m.stores.s_costco.n], ['盒', 1], d.name);
+  }
+  assert.equal(canon(mac.state), canon(ipad.state), '两边一样');
 });
 
 test('上传期间本机又改了：上传完仍算有改动，下一轮再传', async () => {
@@ -354,6 +409,47 @@ test('切到后台时（pushFirst）：知道云端版本、有改动就直接�
   gh.log.length = 0;
   await mac.run({ pushFirst: true });
   assert.deepEqual(gh.log, ['GET /repos/me/data/contents/' + DATA], '没改动：只拉取');
+});
+
+test('切到后台的直接上传：上次确认私有超过 5 分钟（半小时内）也不先问仓库，keepalive 的 PUT 马上发出去', async () => {
+  const gh = mockGitHub(), mac = device(gh, 'Mac');
+  mac.item('i_1'); await mac.run();
+  const real = Date.now;
+  Date.now = () => real() + 6 * 60 * 1000;
+  try {
+    mac.item('i_2');
+    gh.log.length = 0;
+    assert.equal((await mac.run({ pushFirst: true, keepalive: true })).ok, true);
+    assert.deepEqual(gh.log, ['PUT /repos/me/data/contents/' + DATA]);
+    gh.log.length = 0;
+    await mac.run();
+    assert.equal(gh.log[0], 'GET /repos/me/data', '平常的一轮照样 5 分钟问一次');
+  } finally { Date.now = real; }
+});
+
+test('切到后台时正在跑一轮（刚切回来时的拉取还没回来）：打断它，直接上传不排在后面；被打断的那一轮不算出错、不算离线', async () => {
+  const gh = mockGitHub(), mac = device(gh, 'Mac');
+  mac.item('i_1'); await mac.run();
+  let hang = false;
+  const orig = gh.fetch;
+  // 像真的 fetch 一样：signal 断了就失败
+  gh.fetch = (url, opt = {}) => {
+    if (!(hang && (opt.method || 'GET') === 'GET' && url.includes('/contents/'))) return orig(url, opt);
+    gh.log.push('GET(慢) contents');
+    return new Promise((resolve, reject) => opt.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))));
+  };
+  gh.log.length = 0; hang = true;
+  const resume = mac.sync.syncNow();
+  await new Promise(r => setTimeout(r, 5));
+  mac.item('i_2');
+  const hide = mac.sync.syncNow({ pushFirst: true, keepalive: true });
+  await new Promise(r => setTimeout(r, 5));
+  assert.ok(gh.log.includes('PUT /repos/me/data/contents/' + DATA), '页面被挂起之前 PUT 已经发出去了');
+  assert.deepEqual(await resume, { ok: false, skipped: true });
+  assert.equal((await hide).ok, true);
+  assert.deepEqual([mac.cfg.offline, mac.cfg.err, mac.cfg.dirty], [false, null, false]);
+  assert.deepEqual(Object.keys(gh.json().state.data.items).sort(), ['i_1', 'i_2']);
+  gh.fetch = orig;
 });
 
 test('同步中途停止了（或换了仓库、本机数据出了问题 → getConfig 返回 null）：不再上传', async () => {

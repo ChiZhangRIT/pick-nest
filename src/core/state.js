@@ -29,7 +29,8 @@ export { PENDING_PREFIX };
 
 export const KEY = 'picknest.state', LKEY = 'picknest.local';
 // view：各清单的显示方式 { [listId]: { groupBy, showDone, showLater } }；storeView：各家店的页面 { [storeId | 'none']: { showDone } }（core/group.js 读）
-export const LOCAL_DEFAULTS = Object.freeze({ lang: null, theme: 'auto', device: null, sync: null, lastBackupAt: null, view: {}, storeView: {} });
+// tabNoteOff：在浏览器标签页里打开时首页那句「和主屏幕上的不是同一份数据」点过「知道了」（views/lists.js）
+export const LOCAL_DEFAULTS = Object.freeze({ lang: null, theme: 'auto', device: null, sync: null, lastBackupAt: null, view: {}, storeView: {}, tabNoteOff: false });
 const UNDO_MAX = 20;
 
 /** @type {StorageLike | null} */
@@ -130,9 +131,15 @@ export function saveState() {
   return lastSaveOk;
 }
 export const idle = () => persistence.idle();
+/**
+ * 存本机设置。数据最近一次没存进本机（空间满）时不写云端版本号（sync.sha / etag）：内存里的版本号对的是内存里的数据，
+ * 磁盘上的数据比它旧——这时被系统关掉，下次启动带着它拉取会得到 304 / 同一个 sha，那一版云端的修改就再也合并不进来了，
+ * 接着上传还会把它盖掉。不写就是下次完整拉取、合并。哪条路径存的（同步一轮结束、改显示方式、改数据时标「待同步」）都一样
+ */
 export function saveLocal() {
   if (!storage) return true;
-  try { storage.setItem(LKEY, JSON.stringify(L)); return true; } catch (e) { return false; }   // 本机设置存不下也不影响使用
+  const out = !lastSaveOk && isObj(L.sync) && (L.sync.sha || L.sync.etag) ? { ...L, sync: { ...L.sync, sha: null, etag: null } } : L;
+  try { storage.setItem(LKEY, JSON.stringify(out)); return true; } catch (e) { return false; }   // 本机设置存不下也不影响使用
 }
 /** 改本机设置（浅合并）并保存，返回新的本机设置 @param {Record<string, any>} [patch] */
 export function setLocal(patch = {}) {

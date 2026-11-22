@@ -46,6 +46,11 @@ test('合并的结果存不进本机：不记云端版本号；下次启动完�
     assert.deepEqual([saved().sha, saved().etag], [null, null], '本机设置里不记云端版本号');
     assert.ok(saved().at, '这一轮同步本身算成功');
     assert.ok(first.app.state.getLocal().sync.sha, '内存里留着：这次打开期间不用每次都整个重拉');
+    // 这期间别的地方存本机设置（改显示方式、改数据时标「待同步」）：照样不把云端版本号写进去
+    first.app.ctx.setLocal({ view: { l_groceries: { groupBy: 'store' } } });
+    first.app.ctx.mutate(s => { s.data.items.i_local = normalizeRecord('items', { id: 'i_local', listId: 'l_groceries', name: '本机加的', status: 'need' }); });
+    assert.equal(JSON.parse(storage.getItem('picknest.local')).view.l_groceries.groupBy, 'store');
+    assert.deepEqual([saved().sha, saved().etag], [null, null], '本机设置里还是没有云端版本号');
   } finally { first.dom.restore(); }
 
   full = false;                                   // 腾出了空间，关掉再打开
@@ -57,6 +62,6 @@ test('合并的结果存不进本机：不记云端版本号；下次启动完�
     assert.equal(gets[0].headers['If-None-Match'], undefined, '完整拉取，不会被 304 挡住');
     assert.equal(readStoredState(storage).data.items.i_remote.name, '别的设备加的燕麦奶', '这次存进了本机');
     assert.ok(saved().sha && saved().etag, '存好以后才记云端版本号');
-    assert.equal(gh.puts, 0, '本机没有云端没有的：不上传');
+    assert.equal(gh.puts, 0, '本机没有云端没有的：不上传（空间满时加的那一样也没存进本机）');
   } finally { second.dom.restore(); }
 });

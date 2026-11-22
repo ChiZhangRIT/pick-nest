@@ -4,7 +4,7 @@
 // 规则都在 core：解析和添加（items.js、parse.js）、联想（memory.js）、分组排序（group.js）、清单操作（lists.js）。
 // 点一行 = 勾掉 / 取消：行和勾选的节奏（先在原地打勾，停一下再挪）在 ui/checklist.js，商店页也用它。
 // 顶栏右边「开始购物」进购物模式（#/l/<id>?shop=1，views/shop.js）。
-import { h, icon } from '../ui/dom.js';
+import { h, icon, backText } from '../ui/dom.js';
 import { t } from '../i18n.js';
 import { listName, listIcon, needCounts } from '../core/store.js';
 import { liveList, addFromInput, addItem, clearDone, countItems, storeExists } from '../core/items.js';
@@ -38,7 +38,7 @@ export function render(main, params, ctx) {
   // ---------- 顶栏、页头 ----------
   // 顶栏和快速添加都吸顶：长清单滚下去也能返回、打开 ⋯
   const navbar = h('header.navbar.lp-nav', null,
-    h('button.back', { type: 'button', onclick: () => ctx.back('/') }, icon('back'), t('nav.lists')),     // 宽屏有侧栏，CSS 藏起来
+    h('button.back', { type: 'button', onclick: () => ctx.back('/') }, icon('back'), backText(ctx, t('nav.lists'))),     // 宽屏有侧栏，CSS 藏起来
     h('div.nav-acts', null,
       h('button.tb-btn.shop-btn', { type: 'button', dataset: { fid: 'lp-shop' }, onclick: () => ctx.navigate('/l/' + encodeURIComponent(listId) + '?shop=1') }, icon('cart'), t('shop.start')),
       h('button.icon-btn', { type: 'button', 'aria-label': t('common.more'), title: t('common.more'), onclick: () => menu() }, icon('more'))));

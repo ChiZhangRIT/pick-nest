@@ -134,6 +134,8 @@ body[data-layout="phone"][data-tabs="1"] #tabs {
   min-height: calc(48px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) max(6px, env(safe-area-inset-right)) 0 max(4px, env(safe-area-inset-left)); }
 .back { display: inline-flex; align-items: center; min-height: 44px; padding: 0 10px 0 2px; border: 0; background: none; color: var(--accent-text); font-size: 17px; }
 .back .ic { width: 24px; height: 24px; stroke-width: 2.2; }
+.back { min-width: 0; max-width: 55%; }
+.back-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* 写的是回去的那一页，可能是一张清单的长名字 */
 body:not([data-layout="phone"]) .navbar .back { visibility: hidden; }
 .nav-acts { display: flex; align-items: center; gap: 2px; }
 /* iPhone 横过来时刘海那一侧要让开：右边总要；左边只在单栏时（宽屏时侧栏已经让开了） */
@@ -224,7 +226,7 @@ a.sync-badge::after { content: ""; position: absolute; inset: -8px -6px; }   /* 
 .safe-mode .row { margin-top: 14px; }
 
 /* ---------- 面板（手机上从底部弹出，宽屏居中） ---------- */
-dialog.sheet { display: flex; flex-direction: column; width: min(560px, calc(100vw - 24px)); max-height: min(88vh, 900px); padding: 0; border: 0; border-radius: 16px;
+dialog.sheet { display: flex; flex-direction: column; width: min(560px, calc(100vw - 24px)); max-height: min(88vh, 900px); max-height: min(88dvh, 900px); padding: 0; border: 0; border-radius: 16px;
   overflow: hidden; background: var(--card); color: var(--ink); box-shadow: 0 20px 60px rgba(0, 0, 0, .25); }
 dialog.sheet:not([open]) { display: none; }
 dialog.sheet.wide { width: min(820px, calc(100vw - 24px)); }
@@ -243,7 +245,8 @@ dialog.confirm .sheet-foot { border-top: 0; padding-top: 0; }
 dialog.confirm .sheet-head:has(> h2:empty) { display: none; }
 dialog.confirm .sheet-body { padding-top: 22px; }
 @media (max-width: 719px) {
-  dialog.sheet, dialog.sheet.wide, dialog.sheet.confirm { width: 100vw; max-width: 100vw; max-height: 92vh; margin: auto 0 0; border-radius: 16px 16px 0 0; }
+  /* dvh：Safari 标签页里工具栏露出来时 vh 比看得见的高，高的面板会把顶上的 ✕ 顶到状态栏下面 */
+  dialog.sheet, dialog.sheet.wide, dialog.sheet.confirm { width: 100vw; max-width: 100vw; max-height: 92vh; max-height: 92dvh; margin: auto 0 0; border-radius: 16px 16px 0 0; }
   .sheet-foot .btn { flex: 1; }
 }
 
@@ -331,14 +334,16 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
   transition: background-color .18s, border-color .18s, color .18s; }
 .check .ic { width: 17px; height: 17px; stroke-width: 2.8; }
 .item-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.item-name { font-size: 17px; line-height: 1.35; overflow-wrap: anywhere; transition: color .18s; }
+.item-name { font-size: 17px; line-height: 1.35; overflow-wrap: break-word; transition: color .18s; }   /* 不用 anywhere：窄屏上会把每个英文单词从中间断开 */
 .item-sub { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; line-height: 1.3; color: var(--muted); }
 /* 小标签（清单页标商店、商店页标来自哪张清单）不跟着备注一起挤：最多占这一行的 60%，长了截断；备注拿剩下的（flex-basis 0，按长短分会先把短的标签挤没） */
 .store-chip { flex: 0 0 auto; min-width: 0; max-width: 60%; padding: 1px 7px; border-radius: 6px; background: var(--fill); color: var(--ink-2); font-size: 12px; font-weight: 500;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .store-chip:only-child { max-width: 100%; }
 .item-note { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.item-qty { flex: none; max-width: 38%; color: var(--muted); font-size: 15px; text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.item-qty { flex: none; max-width: 38%; color: var(--muted); font-size: 15px; text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: break-word; }
+/* 窄屏（iPad 分屏窄的一边 320、iPhone 放大显示）：数量窄一点（「12 bottles」折成两行），名字留得下整个单词 */
+@media (max-width: 420px) { .item-qty { max-width: 26%; } }
 .item-more { flex: none; display: grid; place-items: center; width: 44px; padding: 0; border: 0; background: none; color: var(--muted); }
 .item-more .ic { width: 18px; height: 18px; }
 .item-more:hover { color: var(--accent-text); }
@@ -346,7 +351,6 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
 .item-row.done .check, .item-row.ticking .check { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .item-row.ticking .check { animation: tick-pop .28s ease-out; }
 .item-row.done .item-name, .item-row.ticking .item-name { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--muted); }
-.item-row.done .item-sub, .item-row.done .item-qty { opacity: .7; }
 @keyframes tick-pop { 0% { transform: scale(.8); } 60% { transform: scale(1.12); } 100% { transform: scale(1); } }
 /* 刚加的、已经在清单上的、从已买放回来的：底色闪一下（减少动态效果时没有动画，靠提示条和读屏） */
 .item-row.flash { animation: row-flash 1.4s ease-out; }
@@ -382,7 +386,7 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
 .shop-title:focus { outline: none; }
 .shop-icon { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: var(--tile); font-size: 21px; line-height: 1; color: var(--accent-text); }
 .shop-icon .ic { width: 22px; height: 22px; }
-.shop-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shop-name { min-width: 0; overflow: hidden; overflow-wrap: break-word; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }   /* 长名字折成两行，窄屏上不只剩「Woo…」 */
 .shop-finish { flex: none; }
 .shop-prog { margin-top: 8px; color: var(--ink-2); font-size: 16px; font-weight: 550; font-variant-numeric: tabular-nums; }
 .shop-bar { height: 5px; margin-top: 7px; border-radius: 3px; background: var(--fill); overflow: hidden; }
@@ -538,3 +542,10 @@ body .recovery-screen .page { max-width: 720px; margin: 0 auto; padding: 0; }   
 .recovery-screen .row { flex-wrap: wrap; gap: 10px; }
 .recovery-screen h1 { font-size: 24px; }
 .boot-error { position: fixed; inset: 0; z-index: 210; display: grid; place-content: center; gap: 16px; padding: 24px; text-align: center; background: var(--bg, Canvas); color: var(--ink, CanvasText); }
+
+/* 首页：在浏览器标签页里打开时的提醒（views/lists.js 的 tabNote） */
+.tab-note { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.tab-note p { flex: 1; min-width: 0; line-height: 1.5; }
+.tab-note .btn { flex: none; }
+/* 设置 → 关于：新版本下载好了 */
+.set-update { margin-top: 6px; color: var(--accent-text); }

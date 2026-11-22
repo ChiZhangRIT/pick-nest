@@ -45,10 +45,11 @@ test('恢复页期间不同步；「从云端恢复」只读、先确认、原�
     const button = (label) => find(screen, el => el.tag === 'button' && el.textContent === label);
     assert.ok(button(t('recovery.cloud')), '开过同步：有「从云端恢复」');
     const asked = [];
-    ctx.confirm = async (o) => { asked.push(o); return true; };      // 恢复页拿着同一个 ctx，确认框换成直接答「是」
+    let atConfirm = null;
+    ctx.confirm = async (o) => { asked.push(o); atConfirm = { log: [...gh.log], puts: gh.puts }; return true; };      // 恢复页拿着同一个 ctx，确认框换成直接答「是」
     await button(t('recovery.cloud')).fire('click');
     await settle();
-    assert.deepEqual(gh.log, ['GET /repos/me/data/contents/' + DATA], '只读：一个 GET，要原文');
+    assert.deepEqual(atConfirm, { log: ['GET /repos/me/data/contents/' + DATA], puts: 0 }, '只读：一个 GET，要原文；确认之前没有上传');
     assert.equal(gh.opts[0].headers.Accept, 'application/vnd.github.raw+json');
     assert.equal(asked[0].message, t('recovery.confirmText'));
     assert.equal(app.state.storageIssue(), null);
@@ -57,11 +58,10 @@ test('恢复页期间不同步；「从云端恢复」只读、先确认、原�
     assert.deepEqual([disk.data.items.i_cloud.name, disk.data.items.i_local.name], ['云端的牛奶', '本机读得出来的鸡蛋'], '读得出来的和云端的合并');
     assert.ok([...storage.m.keys()].some(k => k.startsWith(ARCHIVE_PREFIX)), '原件先存档');
     assert.equal(ctx.recoveryArchive().records.find(r => r.key === STATE_KEY).raw, '{broken');
-    assert.equal(gh.puts, 0, '确认、存档之前没有上传');
-    // 修好以后：同步照常（云端版本号清掉了，完整拉取一次再把合并的结果传上去）
-    const due = timers.filter(x => x.fn && x.ms === 2000);
-    assert.equal(due.length, 1, '修好算本机修改：排了一次同步');
-    due[0].fn(); await settle();
+    // 修好以后：马上同步一轮（云端版本号清掉了，完整拉取一次再把合并的结果传上去），不再排防抖的那一轮
+    assert.equal(timers.filter(x => x.fn && x.ms === 2000).length, 0);
+    assert.deepEqual(gh.log.slice(1).filter(l => l.includes('/contents/')), ['GET /repos/me/data/contents/' + DATA, 'PUT /repos/me/data/contents/' + DATA]);
+    assert.equal(gh.opts.filter(o => o.method === 'GET' && o.path.includes('/contents/'))[1].headers['If-None-Match'], undefined, '完整拉取');
     assert.equal(gh.puts, 1);
     assert.ok(gh.json().state.data.items.i_local, '本机读得出来的那样传上去了');
     assert.equal(JSON.parse(storage.getItem('picknest.local')).sync.dirty, false);

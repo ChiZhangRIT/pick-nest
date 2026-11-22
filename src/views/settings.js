@@ -1,5 +1,5 @@
 // 设置（#/settings）：语言、外观、商店和分类（进 #/settings/stores、#/settings/categories，页面在 views/manage.js）、
-// 同步（#/settings/sync，views/sync.js；这一行右边是同步状态的小标签）、数据（#/settings/data，views/data.js：备份、恢复、最近删除）、关于。
+// 同步（#/settings/sync，views/sync.js；这一行右边是同步状态的小标签）、数据（#/settings/data，views/data.js：备份、恢复、最近删除）、关于（新版本下载好了也在这里说）。
 // 语言、外观是本机设置（picknest.local），改了不通知订阅者：外观换完就地更新这一组按钮（不换掉按钮，焦点和读屏的位置不丢），
 // 换语言由 app 整页重画（下拉框带 data-fid，重画后焦点回到它上面）。
 import { h } from '../ui/dom.js';
@@ -9,7 +9,8 @@ import { syncPage } from './sync.js';
 import { dataPage } from './data.js';
 
 const THEMES = ['auto', 'light', 'dark'];
-const LANG_ROW = '语言 / Language';     // 三种语言写在一起：不管现在是哪种语言都找得到
+// 中英文写在一起：不管现在是哪种语言都找得到。中文那一半跟着界面写简体 / 繁体（繁体界面里冒出一个简体字很扎眼，读屏也按 zh-TW 念）
+const LANG_ROW = { 'zh-Hans': '语言 / Language', 'zh-Hant-TW': '語言 / Language', en: 'Language / 语言' };
 
 const sec = (id, title, kids) => h('section.set-sec', { id: id ? 'set-' + id : null },
   title ? h('h2.group-h', null, title) : null, h('div.group', null, kids));
@@ -23,6 +24,8 @@ export function render(main, params, ctx) {
   if (params.sub === 'sync') return syncPage(main, params, ctx);
   if (params.sub === 'data') return dataPage(main, params, ctx);
   const page = h('div.page.set');
+  const updateLine = h('p.small.set-update', { role: 'status' }, t('set.updateReady'));
+  const langRow = LANG_ROW[ctx.lang()] || LANG_ROW['zh-Hans'];
   main.append(h('header.page-head', null, h('h1.lt', null, t('nav.settings'))), page);
 
   function themeSeg() {
@@ -36,7 +39,7 @@ export function render(main, params, ctx) {
   }
 
   page.append(
-    sec('lang', null, [row(LANG_ROW, h('select.set-in.set-select', { 'aria-label': LANG_ROW, dataset: { fid: 'set-lang' }, onchange: (e) => ctx.setLang(e.target.value) },
+    sec('lang', null, [row(langRow, h('select.set-in.set-select', { 'aria-label': langRow, dataset: { fid: 'set-lang' }, onchange: (e) => ctx.setLang(e.target.value) },
       LANGS.map(l => h('option', { value: l, selected: l === ctx.lang() }, LANG_LABELS[l]))))]),
     sec('look', null, [row(t('set.theme'), themeSeg())]),
     sec('manage', null, [
@@ -54,6 +57,11 @@ export function render(main, params, ctx) {
           h('img', { src: 'icons/icon-180.png', alt: '', width: 48, height: 48, onerror: (e) => e.target.remove() }),
           h('div', null, h('b', null, t('common.appName')), h('p.small.muted', null, t('set.aboutLine')))),
         h('p.small', null, t('set.about1')),
-        h('p.small.muted.set-version', null, t('set.version', { v: ctx.build })))),
+        h('p.small.muted.set-version', null, t('set.version', { v: ctx.build })),
+        updateLine)),
   );
+  // 新版本下载好了（app.js 在启动、切回来时检查）：说一声，关掉再打开就用上
+  function paintUpdate() { updateLine.hidden = !(ctx.updateReady && ctx.updateReady()); }
+  paintUpdate();
+  if (ctx.on) ctx.on('update', paintUpdate);
 }

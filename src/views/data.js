@@ -50,8 +50,8 @@ export function dataPage(main, params, ctx) {
     const message = [t('backup.counts', b.counts), b.exportedAt ? t('backup.from', { time: fmtFull(b.exportedAt, lang) }) : null, t('backup.merge')].filter(Boolean).join('\n');
     if (!(await ctx.confirm({ title: t('backup.restoreQ'), message, confirmLabel: t('backup.go') }))) return;
     const { changed } = ctx.mergeIn(b.state);
+    // 开着同步时合并的结果由 app 马上传（不等两秒的防抖，app.js）
     ctx.toast(changed ? t('backup.restored', { n: changed }) : t('backup.nothing'), { ms: 7000 });
-    if (changed && ctx.sync && ctx.sync.status().on) ctx.sync.now();      // 不等两秒的防抖：合并的结果马上传到别的设备
   }
 
   const archive = ctx.recoveryArchive ? ctx.recoveryArchive() : null;

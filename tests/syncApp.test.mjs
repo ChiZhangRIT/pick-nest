@@ -132,6 +132,16 @@ test('同步接在 App 上：启动、改数据、切到后台、切回来、联
     assert.equal(local().err, null);
     assert.ok(Object.values(gh.json().state.data.items).some(it => it.name === '雨伞'));
 
+    // 从备份恢复（合并进来的，算本机修改）：不等两秒，马上传；防抖的那一轮也不再多跑
+    const backup = structuredClone(ctx.state);
+    backup.data.items.i_bak = normalizeRecord('items', { id: 'i_bak', listId: 'l_groceries', name: '备份里的', status: 'need', updatedAt: Date.now() });
+    gh.log.length = 0;
+    assert.equal(ctx.mergeIn(backup).changed, 1);
+    await settle();
+    assert.ok(Object.values(gh.json().state.data.items).some(it => it.name === '备份里的'));
+    assert.equal(gh.writes().length, 1);
+    assert.equal(pending(2000).length, 0);
+
     // 停止同步：只清本机设置，之后什么都不发；标签变成「未开同步」
     ctx.sync.stop();
     await settle();

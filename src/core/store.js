@@ -2,6 +2,7 @@
 // 数据层：state.data 下每个集合都是「id → 记录」——lists 清单、items 清单里的东西、stores 商店、categories 分类、memory 买过的东西。
 // 每条记录有 updatedAt（毫秒）；删除只打 deleted 标记、内容保留（「最近删除」里能恢复，也照样同步）。
 // 多台设备合并时逐条比较 updatedAt 取较新的一整条；时间相同内容不同时按 canon() 排序取一份，保证每台设备结果一样。
+// 例外：items、memory 的 id 是算出来的，两台设备各自从头建的同一条（createdAt 不一样）要补上空着的字段（mergeRecord）。
 // 设置按键合并，各键有自己的修改时间（settingsAt）。不认识的字段、集合原样保留：旧版 App 同步时不会弄丢新版的数据。
 // 预置的清单、商店、分类用固定 id、updatedAt 0，由 ensureSeeds() 补。细节见 docs/DATA_MODEL.md。
 import { isObj, str, own, safeKey } from './util.js';
@@ -25,8 +26,9 @@ import { toSimplified } from './hanzi.js';
 /**
  * @typedef {Base & { listId: string, name: string, qty: number | null, unit: string, note: string,
  *   categoryId: string | null, storeId: string | null, status: ItemStatus, doneAt: number | null,
- *   url: string, price: number | null, needs: Record<string, any> }} Item
- * 清单里的一样东西。needs 是给以后的食谱 / 计划预留的（来源 → { qty, unit, label }），V1 不用但原样保留
+ *   url: string, price: number | null, needs: Record<string, any>, fromLater?: true }} Item
+ * 清单里的一样东西。needs 是给以后的食谱 / 计划预留的（来源 → { qty, unit, label }），V1 不用但原样保留。
+ * fromLater：从「以后再说」勾成已买的（取消勾选时回以后再说）；只在已买时有
  */
 /** @typedef {Base & { name: string, order: number, archived: boolean }} Store 商店 */
 /** @typedef {Base & { sys: string | null, name: string, kind: ListKind | null, order: number }} Category 分类 */
@@ -142,6 +144,7 @@ export function normalizeItem(rec, id = rec && rec.id) {
   r.url = str(r.url);
   r.price = numOrNull(r.price);
   r.needs = isObj(r.needs) ? copySafe(r.needs) : {};     // 预留给食谱 / 计划：里面是什么都原样留着
+  if (r.fromLater !== true || r.status !== 'done') delete r.fromLater;   // 从「以后再说」勾掉的已买（items.js 的 untickStatus）：只在已买时有
   return /** @type {Item} */ (r);
 }
 
@@ -250,6 +253,56 @@ export function pick(a, b) {
   return canon(b) > canon(a) ? b : a;
 }
 
+// ---------- 各自从头建的同一条（固定 id） ----------
+// items（按清单 + 名字）和 memory（按名字）的 id 是算出来的：一台设备还没拉到云端那条（新 iPad 还没粘贴同步码、Safari 清掉了存储、
+// 店里离线）就又加了同名的，建的是一条空白的新记录，时间更新。整条取较新的话，云端那条的备注、链接、价格、常去的商店、记住的单位
+// 就永远没了——云端那条可能是几个月前的，不是「两台设备同时改」。
+// 认法：createdAt 不一样（同一条记录改来改去、恢复、移动，createdAt 都不变）。这时以较新的为底，它空着的字段用另一条的补上
+// （memory 的次数、常去的商店取两边大的，选过的分类以较新的为准）；createdAt 取早的，以后两边就是同一条。
+// 补到了东西的结果比较新的那条晚 1 毫秒：还拿着较新那条的设备合并时它赢；没补到东西就是较新的那条（再合并几次结果都一样）
+const blank = (/** @type {unknown} */ v) => v == null || v === '' || (isObj(v) && !Object.keys(v).length);
+const ITEM_CARRY = ['note', 'url', 'price', 'unit', 'storeId', 'categoryId', 'needs'];
+/** @param {string} c @param {any} w 较新的 @param {any} o 另一条 @returns {any} */
+function blend(c, w, o) {
+  if (c === 'items') {
+    // 同一个 id 上是另一样东西（那条改过名、移到了别的清单）：不是同一样，照旧整条取较新的
+    if (w.listId !== o.listId || normName(w.name) !== normName(o.name)) return null;
+    const out = { ...w };
+    for (const k of ITEM_CARRY) if (blank(out[k]) && !blank(o[k])) out[k] = o[k];
+    return out;
+  }
+  const ws = isObj(w.stores) ? w.stores : {}, os = isObj(o.stores) ? o.stores : {};
+  /** @type {Record<string, any>} */
+  const stores = { ...ws };
+  for (const [sid, v] of Object.entries(os)) {
+    if (!safeKey(sid) || !isObj(v)) continue;
+    const cur = own(ws, sid);
+    stores[sid] = isObj(cur) ? { ...cur, n: Math.max(cur.n || 0, v.n || 0), at: Math.max(cur.at || 0, v.at || 0) } : v;
+  }
+  const out = { ...w, stores, uses: Math.max(w.uses || 0, o.uses || 0), lastAt: Math.max(w.lastAt || 0, o.lastAt || 0) };
+  if (w.categorySet !== true && o.categorySet === true) { out.categoryId = o.categoryId; out.categorySet = true; }
+  if (blank(out.unit) && !blank(o.unit)) out.unit = o.unit;
+  if (out.qty == null && o.qty != null) out.qty = o.qty;
+  return out;
+}
+
+/**
+ * 同一条记录的两份合并成一份（顺序无关）：一般是 pick（较新的一整条）；items、memory 里各自从头建的两条（createdAt 不一样）补上空着的字段，见上面
+ * @param {string} c @param {any} a @param {any} b
+ */
+export function mergeRecord(c, a, b) {
+  const w = pick(a, b);
+  if (!a || !b || (c !== 'items' && c !== 'memory')) return w;
+  const o = w === a ? b : a;
+  const wc = Number(w.createdAt), oc = Number(o.createdAt);
+  if (!(wc >= 0) || !(oc >= 0) || wc === oc) return w;
+  const out = blend(c, w, o);
+  if (!out) return w;
+  out.createdAt = Math.min(wc, oc);
+  if (canon({ ...out, createdAt: w.createdAt }) !== canon(w)) out.updatedAt = (w.updatedAt || 0) + 1;
+  return out;
+}
+
 /**
  * 两份数据逐条合并（顺序无关：merge(a,b) 和 merge(b,a) 结果一样）。不补预置记录：合并完由调用的地方 ensureSeeds
  * @param {any} a
@@ -262,7 +315,7 @@ export function mergeStates(a, b) {
   for (const c of collectionsOf(a, b)) {
     out.data[c] = own(out.data, c) || {};
     const ids = new Set([...Object.keys(own(da, c) || {}), ...Object.keys(own(db, c) || {})]);
-    for (const id of ids) if (safeKey(id)) out.data[c][id] = pick(own(own(da, c), id), own(own(db, c), id));
+    for (const id of ids) if (safeKey(id)) out.data[c][id] = mergeRecord(c, own(own(da, c), id), own(own(db, c), id));
   }
   const sa = (a && a.settings) || {}, sb = (b && b.settings) || {}, ta0 = (a && a.settingsAt) || {}, tb0 = (b && b.settingsAt) || {};
   /** @type {Record<string, any>} */
@@ -419,7 +472,7 @@ export function hash64(s) {
  * 以前固定 id 被占时分到随机 id 的，都已经是「这张清单里的牛奶」，再加一次不能又多出一条。
  * 同名的有几条时：没删除的优先（不然恢复一条删掉的，清单上就有两条一样的），再固定 id 优先，再按 id 排（每台设备选的一样）。
  * 都没有：用固定 id 'i_' + hash64(listId + '\n' + normName(name))（两台设备离线各加一次，同步后还是一条）；
- * 这一格被别的东西占了（那条改过名或移走了）才用随机 id
+ * 这一格被别的东西占了（那条改过名或移走了）：hash64(listId + '\n' + 名字 + '\n' + n) 里第一个空着的（同样每台设备算的一样）
  * @param {State} state
  * @param {string} listId
  * @param {string} name
@@ -435,7 +488,12 @@ export function itemId(state, listId, name) {
   const same = Object.entries(items).filter(([, r]) => isObj(r) && r.listId === listId && normName(r.name) === key);
   /** @param {[string, any][]} recs */
   const choose = recs => (!recs.length ? null : recs.some(([k]) => k === id) ? id : recs.map(([k]) => k).sort()[0]);
-  return choose(same.filter(([, r]) => !r.deleted)) || choose(same.filter(([, r]) => r.deleted)) || (own(items, id) ? newId('i_') : id);
+  const found = choose(same.filter(([, r]) => !r.deleted)) || choose(same.filter(([, r]) => r.deleted));
+  if (found) return found;
+  if (!own(items, id)) return id;
+  // 固定 id 被别的东西占了：也用算出来的（第 1、2…… 个空位），不用随机的——两台设备同步过的数据一样，离线各加一次还是同一个 id，同步后是一条
+  for (let n = 1; n < 1000; n++) { const alt = 'i_' + hash64(listId + '\n' + key + '\n' + n); if (!own(items, alt)) return alt; }
+  return newId('i_');
 }
 
 // ---------- 显示和排序 ----------

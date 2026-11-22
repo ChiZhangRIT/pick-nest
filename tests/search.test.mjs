@@ -30,13 +30,17 @@ function seeded() {
 const names = (groups) => groups.map(g => [g.list.name || g.list.sys, g.archived, g.hits.map(x => x.item.name)]);
 
 test('searchItems：繁体搜得到简体、简体搜得到繁体；删掉的东西、删掉的清单里的不算；归档的清单也在（排在后面、标出来）', () => {
-  const { s } = seeded();
+  const { s, wood } = seeded();
   const expected = [['groceries', false, ['鸡蛋', '雞蛋豆腐']], ['去年的年货', true, ['雞蛋卷']]];
   assert.deepEqual(names(searchItems(s, '雞蛋')), expected, '繁体的「雞蛋」找到简体写的「鸡蛋」');
   assert.deepEqual(names(searchItems(s, '鸡蛋')), expected, '简体的「鸡蛋」找到繁体写的「雞蛋豆腐」「雞蛋卷」');
   assert.equal(hitCount(searchItems(s, '鸡蛋')), 3);
   assert.deepEqual(searchItems(s, '布丁'), [], '删掉的清单里的东西跟着隐藏');
   assert.deepEqual(searchItems(s, '蛋饼'), [], '删掉的东西不算');
+  // 归档的排在后面，不是碰巧 order 大：把排在最前面的「食材」归档，它也要排到没归档的「木工」后面
+  s.data.items.i_wood_egg = normalizeRecord('items', { id: 'i_wood_egg', listId: wood, name: '蛋壳漆', status: 'need', updatedAt: 1 });
+  setArchived(s, 'l_groceries', true, 1005);
+  assert.deepEqual(names(searchItems(s, '蛋')).map(g => [g[0], g[1]]), [['木工', false], ['groceries', true], ['去年的年货', true]]);
 });
 
 test('searchItems：大小写、全角半角都算；搜名字也搜备注（备注里命中的那一行交给页面）；几个词都要有，可以分在名字和备注里', () => {

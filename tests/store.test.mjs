@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  blankState, normalizeState, normalizeRecord, mergeStates, canon, pick, stamp, deletedRecord, restoredRecord, newId, setSetting,
+  blankState, normalizeState, normalizeRecord, mergeStates, mergeRecord, canon, pick, stamp, deletedRecord, restoredRecord, newId, setSetting,
   ensureSeeds, seedRecords, normName, hash64, itemId, listName, categoryName, listIcon, byOrder, live, homeLists, needCounts,
   COLLECTIONS, SEED_STORES, SYS_CATEGORIES, DEFAULT_LIST_ICON, writeRecord,
 } from '../src/core/store.js';
@@ -263,13 +263,18 @@ test('itemId：同一张清单同名（简繁、大小写、空格不同）是�
   assert.equal(itemId(s, 'l_groceries', '雞蛋'), id, '已经清掉的那条也算：再加就恢复同一条');
 });
 
-test('itemId：固定 id 被改过名（或移到别的清单）的记录占了 → 先找同名的那条，没有才用随机 id', () => {
+test('itemId：固定 id 被改过名（或移到别的清单）的记录占了 → 先找同名的那条，没有才用算出来的下一个空位（每台设备一样）', () => {
   const s = seeded();
   const id = itemId(s, 'l_groceries', '牛奶');
   s.data.items[id] = normalizeRecord('items', { id, listId: 'l_groceries', name: '燕麦奶', updatedAt: 5 });   // 原来叫牛奶，改了名
   const fresh = itemId(s, 'l_groceries', '牛奶');
   assert.notEqual(fresh, id);
-  assert.match(fresh, /^i_/);
+  assert.equal(fresh, 'i_' + hash64('l_groceries\n牛奶\n1'), '不是随机的：两台设备同步过的数据一样，算出来的也一样');
+  assert.equal(itemId(structuredClone(s), 'l_groceries', '牛奶'), fresh);
+  // 第一个空位也被占了（又改了名）：再往后找
+  const busy = structuredClone(s);
+  busy.data.items[fresh] = normalizeRecord('items', { id: fresh, listId: 'l_groceries', name: '豆奶', updatedAt: 6 });
+  assert.equal(itemId(busy, 'l_groceries', '牛奶'), 'i_' + hash64('l_groceries\n牛奶\n2'));
   s.data.items[fresh] = normalizeRecord('items', { id: fresh, listId: 'l_groceries', name: '牛奶', updatedAt: 6 });
   assert.equal(itemId(s, 'l_groceries', '牛奶'), fresh, '之前分到随机 id 的那条牛奶，再加还是它');
   const moved = itemId(s, 'l_tobuy', '剪刀');
@@ -356,4 +361,55 @@ test('writeRecord（core 的操作函数写记录用）：整理字段；内容�
   for (const id of ['milk 2', '__proto__', undefined]) assert.throws(() => writeRecord(s, 'items', { id, name: 'x' }), /bad-id/);
   writeRecord(s, 'future', { id: 'f_1', x: 1 }, 8000);
   assert.deepEqual(s.data.future.f_1, { id: 'f_1', x: 1, updatedAt: 8000 });
+});
+
+// ---------- 各自从头建的同一条（固定 id）：合并时补上空着的字段 ----------
+test('合并 items：一台设备还没拉到云端那条就又加了同名的（createdAt 不一样）→ 状态、数量用新的，备注、链接、价格、商店、分类、单位从旧的补上', () => {
+  const id = 'i_x';
+  const old = normalizeRecord('items', { id, listId: 'l_tobuy', name: '跑鞋', qty: 1, unit: '双', note: '42 码', url: 'https://example.com/shoe', price: 129,
+    storeId: 's_target', categoryId: 'c_clothing', status: 'done', doneAt: 50, deleted: true, deletedAt: 60, createdAt: 10, updatedAt: 60 });
+  const fresh = normalizeRecord('items', { id, listId: 'l_tobuy', name: '跑鞋 ', qty: 2, unit: '', note: '', url: '', price: null, storeId: null, categoryId: null,
+    status: 'need', doneAt: null, createdAt: 500, updatedAt: 500 });
+  const a = { data: { items: { [id]: old } } }, b = { data: { items: { [id]: fresh } } };
+  const m = mergeStates(a, b).data.items[id];
+  assert.deepEqual([m.status, m.qty, m.name, m.deleted], ['need', 2, '跑鞋 ', undefined], '还是新加的那一下：要买、数量是这次写的');
+  assert.deepEqual([m.note, m.url, m.price, m.storeId, m.categoryId, m.unit], ['42 码', 'https://example.com/shoe', 129, 's_target', 'c_clothing', '双']);
+  assert.equal(m.createdAt, 10, 'createdAt 取早的：以后两边就是同一条');
+  assert.equal(m.updatedAt, 501, '补到了东西：比新的那条晚 1 毫秒');
+  assert.equal(canon(mergeStates(b, a)), canon(mergeStates(a, b)), '顺序无关');
+  // 再合并几次都一样：拿着旧的、拿着新的、拿着合并结果的设备最后都是这一条
+  const once = mergeStates(a, b);
+  for (const other of [a, b, once]) assert.equal(canon(mergeStates(once, other).data.items[id]), canon(m));
+  // 新的那条后来又改过（还没见过旧的那条）：照样补，改过的字段以它为准
+  const later = { data: { items: { [id]: { ...fresh, note: '要黑色', updatedAt: 900 } } } };
+  const m2 = mergeStates(once, later).data.items[id];
+  assert.deepEqual([m2.note, m2.url, m2.storeId], ['要黑色', 'https://example.com/shoe', 's_target']);
+});
+
+test('合并 items：同一条记录改来改去（createdAt 一样）照旧整条取较新的——清空的备注不会被旧的补回来；同一个 id 上是另一样东西（改过名、移走了）也不补', () => {
+  const id = 'i_y';
+  const v1 = normalizeRecord('items', { id, listId: 'l_groceries', name: '牛奶', note: '全脂', createdAt: 10, updatedAt: 20 });
+  const v2 = { ...v1, note: '', updatedAt: 30 };
+  assert.equal(mergeStates({ data: { items: { [id]: v1 } } }, { data: { items: { [id]: v2 } } }).data.items[id].note, '');
+  const renamed = normalizeRecord('items', { id, listId: 'l_groceries', name: '燕麦奶', note: '要无糖', createdAt: 10, updatedAt: 20 });
+  const fresh = normalizeRecord('items', { id, listId: 'l_groceries', name: '牛奶', createdAt: 40, updatedAt: 40 });
+  assert.equal(mergeStates({ data: { items: { [id]: renamed } } }, { data: { items: { [id]: fresh } } }).data.items[id].note, '');
+  assert.equal(mergeRecord('lists', { id: 'l', name: 'a', createdAt: 1, updatedAt: 2 }, { id: 'l', name: '', icon: '', createdAt: 5, updatedAt: 5 }).name, '', '别的集合不补');
+});
+
+test('合并 memory：各自从头建的同一条 → 次数、常去的商店取两边大的，记住的单位、选过的分类补上；顺序无关、重复合并不变', () => {
+  const id = 'm_milk';
+  const old = normalizeRecord('memory', { id, name: '牛奶', kind: 'grocery', categoryId: 'c_dairy', categorySet: true, unit: '盒', stores: { s_costco: { n: 4, at: 300 }, s_target: { n: 1, at: 100 } },
+    uses: 6, lastAt: 300, createdAt: 10, updatedAt: 300 });
+  const fresh = normalizeRecord('memory', { id, name: '牛奶', kind: 'grocery', stores: { s_target: { n: 1, at: 800 } }, uses: 1, lastAt: 800, createdAt: 800, updatedAt: 800 });
+  const a = { data: { memory: { [id]: old } } }, b = { data: { memory: { [id]: fresh } } };
+  const m = mergeStates(a, b).data.memory[id];
+  assert.deepEqual(m.stores, { s_costco: { n: 4, at: 300 }, s_target: { n: 1, at: 800 } });
+  assert.deepEqual([m.uses, m.lastAt, m.unit, m.categoryId, m.categorySet, m.createdAt], [6, 800, '盒', 'c_dairy', true, 10]);
+  assert.equal(canon(mergeStates(b, a)), canon(mergeStates(a, b)));
+  const once = mergeStates(a, b);
+  for (const other of [a, b, once]) assert.equal(canon(mergeStates(once, other).data.memory[id]), canon(m));
+  // 同一条（createdAt 一样）：取较新的一整条——点错了又点回来减掉的那一次，不会被旧的那份加回去
+  const undone = { ...old, stores: { s_costco: { n: 3, at: 300 }, s_target: { n: 1, at: 100 } }, updatedAt: 400 };
+  assert.equal(mergeStates(a, { data: { memory: { [id]: undone } } }).data.memory[id].stores.s_costco.n, 3);
 });

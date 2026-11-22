@@ -19,7 +19,7 @@ const byCls = (root, c) => find(root, el => cls(el, c));
 const btn = (root, label) => find(root, el => el.tag === 'button' && el.textContent === label);
 const inputs = root => all(root, el => el.tag === 'input');
 const settle = async () => { for (let i = 0; i < 5; i++) await new Promise(r => queueMicrotask(r)); };
-const errors = root => all(root, el => (cls(el, 'f-err') && !el.hidden) || (el.attrs.role === 'alert' && cls(el, 'err'))).map(el => el.textContent);
+const errors = root => all(root, el => (cls(el, 'f-err') && !el.hidden) || (el.tag === 'p' && cls(el, 'err'))).map(el => el.textContent);
 
 /** 假的 ctx。sync：status 从 local.sync 算；connect 写进 local.sync 并返回 env.round；checkRepo 用 env.check */
 function setup({ sync = null, lang = 'zh-Hans', page = 'sync', share = false } = {}) {
@@ -181,7 +181,9 @@ test('连接没成功（公开仓库、令牌不对、第一轮同步出错）�
 });
 
 test('开着：仓库、上次同步、有没传的修改、离线、出错的说明（请求太多说什么时候再试）；同步状态变了重画，但焦点在输入框里时等它离开', async () => {
-  const at = Date.now() - 60000;
+  // 「今天」的一个时刻：不用 Date.now() - 1 分钟（刚过半夜时那是昨天，测试跟着钟点时好时坏）
+  const day = new Date(); day.setHours(0, 0, 0, 0);
+  const at = Math.max(day.getTime(), Math.min(Date.now() - 1000, day.getTime() + 12 * 3600e3));
   const env = setup({ sync: { repo: 'me/pick-nest-data', token: TOKEN, at, dirty: true, tokenExp: Date.now() + 90 * 864e5 } });
   try {
     const { main } = env;
@@ -198,6 +200,10 @@ test('开着：仓库、上次同步、有没传的修改、离线、出错的�
     Object.assign(state.getLocal().sync, { offline: false, err: { code: 'rate', vars: { status: 429, until } } });
     env.emitSync();
     assert.deepEqual(errors(main), ['GitHub 说请求太多了，16:05 以后会自动再试。']);
+    const errEl = () => find(main, el => el.tag === 'p' && cls(el, 'err'));
+    assert.equal(errEl().attrs.role, 'alert', '刚出现的错误读屏马上念');
+    env.emitSync();
+    assert.equal(errEl().attrs.role, undefined, '一样的错误再重画（每分钟一轮）：不再当成新的 alert 打断读屏');
     assert.equal(byCls(main, 'sync-badge').textContent, '稍后重试');
     // 焦点在输入框里（补到期日、换令牌的时候）：先不重画
     await btn(main, '换令牌').fire('click');
@@ -373,7 +379,7 @@ test('数据：从备份恢复先确认（几张清单、几样东西、什么�
     await pick(text);
     assert.equal(state.getState().data.items.i_new.name, '备份里的鸡蛋');
     assert.equal(env.toasts.at(-1).msg, '合并好了：1 条记录有更新。');
-    assert.deepEqual(env.calls.at(-1), ['now'], '开着同步：马上同步');
+    assert.ok(!env.calls.some(c => c[0] === 'now'), '页面不自己同步：合并进来的由 app 马上传（tests/syncApp.test.mjs）');
     await pick(text);
     assert.equal(env.toasts.at(-1).msg, t('backup.nothing'));
   } finally { env.done(); }

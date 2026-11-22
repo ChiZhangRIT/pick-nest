@@ -14,8 +14,9 @@ export function workerBuild(controller, { Channel = globalThis.MessageChannel, t
 export async function start({ nav = globalThis.navigator, loc = globalThis.location, win = globalThis.window,
   load = () => import('./app.js'), Channel = globalThis.MessageChannel, timeout = 15000 } = {}) {
   win.__picknestBootError = true;               // 等待期间由这里负责超时提示，避免 boot.js 的看门狗再盖一层
-  if (loc.protocol === 'https:') {
-    if (!nav.serviceWorker) throw new Error('worker-unavailable');
+  // 没有 Service Worker（别的 App 里打开的浏览器：聊天、邮件 App 常常这样）：照样打开，只是不能离线用（和本地 http 预览一样）。
+  // 以前报「请联网后重试」，联着网怎么试都打不开
+  if (loc.protocol === 'https:' && nav.serviceWorker) {
     if (!nav.serviceWorker.controller) {
       await within(nav.serviceWorker.register('sw.js', { updateViaCache: 'none' }), timeout);
       await within(nav.serviceWorker.ready, timeout);
@@ -26,7 +27,8 @@ export async function start({ nav = globalThis.navigator, loc = globalThis.locat
     try { active = await workerBuild(nav.serviceWorker.controller, { Channel, timeout }); }
     catch (e) { throw new Error('update-pending'); }
     if (active !== BUILD) throw new Error('update-pending');
-    // 已安装时从缓存立即启动；网络慢、离线或更新失败都不阻塞旧版使用。
+    // 已安装时从缓存立即启动，不等网络。注册还在就什么也不做（register() 不检查新版：注册没变就直接返回）；
+    // 检查新版是 app.js 的事（启动后、切回来时 registration.update()）
     Promise.resolve().then(() => nav.serviceWorker.register('sw.js', { updateViaCache: 'none' })).catch(() => {});
   }
   await within(load(), timeout);

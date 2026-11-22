@@ -66,7 +66,6 @@ const ICONS = {
   // 开始购物：购物车
   cart: { kids: [P('M3 4.5h2.6l2.2 10.2a1.5 1.5 0 001.5 1.2h8.3a1.5 1.5 0 001.5-1.1L21 8H6.6'), C(10, 19.6, 1.3), C(17, 19.6, 1.3)] },
 };
-export const ICON_NAMES = Object.keys(ICONS);
 
 /**
  * icon('gear') → <svg class="ic ic-gear">。label 给了就是有名字的图片（读屏会念），否则 aria-hidden。
@@ -89,28 +88,89 @@ export function icon(name, { cls = '', label = null, size = null } = {}) {
 }
 
 // ---------- 提示条 ----------
-let toastTimer = null;
+let toastTimer = null, toastDeadline = 0, toastHover = false, toastFocus = false, toastReturn = null;
 /**
  * toast('已删除', { ms: 10000, action: { label: '撤销', run: fn } })，返回 { close }
- * 提示条不挡按钮：显示期间跟着页面变化（换页、转屏）重新找位置，见 placeToast
+ * 提示条不挡按钮：显示期间跟着页面变化（换页、转屏）重新找位置，见 placeToast。
+ * 读屏念的是一直在页面里的 #toast-live（见 announce）。用键盘、读屏走到「撤销」上（或者手指 / 鼠标停在上面）时不倒计时，
+ * 离开了再接着数；按了「撤销」焦点回到原来的地方，不掉回页首
  */
 export function toast(msg, { ms = 4000, action = null } = {}) {
   let el = $('#toast');
-  if (!el) { el = h('div', { id: 'toast', role: 'status', 'aria-live': 'polite' }); document.body.appendChild(el); }
+  if (!el) { el = h('div', { id: 'toast' }); document.body.appendChild(el); }
+  wireToast(el);
   const close = () => {
     el.classList.remove('on'); el.setAttribute('inert', '');
+    toastHover = toastFocus = false;
     unwatch();
     setTimeout(() => { if (!el.classList.contains('on')) el.replaceChildren(); }, 300);
   };
+  const hadFocus = el.contains(document.activeElement);
   el.replaceChildren(h('span.toast-msg', null, msg));
-  if (action && action.label) el.appendChild(h('button', { type: 'button', onclick: () => { clearTimeout(toastTimer); close(); if (action.run) action.run(); } }, action.label));
+  if (action && action.label) el.appendChild(h('button', { type: 'button', onclick: () => {
+    const from = toastReturn;
+    clearTimeout(toastTimer); close();
+    if (action.run) action.run();
+    // 撤销以后页面在微任务里重画（app.js）：排在它后面，焦点还在提示条里（或者掉到了 <body>）就放回原来的地方
+    queueMicrotask(() => refocus(el, from));
+  } }, action.label));
+  // 新的提示顶掉了焦点所在的旧提示（按钮没了，焦点掉到 <body>）：焦点也回去
+  if (hadFocus) refocus(el, toastReturn);
   el.classList.add('on');
   el.removeAttribute('inert');
   placeToast(el);
   watch(el);
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(close, ms);
+  announce(msg);
+  toastFocus = el.contains(document.activeElement);
+  armToast(close, ms);
   return { close: () => { clearTimeout(toastTimer); close(); } };
+}
+let toastClose = null;
+function armToast(close, ms) {
+  clearTimeout(toastTimer);
+  toastClose = close;
+  toastDeadline = Date.now() + ms;
+  toastTimer = toastHover || toastFocus ? null : setTimeout(close, ms);
+}
+/** 停在提示条上（焦点、手指、鼠标）：不倒计时；离开了接着数（至少再留 3 秒，看得清楚、按得到） */
+function holdToast() { clearTimeout(toastTimer); toastTimer = null; }
+function releaseToast() {
+  if (toastHover || toastFocus || !toastClose || toastTimer) return;
+  toastTimer = setTimeout(toastClose, Math.max(3000, toastDeadline - Date.now()));
+}
+function wireToast(el) {
+  if (el.dataset.wired) return;
+  el.dataset.wired = '1';
+  el.addEventListener('focusin', e => {
+    if (e.relatedTarget && !el.contains(e.relatedTarget)) toastReturn = e.relatedTarget;
+    toastFocus = true; holdToast();
+  });
+  el.addEventListener('focusout', e => { if (!e.relatedTarget || !el.contains(e.relatedTarget)) { toastFocus = false; releaseToast(); } });
+  el.addEventListener('pointerenter', () => { toastHover = true; holdToast(); });
+  el.addEventListener('pointerleave', () => { toastHover = false; releaseToast(); });
+}
+/** 焦点放回提示条之前的地方；那个控件没了就给页面标题（data-fid="lp-title"），再不行给内容栏 */
+function refocus(el, from) {
+  const a = document.activeElement;
+  if (a && a !== document.body && !el.contains(a)) return;
+  const main = $('#main');
+  const pane = main && main.querySelector('.pane');
+  for (const c of [from, main && main.querySelector('[data-fid="lp-title"]'), pane]) {
+    if (!c || !c.isConnected || typeof c.focus !== 'function' || el.contains(c)) continue;
+    if (c === pane && c.tabIndex < 0) c.tabIndex = -1;
+    c.focus({ preventScroll: true });
+    if (document.activeElement === c) return;
+  }
+}
+/**
+ * 读屏念提示：写进一直在页面里的 #toast-live（role=status）。提示条本身空着时是 display: none + inert，不在读屏的「树」里，
+ * 内容和它一起出现时很多读屏不念；先清空、隔一会儿再写，同样的话连着出现两次也会再念
+ */
+function announce(msg) {
+  let live = $('#toast-live');
+  if (!live) { live = h('div.sr-only', { id: 'toast-live', role: 'status', 'aria-live': 'polite' }); document.body.appendChild(live); }
+  live.textContent = '';
+  setTimeout(() => { live.textContent = String(msg); }, 100);
 }
 
 // 提示条要让开的按钮：手机底栏、页面底部的按钮条、顶栏。页面里别的固定按钮可以加 data-toast-avoid
@@ -128,26 +188,30 @@ function safeTop() {
  * 放提示条：先放在 CSS 定的底部位置；挡住了上面那些按钮就往上挪到按钮上方（一层层往上找）；
  * 下半屏都放不下就放到顶部安全区下面、顶上的按钮下方
  */
-export function placeToast(el = $('#toast')) {
+function placeToast(el = $('#toast')) {
   if (!el) return;
   el.style.top = ''; el.style.bottom = '';
   el.classList.remove('at-top');
   if (!el.classList.contains('on')) return;
-  const vh = window.innerHeight, gap = 8, th = el.offsetHeight, tw = el.offsetWidth;
+  // iPhone 弹出键盘时 innerHeight（layout viewport）不变，看得见的只有键盘上面那一截（visualViewport）：提示条要在键盘上面
+  const vh = window.innerHeight, vv = window.visualViewport;
+  const viewTop = vv ? vv.offsetTop : 0, viewBottom = vv ? Math.min(vh, vv.offsetTop + vv.height) : vh;
+  const gap = 8, th = el.offsetHeight, tw = el.offsetWidth;
   const left = (window.innerWidth - tw) / 2, right = left + tw;
   const rects = [...document.querySelectorAll(TOAST_AVOID)].filter(n => !el.contains(n)).map(n => n.getBoundingClientRect())
-    .filter(r => r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < vh && r.left < right && r.right > left);
+    .filter(r => r.width > 0 && r.height > 0 && r.bottom > viewTop && r.top < viewBottom && r.left < right && r.right > left);
   const hits = (top) => rects.filter(r => r.top < top + th && r.bottom > top);
-  const minTop = safeTop() + gap;
-  const base = vh - (parseFloat(getComputedStyle(el).bottom) || 24) - th;
+  const minTop = Math.max(safeTop(), viewTop) + gap;
+  const css = vh - (parseFloat(getComputedStyle(el).bottom) || 24) - th;
+  const base = viewBottom < vh ? Math.min(css, viewBottom - gap - th) : css;
   let top = base;
   for (let i = 0; i < 12 && top >= minTop; i++) {
     const hit = hits(top);
     if (!hit.length) break;
     top = Math.min(...hit.map(r => r.top)) - gap - th;
   }
-  if (top >= minTop && top >= vh * 0.2) {
-    if (top !== base) el.style.bottom = Math.round(vh - top - th) + 'px';
+  if (top >= minTop && top >= viewTop + (viewBottom - viewTop) * 0.2) {
+    if (top !== css) el.style.bottom = Math.round(vh - top - th) + 'px';
     return;
   }
   // 下面放不下：从顶上往下找
@@ -159,7 +223,7 @@ export function placeToast(el = $('#toast')) {
   }
   el.classList.add('at-top');
   el.style.bottom = 'auto';
-  el.style.top = Math.round(Math.min(top, vh - th - gap)) + 'px';
+  el.style.top = Math.round(Math.min(top, viewBottom - th - gap)) + 'px';
 }
 // 显示期间：页面内容变了（换页、重画）、窗口大小变了、滚动了 → 下一帧重新放
 let toastObs = null, toastRaf = 0;
@@ -170,12 +234,16 @@ function watch(el) {
   toastObs.observe(document.body, { childList: true, subtree: true });
   window.addEventListener('resize', placeSoon);
   window.addEventListener('scroll', placeSoon, { passive: true, capture: true });
+  const vv = window.visualViewport;
+  if (vv) { vv.addEventListener('resize', placeSoon); vv.addEventListener('scroll', placeSoon); }
 }
 function unwatch() {
   if (!toastObs) return;
   toastObs.disconnect(); toastObs = null;
   window.removeEventListener('resize', placeSoon);
   window.removeEventListener('scroll', placeSoon, { capture: true });
+  const vv = window.visualViewport;
+  if (vv) { vv.removeEventListener('resize', placeSoon); vv.removeEventListener('scroll', placeSoon); }
 }
 
 // ---------- 面板（手机上从底部弹出，宽屏居中） ----------
@@ -210,19 +278,28 @@ export function sheet(content, { title = '', foot = null, wide = false, cls = ''
  * 确认框 → Promise<boolean>
  * confirmDialog('确定删除？') 或 confirmDialog({ title, message, confirmLabel, cancelLabel, danger })
  */
+let confirmSeq = 0;
+/**
+ * 读屏打开确认框时要听得到问的是什么：有标题时标题是名字、那句话是说明（aria-describedby）；只有一句话时那句话就是名字。
+ * 焦点先给「确定」；会删东西、放弃修改的（danger）先给「取消」：连按两下回车不会直接删掉
+ */
 export function confirmDialog(opts) {
   const o = typeof opts === 'string' ? { message: opts } : (opts || {});
   return new Promise(resolve => {
     let answer = false;
-    const s = sheet(o.message ? h('p.confirm-msg', null, o.message) : null, {
+    const msgId = 'confirm-msg-' + (++confirmSeq);
+    const cancel = h('button.btn', { type: 'button', onclick: () => s.close() }, o.cancelLabel || t('common.cancel'));
+    const ok = h('button.btn' + (o.danger ? '.danger-fill' : '.primary'), { type: 'button', onclick: () => { answer = true; s.close(); } }, o.confirmLabel || t('common.confirm'));
+    const s = sheet(o.message ? h('p.confirm-msg', { id: msgId }, o.message) : null, {
       title: o.title || '', cls: 'confirm',
       onClose: () => resolve(answer),
-      foot: [
-        h('button.btn', { type: 'button', onclick: () => s.close() }, o.cancelLabel || t('common.cancel')),
-        h('button.btn' + (o.danger ? '.danger-fill' : '.primary'), { type: 'button', onclick: () => { answer = true; s.close(); } }, o.confirmLabel || t('common.confirm')),
-      ],
+      foot: [cancel, ok],
     });
-    s.el.querySelector('.sheet-foot .btn:last-child').focus();
+    if (o.message) {
+      if (o.title) s.el.setAttribute('aria-describedby', msgId);
+      else { s.el.removeAttribute('aria-label'); s.el.setAttribute('aria-labelledby', msgId); }
+    }
+    (o.danger ? cancel : ok).focus();
   });
 }
 
@@ -245,6 +322,12 @@ export function keepUnderFinger(ctx, main, fid, fn) {
 }
 
 /**
+ * 返回按钮上的字：ctx.back 有上一页时是后退，写后退回去的那一页（app.js 的 ctx.backLabel）；直接打开的（没有上一页）写 fallback，
+ * 那时 ctx.back 去的就是它。读屏念的和按了去的地方要一样
+ */
+export const backText = (ctx, fallback) => h('span.back-label', null, ctx && typeof ctx.backLabel === 'function' ? ctx.backLabel(fallback) : fallback);
+
+/**
  * 推入的页面（设置 → 商店 / 分类 / 同步 / 数据、最近删除）：吸顶的顶栏（左边返回，右边可选一个按钮 add = { label, run, fid }）和大标题，
  * 返回放内容的容器（div.page.<cls>）。顶栏和清单页一样吸顶：长的一页滚下去也要能返回；宽屏有侧栏，CSS 把返回藏起来
  */
@@ -252,7 +335,7 @@ export function pushFrame(main, ctx, title, { add = null, back = '/settings', ba
   const page = h('div.page' + (cls ? '.' + cls : ''));
   main.append(
     h('header.navbar.lp-nav', null,
-      h('button.back', { type: 'button', onclick: () => ctx.back(back) }, icon('back'), backLabel),
+      h('button.back', { type: 'button', onclick: () => ctx.back(back) }, icon('back'), backText(ctx, backLabel)),
       add ? h('button.tb-btn', { type: 'button', dataset: { fid: add.fid || 'push-add' }, onclick: add.run }, icon('plus'), add.label) : null),
     h('div.page.push-head', null, h('h1.push-title', null, title)),
     page);

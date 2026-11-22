@@ -52,6 +52,11 @@ export function syncPage(main, params, ctx) {
   /** @type {{ repo?: string, token?: string, code?: string, exp?: string, addExp?: string, general?: string, vars?: Record<string, any> }} */
   let errs = {};
   let refocus = null;                // 重画时按钮不能按（连接中、同步中），焦点没放回去：下一次重画再放
+  // 读屏马上念的错误（role=alert）只在出现、变了的那一次重画时标：每分钟一轮的自动同步、数据变了都会重画，
+  // 一直挂着的错误（令牌过期）每次重画都是新的 alert 元素，读屏会一遍遍打断用户念它。用户自己点了「立即同步」「连接」以后再念一次
+  const shown = { status: '', general: '' };
+  /** @param {'status' | 'general'} k @param {string} text */
+  const alertRole = (k, text) => { const fresh = !!text && text !== shown[k]; shown[k] = text || ''; return fresh ? 'alert' : null; };
 
   /** 重画整页，焦点放回同一个控件；want：指定给谁（连接好了给「立即同步」、停止以后给标题） @param {string} [want] */
   function draw(want) {
@@ -72,7 +77,7 @@ export function syncPage(main, params, ctx) {
 
   /** 这一栏的错误（文案的键）标在下面 @param {ReturnType<typeof field>} row @param {string} [key] */
   const mark = (row, key) => { showErr(row, key || null, errs.vars || {}); return row; };
-  const generalErr = () => (errs.general ? h('p.err.small.sy-err', { role: 'alert' }, errs.general) : null);
+  const generalErr = () => { const role = alertRole('general', errs.general || ''); return errs.general ? h('p.err.small.sy-err', { role }, errs.general) : null; };
 
   // ---------- 没开：同步码 / 仓库 + 令牌 ----------
   function offView() {
@@ -129,7 +134,7 @@ export function syncPage(main, params, ctx) {
         syncBadge(st, lang, { link: false }),
         h('p.small.muted', null, st.at ? t('sync.last', { time: fmtWhen(st.at, lang) }) : t('sync.never')),
         st.offline ? h('p.small', null, t('sync.offlineLine')) : st.dirty ? h('p.small', null, t('sync.pendingLine')) : null,
-        st.err ? h('p.err.small', { role: 'alert' }, syncErrText(st.err, lang)) : null,
+        statusErr(st),
         expLine,
         h('div.row.sy-btns', null,
           h('button.btn.primary', { type: 'button', disabled: busy || st.running, dataset: { fid: 'sy-now' }, onclick: syncNow }, busy || st.running ? t('sync.running') : t('sync.now')),
@@ -140,6 +145,11 @@ export function syncPage(main, params, ctx) {
       notes(),
       h('div.sy-stop', null, h('button.btn.danger', { type: 'button', dataset: { fid: 'sy-stop' }, onclick: stopSync }, t('sync.stop'))),
     ];
+  }
+  function statusErr(st) {
+    const text = st.err ? syncErrText(st.err, lang) : '';
+    const role = alertRole('status', text);
+    return text ? h('p.err.small', { role }, text) : null;
   }
   // 连接时没填到期日：在这里补上。点「保存」才算：用键盘填日期时每填一位都是一个「合法」的日期（年份 0002、0020……），不能一变就存
   function addExpCard() {
@@ -179,7 +189,7 @@ export function syncPage(main, params, ctx) {
   // ---------- 操作 ----------
   async function connect(repo0, token0, exp) {
     const repo = cleanRepo(repo0), token = str(token0).trim();
-    const fail = (e) => { errs = e; busy = false; draw(); };
+    const fail = (e) => { errs = e; busy = false; shown.general = ''; draw(); };
     if (!repo) return fail({ repo: 'syncErr.badRepo' });
     const bad = tokenProblem(token);
     if (bad) return fail({ token: 'syncErr.' + bad });
@@ -212,7 +222,7 @@ export function syncPage(main, params, ctx) {
   async function syncNow() {
     busy = true; draw();
     const r = await ctx.sync.now().catch(() => ({ ok: false }));
-    busy = false; draw();
+    busy = false; shown.status = ''; draw();
     if (r && r.ok) ctx.toast(t('sync.done'));
   }
   async function copyCode() {

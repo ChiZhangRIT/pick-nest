@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ensureSeeds, blankState, normalizeRecord, itemId, hash64, normName, deletedRecord, restoredRecord } from '../src/core/store.js';
-import { addFromInput, addItem, defaultsFor, toggleDone, setStatus, clearDone, moveItem, moveConflict, validateItemPatch, editItem,
+import { addFromInput, addItem, defaultsFor, toggleDone, setStatus, clearDone, moveItem, moveConflict, validateItemPatch, editItem, editAndMove, untickStatus,
   readPrice, cleanUrl, liveItem, countItems, UNTICK_MS } from '../src/core/items.js';
 import { memoryOf, memoryId, usualStore, recordUse, recordPurchase, recordPrefs, suggestions } from '../src/core/memory.js';
 import * as state from '../src/core/state.js';
@@ -78,7 +78,7 @@ test('加：改名改成同名的、从别的清单移过来的、以前分到�
   moveItem(s, glue.id, 'l_groceries', now());
   const g = add(s, '木胶');
   assert.deepEqual([g.outcome, g.id], ['exists', glue.id]);
-  // 固定 id 那一格被占了（那条移到了别的清单）：用随机 id，不顶掉它
+  // 固定 id 那一格被占了（那条移到了别的清单）：用算出来的下一个空位，不顶掉它
   const fixed = 'i_' + hash64('l_wood\n木胶');
   assert.equal(glue.id, fixed);
   const again = add(s, '木胶', 'l_wood');
@@ -394,6 +394,65 @@ test('移动：同一条换清单；分类不合适的重新定；以后再说�
   toggleDone(s, bread, now()); clearDone(s, 'l_groceries', now());
   const b2 = add(s, '面包', 'l_wood').id;
   assert.equal(moveConflict(s, b2, 'l_groceries'), null);
+});
+
+test('移动时合并：移过来的这一条的链接、价格、备注带到留下来的那一条上（那一条空着的才补，备注都有就接在后面）', () => {
+  const s = seeded();
+  custom(s, 'l_wood');
+  const keep = add(s, '台灯', 'l_wood').id;
+  s.data.items[keep] = { ...s.data.items[keep], note: '放书桌', status: 'done', doneAt: T0 };
+  const lamp = add(s, '台灯', 'l_tobuy').id;
+  editItem(s, lamp, { url: 'https://example.com/lamp', price: '39.99', note: '要暖光', qty: '2' }, now());
+  assert.deepEqual(moveItem(s, lamp, 'l_wood', now()), { outcome: 'merged', id: keep });
+  const k = s.data.items[keep];
+  assert.deepEqual([k.status, k.url, k.price, k.note, k.qty], ['need', 'https://example.com/lamp', 39.99, '放书桌\n要暖光', 2]);
+  assert.equal(s.data.items[lamp].deleted, true);
+});
+
+test('编辑面板「完成」（editAndMove）：改了再移到有同名的清单 → 这次改的数量、备注落在留下来的那一条上；只改不移就是 editItem', () => {
+  const s = seeded();
+  custom(s, 'l_wood');
+  const keep = add(s, '袜子', 'l_groceries').id;
+  const socks = add(s, '袜子', 'l_tobuy').id;
+  const r = editAndMove(s, socks, { qty: '3', note: '黑色 M 码', unit: '双' }, 'l_groceries', now());
+  assert.deepEqual([r.ok, r.outcome, r.id], [true, 'merged', keep]);
+  const k = s.data.items[keep];
+  assert.deepEqual([k.qty, k.note, k.unit, k.status], [3, '黑色 M 码', '双', 'need']);
+  assert.equal(memoryOf(s, '袜子').unit, '双', '改的单位照样记住');
+  const plain = editAndMove(s, keep, { note: '黑色' }, null, now());
+  assert.deepEqual([plain.ok, plain.outcome, s.data.items[keep].note], [true, 'edited', '黑色']);
+  const bad = editAndMove(s, keep, { name: '' }, 'l_wood', now());
+  assert.equal(bad.ok, false);
+  assert.equal(s.data.items[keep].listId, 'l_groceries', '有错就什么也不改');
+});
+
+test('改名同时移走：名字只和要去的清单比（这张清单上有同名的不算重名，移走了不会重复）', () => {
+  const s = seeded();
+  const bat = add(s, '电池').id;
+  add(s, 'AA 电池');
+  assert.equal(validateItemPatch(s, s.data.items[bat], { name: 'AA 电池' }).errors.name, 'item.err.nameTaken');
+  assert.equal(validateItemPatch(s, s.data.items[bat], { name: 'AA 电池' }, { moving: true }).ok, true);
+  const r = editAndMove(s, bat, { name: 'AA 电池' }, 'l_tobuy', now());
+  assert.deepEqual([r.ok, r.outcome, s.data.items[bat].listId, s.data.items[bat].name], [true, 'moved', 'l_tobuy', 'AA 电池']);
+});
+
+test('以后再说的点错了勾上：半小时内再点一下回到以后再说（不变成要买）；隔久了、食材清单上的回要买', () => {
+  const s = seeded();
+  custom(s, 'l_wood');
+  const id = add(s, '台锯', 'l_wood').id;
+  setStatus(s, id, 'later', now());
+  const t1 = now();
+  toggleDone(s, id, t1);
+  assert.deepEqual([s.data.items[id].status, s.data.items[id].fromLater], ['done', true]);
+  assert.equal(untickStatus(s, s.data.items[id], t1 + 1000), 'later');
+  toggleDone(s, id, t1 + 1000);
+  assert.deepEqual([s.data.items[id].status, s.data.items[id].fromLater], ['later', undefined]);
+  toggleDone(s, id, t1 + 2000);
+  assert.equal(untickStatus(s, s.data.items[id], t1 + 2000 + UNTICK_MS), 'need', '隔久了再点回来是又要买了');
+  const need = add(s, '刨子', 'l_wood').id;
+  toggleDone(s, need, now());
+  assert.equal(untickStatus(s, s.data.items[need]), 'need', '本来就是要买的');
+  assert.equal(s.data.items[need].fromLater, undefined);
 });
 
 // ---------- 改一样东西 ----------
