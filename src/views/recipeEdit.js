@@ -68,15 +68,16 @@ export function render(main, params, ctx, deps = {}) {
     h('h1.nb-title', { tabindex: -1, dataset: { fid: 'lp-title' } }, t(isNew ? 'rcp.newTitle' : 'rcp.editTitle')),
     h('button.tb-btn.re-save', { type: 'button', dataset: { fid: 're-save' }, onclick: () => save() }, t('common.save')));
 
-  const enter = onEnter(() => save());
+  // 回车（iPhone 键盘上的「下一项」「完成」）不保存：新建时名字一打完点「完成」收键盘，就成了只有名字的食谱、跳到食谱页。
+  // 名字 → 几人份，几人份、来源 → 收起键盘；保存是顶栏的「保存」或 ⌘S / ⌘回车（照 babble 的编辑页）
   const touched = () => persistSoon();
-  const nameIn = h('input.f-in', { type: 'text', value: w.name, maxlength: 200, placeholder: t('rcp.namePh'), autocomplete: 'off', enterkeyhint: 'done', dataset: { fid: 're-name' },
-    onkeydown: enter, oninput: () => { w.name = nameIn.value; touched(); } });
+  const nameIn = h('input.f-in', { type: 'text', value: w.name, maxlength: 200, placeholder: t('rcp.namePh'), autocomplete: 'off', enterkeyhint: 'next', dataset: { fid: 're-name' },
+    onkeydown: onEnter(() => svIn.focus()), oninput: () => { w.name = nameIn.value; touched(); } });
   const nameRow = field(t('rcp.name'), nameIn);
 
   // 几人份：−/+ 每次 1，减到 0 就是不写
   const svIn = h('input.f-in.qty-in', { type: 'text', inputmode: 'decimal', value: w.servings, placeholder: t('rcp.servingsPh'), autocomplete: 'off', enterkeyhint: 'done',
-    dataset: { fid: 're-sv' }, onkeydown: enter, oninput: () => { w.servings = svIn.value; touched(); } });
+    dataset: { fid: 're-sv' }, onkeydown: onEnter(() => svIn.blur()), oninput: () => { w.servings = svIn.value; touched(); } });
   const svStep = (dir) => { const q = readQty(svIn.value); svIn.value = formatQty(stepQty(Number.isFinite(q) ? q : null, dir)); w.servings = svIn.value; touched(); };
   const svRow = field(t('rcp.servings'), svIn, { wrap: h('div.stepper', null,
     h('button.icon-btn.step-btn', { type: 'button', 'aria-label': t('rcp.servingsDec'), onclick: () => svStep(-1) }, icon('minus')),
@@ -165,7 +166,7 @@ export function render(main, params, ctx, deps = {}) {
 
   const stepsIn = h('textarea.f-in.re-steps', { rows: 6, value: w.steps, placeholder: t('rcp.stepsPh'), dataset: { fid: 're-steps' }, oninput: () => { w.steps = stepsIn.value; touched(); } });
   const sourceIn = h('input.f-in', { type: 'text', value: w.source, placeholder: t('rcp.sourcePh'), autocomplete: 'off', autocapitalize: 'none', spellcheck: 'false', enterkeyhint: 'done',
-    dataset: { fid: 're-source' }, onkeydown: enter, oninput: () => { w.source = sourceIn.value; touched(); } });
+    dataset: { fid: 're-source' }, onkeydown: onEnter(() => sourceIn.blur()), oninput: () => { w.source = sourceIn.value; touched(); } });
   const noteIn = h('textarea.f-in', { rows: 3, value: w.note, dataset: { fid: 're-note' }, oninput: () => { w.note = noteIn.value; touched(); } });
 
   const banner = draft && dirty() ? h('div.lp-banner.re-draft', { role: 'status' }, h('span', null, t('rcp.draftBack')),
@@ -235,9 +236,11 @@ export function render(main, params, ctx, deps = {}) {
     if (banner) banner.remove();
     nameIn.focus({ preventScroll: true });
   }
-  // Esc = 取消（面板开着时是面板自己的 Esc）。听这一页自己（照 babble）：双栏时左栏「食谱」搜索框里的 Esc 是清空搜索，不能连带把右栏的编辑取消了
+  // Esc = 取消、⌘S / ⌘回车（别的系统 Ctrl）= 保存（面板开着时是面板自己的键）。听这一页自己（照 babble）：双栏时左栏「食谱」搜索框里的 Esc 是清空搜索，不能连带把右栏的编辑取消了
   function onKey(e) {
-    if (e.key !== 'Escape' || e.isComposing || e.defaultPrevented || document.querySelector('dialog[open]')) return;
+    if (e.isComposing || e.defaultPrevented || document.querySelector('dialog[open]')) return;
+    if ((e.metaKey || e.ctrlKey) && (String(e.key).toLowerCase() === 's' || e.key === 'Enter')) { e.preventDefault(); save(); return; }
+    if (e.key !== 'Escape') return;
     e.preventDefault();
     cancel();
   }

@@ -6,7 +6,7 @@
 // 「添加」/「保存」才存；有改动时关面板先问「放弃没保存的修改？」（和别的编辑面板一样），面板里马上生效的「删除」「打开食谱」也先问（closeThen）。
 // 面板不在页面里：数据变了页面重画不会打断输入。
 import { h, icon } from './dom.js';
-import { t } from '../i18n.js';
+import { t, listJoin } from '../i18n.js';
 import { field, showErr, discardGuard, closeThen, onEnter, composing } from './form.js';
 import { liveEntry, validateEntry, addEntry, editEntry, deleteEntry, previewDelete, previewEdit, dishName, MEALS } from '../core/plan.js';
 import { liveRecipe, recipeName, searchRecipes, SERVINGS_MAX } from '../core/recipes.js';
@@ -56,7 +56,7 @@ export function dishSheet(ctx, { id = null, date = null, meal = 'dinner', recipe
     list.replaceChildren(...hits.map(({ recipe: r, ings }) => h('li', null,
       h('button.dish-opt', { type: 'button', 'aria-label': t('plan.pickRecipe', { name: recipeName(r, t) }), dataset: { fid: 'dish-r-' + r.id }, onclick: () => choose(r.id) },
         icon('recipe'), h('span.dish-opt-text', null, h('span.dish-opt-name', null, recipeName(r, t)),
-          h('span.dish-opt-meta', null, ings.length ? t('rcp.uses', { names: ings.join('、') }) : recipeMeta(r)))))));
+          h('span.dish-opt-meta', null, ings.length ? t('rcp.uses', { names: listJoin(ings) }) : recipeMeta(r)))))));
     list.hidden = !hits.length;
     help.textContent = !any ? t('plan.noRecipes') : typed && !hits.length ? t('plan.noMatch', { q: typed }) : t('plan.dishHelp');
   }

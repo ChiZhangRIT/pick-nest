@@ -355,6 +355,29 @@ test('新建食谱：名字、几人份、一行一样的食材（加一样、�
   } finally { env.done(); }
 });
 
+test('编辑食谱：回车（iPhone 键盘的「下一项」「完成」）不保存——名字 → 几人份，几人份、来源收起键盘；⌘S / Ctrl+回车才保存', async () => {
+  const env = setup();
+  try {
+    const main = env.mount(editView, { name: 'recipeEdit', sub: 'new' }, { storage: env.storage });
+    const S = () => state.getState();
+    await type(fid(main, 're-name'), '麻婆豆腐');
+    key(fid(main, 're-name'), 'Enter');
+    await settle();
+    assert.equal(Object.keys(S().data.recipes).length, 0, '没存');
+    assert.equal(env.navs.length, 0, '还在编辑页');
+    assert.equal(document.activeElement, fid(main, 're-sv'), '焦点给几人份');
+    await type(fid(main, 're-sv'), '2');
+    key(fid(main, 're-sv'), 'Enter');
+    key(fid(main, 're-source'), 'Enter');
+    await settle();
+    assert.equal(Object.keys(S().data.recipes).length, 0);
+    for (const fn of main.events.keydown || []) fn({ key: 's', metaKey: true, target: fid(main, 're-sv'), preventDefault() {} });
+    await settle();
+    const [r] = Object.values(S().data.recipes);
+    assert.deepEqual([r && r.name, r && r.servings], ['麻婆豆腐', 2], '⌘S 保存');
+  } finally { env.done(); }
+});
+
 test('粘贴食材：贴一整段 → 先看拆成什么样（能改、能去掉）→ 加进去接在后面；没认出来的说一句；贴了字关面板先问', async () => {
   const env = setup();
   try {

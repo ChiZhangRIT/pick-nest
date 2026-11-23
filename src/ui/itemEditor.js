@@ -11,6 +11,8 @@ import { field, showErr, discardGuard, closeThen, onEnter } from './form.js';
 import { liveItem, liveList, validateItemPatch, editAndMove, moveConflict, categoryFits, cleanUrl, needsOf, totalLabel } from '../core/items.js';
 import { formatQty, readQty, stepQty, qtyLabel, UNIT_SUGGESTIONS } from '../core/parse.js';
 import { liveRecipe } from '../core/recipes.js';
+import { liveEntry } from '../core/plan.js';
+import { fmtPlanDay } from '../core/dates.js';
 import { listName, categoryName, live, byOrder } from '../core/store.js';
 
 const STATUSES = ['need', 'later', 'done'];
@@ -67,7 +69,10 @@ export function itemSheet(ctx, itemId) {
   const totalEl = h('p.f-help.need-total', { 'aria-live': 'polite' });
   const needRows = needs.map(([key, n]) => {
     const r = n.recipeId ? liveRecipe(st, n.recipeId) : null;
-    const label = n.label.trim() || (r && r.name.trim()) || t('item.needUnnamed');
+    // 计划里的一道菜（'p:<id>'）写上哪一天：同一道菜排了两天（周一、周五的燕麦粥）是两份，只写菜名分不出拿掉的是哪天的
+    const e = key.startsWith('p:') ? liveEntry(st, key.slice(2).replace(/#\d+$/, '')) : null;
+    const dish = n.label.trim() || (r && r.name.trim()) || t('item.needUnnamed');
+    const label = e ? dish + ' · ' + fmtPlanDay(e.date, ctx.lang()) : dish;
     const x = h('button.icon-btn.need-x', { type: 'button', 'aria-label': t('item.needRemove', { name: label }), dataset: { fid: 'need-x-' + key }, onclick: () => {
       dropped.add(key);
       li.hidden = true;

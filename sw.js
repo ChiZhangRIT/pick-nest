@@ -1,6 +1,6 @@
 // 每次启动固定使用同一份完整缓存。新版安装时按 release.json 校验文件，等旧页面全部关闭后再启用。
 // 只管本网站的文件。同步（api.github.com）不经过这里，也不进缓存。
-const CACHE = 'picknest-v20';
+const CACHE = 'picknest-v21';
 // 程序文件全部预先缓存（tests/sw.test.mjs 检查这张表和磁盘上的文件、index.html、import 关系一致），第一次打开之后就能离线用
 const CORE = [
   './', './index.html', './styles.css',

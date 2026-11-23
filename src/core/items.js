@@ -123,8 +123,10 @@ const qtyOrNull = (q) => (typeof q === 'number' && Number.isFinite(q) && q > 0 &
 const ofSource = (key, source) => key === source || key.startsWith(source + '#');
 
 /**
- * @typedef {{ name: string, qty?: number | null, unit?: string }} NeedLine
- * @typedef {{ qty: number | null, unit: string, label: string, recipeId: string | null }} Need
+ * @typedef {{ name: string, qty?: number | null, unit?: string, ing?: string }} NeedLine
+ * name：加到清单上哪一样（按名字找）；ing：食谱里这一样叫什么，只在和 name 不一样时给（清单上改过名的「有机五花肉」上放「五花肉」的那一份，core/plan.js）
+ * @typedef {{ qty: number | null, unit: string, label: string, recipeId: string | null, name?: string }} Need
+ * name：只在清单上的名字和食谱里的不一样时有（改过名）：这一份是食谱里的哪一样（needName），计划再生成、改人数、换食谱时还认得它
  */
 
 /**
@@ -141,17 +143,17 @@ export function addNeeds(state, listId, lines, source, { label = '', recipeId = 
   const list = liveList(state, listId);
   if (!list || !source) return null;
   // 先把同名的几行合在一起：同一张清单里同名的是同一条记录，一行一行加的话后一行会把前一行的那份替换掉
-  /** @type {Map<string, { name: string, parts: { qty: number | null, unit: string }[] }>} */
+  /** @type {Map<string, { name: string, parts: { qty: number | null, unit: string, ing: string }[] }>} */
   const byName = new Map();
   for (const ln of lines || []) {
     const name = str(ln && ln.name).trim();
     if (!name) continue;
-    const key = normName(name), qty = qtyOrNull(ln.qty), unit = str(ln.unit).trim();
+    const key = normName(name), qty = qtyOrNull(ln.qty), unit = str(ln.unit).trim(), ing = str(ln.ing).trim();
     if (!byName.has(key)) byName.set(key, { name, parts: [] });
-    const g = /** @type {{ name: string, parts: { qty: number | null, unit: string }[] }} */ (byName.get(key));
+    const g = /** @type {{ name: string, parts: { qty: number | null, unit: string, ing: string }[] }} */ (byName.get(key));
     const same = g.parts.find(p => normName(p.unit) === normName(unit));
     if (same) same.qty = same.qty == null ? qty : qty == null ? same.qty : Math.round((same.qty + qty) * 1000) / 1000;
-    else g.parts.push({ qty, unit });
+    else g.parts.push({ qty, unit, ing });
   }
   let added = 0, updated = 0;
   /** @type {string[]} */
@@ -159,7 +161,10 @@ export function addNeeds(state, listId, lines, source, { label = '', recipeId = 
   for (const { name, parts } of byName.values()) {
     /** @type {Record<string, Need>} */
     const mine = {};
-    parts.forEach((p, i) => { mine[i ? source + '#' + (i + 1) : source] = { qty: p.qty, unit: p.unit, label: str(label), recipeId: recipeId || null }; });
+    parts.forEach((p, i) => {
+      mine[i ? source + '#' + (i + 1) : source] = { qty: p.qty, unit: p.unit, label: str(label), recipeId: recipeId || null,
+        ...(p.ing && normName(p.ing) !== normName(name) ? { name: p.ing } : {}) };
+    });
     const id = itemId(state, listId, name);
     const prev = own(col(state, 'items'), id) || null;
     if (prev && !prev.deleted && (prev.status === 'need' || prev.status === 'later')) {
@@ -217,6 +222,24 @@ export function sourceItems(state, source) {
 }
 /** 这样东西上这个来源的那几份（'<来源>'、'<来源>#2'……，单位不一样的各一份）：[[键, { qty, unit, label, recipeId }]] @param {Item} it @param {string} source */
 export const needsFrom = (it, source) => needsOf(it).filter(([k]) => ofSource(k, source));
+/**
+ * 这一份是食谱里的哪一样：清单上改过名的（「五花肉」改成「有机五花肉」）记着原来的名字（need.name），别的就是这样东西的名字
+ * @param {{ name: string }} it @param {{ name?: unknown }} n
+ */
+export const needName = (it, n) => str(n && n.name).trim() || it.name;
+/**
+ * 改名时给各道菜的那几份记下原来的名字（还没记过的）：计划再生成、改人数、换食谱时按食谱里的名字找，改过名的还认得是这一样，
+ * 就地换它的那一份（不另加一条「五花肉」、也不把改了名的这一样当成不要了拿掉）。改回原来的名字时去掉
+ * @param {Record<string, any>} needs @param {string} from 原来的名字 @param {string} to 新名字
+ */
+function renameNeeds(needs, from, to) {
+  return Object.fromEntries(Object.entries(needs).map(([k, n]) => {
+    if (!isObj(n)) return [k, n];
+    const was = str(n.name).trim() || from;
+    if (normName(was) === normName(to)) { const { name, ...rest } = n; return [k, rest]; }
+    return [k, { ...n, name: was }];
+  }));
+}
 
 /**
  * 显示的数量拆成几份：自己加的和各来源里单位一样的（normName 比单位：「個」「个」一样）相加，单位不一样的分开；
@@ -240,9 +263,10 @@ export function qtyParts(it) {
 }
 /** 一行上显示的数量：「2.5 个 + 200 g」；都没写数量 → '' @param {{ qty: number | null, unit: string, needs?: Record<string, any> }} it */
 export const totalLabel = (it) => qtyParts(it).map(p => qtyLabel(p.qty, p.unit)).join(' + ');
-/** 这样东西上各道菜的那几份（编辑面板列出来）：[[键, { qty, unit, label, recipeId }]]，按 needs 里的先后 @param {Item} it @returns {[string, Need][]} */
+/** 这样东西上各道菜的那几份（编辑面板列出来）：[[键, { qty, unit, label, recipeId, name? }]]，按 needs 里的先后 @param {Item} it @returns {[string, Need][]} */
 export const needsOf = (it) => Object.entries(isObj(it && it.needs) ? it.needs : {}).filter(([, n]) => isObj(n))
-  .map(([k, n]) => [k, { qty: qtyOrNull(n.qty), unit: str(n.unit), label: str(n.label), recipeId: typeof n.recipeId === 'string' ? n.recipeId : null }]);
+  .map(([k, n]) => [k, { qty: qtyOrNull(n.qty), unit: str(n.unit), label: str(n.label), recipeId: typeof n.recipeId === 'string' ? n.recipeId : null,
+    ...(str(n.name).trim() ? { name: str(n.name).trim() } : {}) }]);
 
 /**
  * 快速添加：拆出数量和单位（parse.js），再 addItem
@@ -515,6 +539,7 @@ export function editItem(state, id, patch, now = Date.now(), { moving = false } 
   const v = validateItemPatch(state, it, patch, { moving });
   if (!v.ok) return { ok: false, errors: v.errors };
   const next = { ...it, ...v.clean };
+  if (normName(next.name) !== normName(it.name) && isObj(next.needs) && Object.keys(next.needs).length) next.needs = renameNeeds(next.needs, it.name, next.name);
   if (next.status !== it.status) next.doneAt = next.status === 'done' ? now : null;
   if (roundOver(it, next.status, now)) Object.assign(next, newRound(it, now));   // 和勾选一样：隔久了才改回要买是新的一轮
   const item = /** @type {Item} */ (writeRecord(state, 'items', next, now));

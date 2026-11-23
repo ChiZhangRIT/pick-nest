@@ -278,8 +278,9 @@ dialog.confirm .sheet-body { padding-top: 22px; }
 }
 
 /* ---------- 提示条 ---------- */
+/* width: max-content：left 50% 的定位元素按「右半边」收缩宽度，不写的话最宽只有半屏，max-width 用不上，长一点的提示折成两三行、从名字中间断开 */
 #toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); z-index: 200; display: flex; align-items: center; gap: 10px;
-  max-width: min(560px, calc(100vw - 24px)); padding: 8px 8px 8px 16px; min-height: 48px; border-radius: 14px; background: var(--toast-bg); color: var(--toast-ink);
+  width: max-content; max-width: min(560px, calc(100vw - 24px)); padding: 8px 8px 8px 16px; min-height: 48px; border-radius: 14px; background: var(--toast-bg); color: var(--toast-ink);
   font-size: 15px; box-shadow: 0 10px 30px rgba(0, 0, 0, .3); white-space: pre-line; opacity: 0; pointer-events: none; transform: translate(-50%, 16px); transition: opacity .2s, transform .2s; }
 #toast.on { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
 #toast:empty { display: none; }
@@ -785,7 +786,7 @@ p.rcp-source { color: var(--ink-2); overflow-wrap: anywhere; }
 .rcp-acts .rcp-add { margin-top: 0; }
 /* 大标题右边是「按周 / 按月」；下面一行 ‹ 哪一周 › 今天 */
 .plan-seg { margin-top: 4px; }
-.plan-nav { display: flex; align-items: center; gap: 2px; margin: 10px -10px 0; }
+.plan-nav { display: flex; align-items: center; gap: 2px; margin: 10px 0 0 -10px; }   /* 只往左伸：‹ 的图标和标题对齐，右边带框的「今天」不伸出内容边 */
 .plan-range { flex: 1; min-width: 0; margin: 0; font-size: 17px; font-weight: 600; text-align: center; font-variant-numeric: tabular-nums;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .plan-nav .icon-btn .ic { width: 22px; height: 22px; stroke-width: 2.2; }
@@ -796,7 +797,7 @@ p.rcp-source { color: var(--ink-2); overflow-wrap: anywhere; }
 .plan-week { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
 /* 挪过去以后滚到那一天（views/plan.js 的 follow）：下面让开提示条（手机上还有底栏） */
 .plan-day { margin-top: 10px; scroll-margin: 8px 0 calc(84px + env(safe-area-inset-bottom)); }
-body[data-layout="phone"][data-tabs="1"] .plan-day { scroll-margin-bottom: calc(132px + env(safe-area-inset-bottom)); }
+body[data-layout="phone"][data-tabs="1"] .plan-day { scroll-margin-bottom: calc(148px + env(safe-area-inset-bottom)); }   /* 底栏 + 提示条（加了菜马上有）上面 */
 .pd-head { display: flex; align-items: center; gap: 8px; min-height: 44px; padding-left: 4px; }
 .pd-title { flex: 1; min-width: 0; display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; margin: 0; font-size: 16px; font-weight: 650; }
 .pd-date { color: var(--muted); font-size: 14px; font-weight: 500; font-variant-numeric: tabular-nums; }

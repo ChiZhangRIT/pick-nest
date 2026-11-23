@@ -14,6 +14,7 @@ import { setStaple } from '../src/core/memory.js';
 import { todayDay, addDays, weekStart, monthStart, addMonths, fmtPlanDay, fmtDayRange, fmtMonth } from '../src/core/dates.js';
 import { setLang, t } from '../src/i18n.js';
 import { Element, all, find, installDom } from './helpers/dom.mjs';
+import { itemSheet } from '../src/ui/itemEditor.js';
 
 const settle = async (n = 5) => { for (let i = 0; i < n; i++) await new Promise(r => setTimeout(r, 0)); };
 const cls = (el, c) => (el.className || el.attrs.class || '').split(' ').includes(c);
@@ -151,6 +152,11 @@ test('一个月：月历周一开头，每天几道菜几个点（最多 3 个�
     assert.ok(cls(cellOf(TODAY), 'today') && cls(cellOf(TODAY), 'sel'), '一开始选今天');
     assert.equal(allCls(main, 'plan-day').length, 1);
     assert.equal(dishes(byCls(main, 'plan-day')).length, 5);
+    assert.equal(fid(env.main, 'plan-today').attrs['aria-disabled'], 'true', '选着今天：「今天」灰着');
+    allCls(env.main, 'pm-cell').find(c => !cls(c, 'out') && c.dataset.day !== TODAY).click();
+    assert.equal(fid(env.main, 'plan-today').attrs['aria-disabled'], 'false', '选了这个月别的一天：「今天」又能点了（读屏不念「灰掉」）');
+    cellOf(TODAY).click();
+    assert.equal(fid(env.main, 'plan-today').attrs['aria-disabled'], 'true');
     const tomorrow = addDays(TODAY, 1);
     if (monthStart(tomorrow) === monthStart(TODAY)) {
       cellOf(tomorrow).click();
@@ -392,8 +398,11 @@ test('生成购物清单：一开始是这一周；同名同单位合成一行�
     assert.deepEqual(rows().map(r => [r[0], r[3], r[4]]), [['五花肉', '已经加过 1000 g', true], ['洋葱', '已经加过 3 个', true], ['生抽', '', false],
       ['咖喱块', '已经加过 0.5 盒，清单上一共 1 + 0.5 盒', true]], '加过的说加过多少（确认是换掉），清单上还有别的再说一共');
     assert.equal(rows()[1][2], `来自 红烧肉（周一）、咖喱（${wd(addDays(MON, 2))}）`);
+    assert.equal(fid(env.sheet().el, 'pl-go').textContent, '更新清单（3 样）', '勾着的都加过了：是更新，不是再加一遍');
+    const n0 = env.toasts.length;
     await fid(env.sheet().el, 'pl-go').click();
     assert.equal(totalLabel(S().data.items[itemId(S(), L, '洋葱')]), '3 个');
+    assert.deepEqual(env.toasts.slice(n0).map(x => x.msg), ['已更新「食材」上的 3 样', '清单上已经是这些了，没有要改的'], '什么也没变：说一句');
     state.undo();
     assert.equal(totalLabel(S().data.items[itemId(S(), L, '洋葱')]), '3 个', '撤销再生成：回到生成前（一样）');
   } finally { env.done(); }
@@ -422,6 +431,21 @@ test('生成购物清单：买过的不勾、写着已经买过；这几天没�
 });
 
 // ---------- 食谱页的「加到计划」 ----------
+test('改一样东西的面板：同一道菜排了两天，「来自食谱」的两份写上哪一天（拿掉的是哪天的分得清，读屏也一样）', async () => {
+  const env = setup({ seed: (s) => {
+    const oat = saveRecipe(s, null, { name: '燕麦粥', servings: '1', ings: [{ name: '牛奶', qty: '250', unit: 'mL' }] }, now()).id;
+    for (const d of [MON, addDays(MON, 4)]) addEntry(s, { date: d, meal: 'breakfast', recipeId: oat, servings: 1 }, now());
+    generateList(s, { from: MON, to: addDays(MON, 6), listId: L }, now());
+  } });
+  try {
+    itemSheet(env.ctx, itemId(S(), L, '牛奶'));
+    const sh = env.sheet();
+    const days = [MON, addDays(MON, 4)].map(d => '燕麦粥 · ' + fmtPlanDay(d, 'zh-Hans'));
+    assert.deepEqual(allCls(sh.el, 'need-row').map(r => byCls(r, 'need-label').textContent), days);
+    assert.deepEqual(allCls(sh.el, 'need-x').map(x => x.attrs['aria-label']), days.map(d => `拿掉「${d}」的这一份`));
+  } finally { env.done(); }
+});
+
 test('食谱页「加到计划」：同一个面板，食谱已经选好、默认今天的晚饭、几人份是食谱的；选哪一天哪一顿就加上', async () => {
   const env = setup();
   try {

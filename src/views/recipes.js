@@ -5,7 +5,7 @@
 // 放地址里的话搜索词就没了；手机上点进去再返回也还是刚才搜的。
 // 宽屏双栏时在左栏（params.pane === 'list'）：右栏正在看 / 编辑的那道（params.selected）高亮。
 import { h, icon, linkTo } from '../ui/dom.js';
-import { t } from '../i18n.js';
+import { t, listJoin } from '../i18n.js';
 import { searchRecipes, recipeName } from '../core/recipes.js';
 import { live } from '../core/store.js';
 import { collatorFor } from '../core/group.js';
@@ -53,7 +53,7 @@ export function render(main, params, ctx) {
       h('a.group-row.rcp-row.go' + (sel(r) ? '.sel' : ''), { href: '#/r/' + encodeURIComponent(r.id), dataset: { id: r.id }, 'aria-current': sel(r) ? 'page' : null },
         h('span.rcp-text', null,
           h('span.rcp-name', null, recipeName(r, t)),
-          h('span.rcp-meta', null, ings.length ? t('rcp.uses', { names: ings.join('、') }) : recipeMeta(r))))))));
+          h('span.rcp-meta', null, ings.length ? t('rcp.uses', { names: listJoin(ings) }) : recipeMeta(r))))))));
   }
 
   // ⌘N（别的系统 Ctrl+N）= 新建食谱；面板开着、正在别的输入框里打字时不管（和清单页的 ⌘N 一样）

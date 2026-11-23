@@ -7,7 +7,7 @@
 // 确认 = 一次 ctx.mutate（generateList：每道菜用自己的来源 'p:<id>' 加进清单），能撤销。
 // 换日子、换清单只重画下面的几行，勾和常备品按行的 key / 名字记着。面板不在页面里：数据变了页面重画不会打断它。
 import { h } from './dom.js';
-import { t } from '../i18n.js';
+import { t, listJoin } from '../i18n.js';
 import { field, showErr } from './form.js';
 import { planLines, generateList } from '../core/plan.js';
 import { groceryLists, defaultTarget } from '../core/recipes.js';
@@ -55,7 +55,7 @@ export function planListSheet(ctx, { from, to }) {
     const r = range(), long = rangeOk() && dayDiff(r.from, r.to) >= 7;
     const by = new Map();
     for (const x of srcs) { if (!by.has(x.title)) by.set(x.title, []); by.get(x.title).push(long ? fmtPlanDay(x.date, lang, { weekday: false }) : weekdayName(x.date, lang)); }
-    return [...by].map(([title, wds]) => (lang === 'en' ? `${title} (${wds.join(', ')})` : `${title}（${wds.join('、')}）`)).join(lang === 'en' ? ', ' : '、');
+    return listJoin([...by].map(([title, wds]) => (lang === 'en' ? `${title} (${listJoin(wds, lang)})` : `${title}（${listJoin(wds, lang)}）`)), lang);
   };
 
   // 行的 key 里有换行（名字 + 单位），不能直接放进 data-fid 再拿去 querySelector：用它的 hash
@@ -84,7 +84,9 @@ export function planListSheet(ctx, { from, to }) {
           h('span.atl-sub', null,
             ln.qty != null ? h('span.atl-qty', null, qtyLabel(ln.qty, ln.unit)) : null,
             h('span.pl-from', null, t('plan.forDishes', { names: dishes(ln.sources) })),
-            hint ? h('span.atl-have', null, hint) : null))),
+            hint ? h('span.atl-have', null, hint) : null,
+            // 这一样在清单上改过名（有机五花肉）：确认时就地换它上面的那一份，说一声是哪一样
+            ln.have && normName(ln.have.name) !== normName(ln.name) ? h('span.atl-have.pl-as', null, t('plan.onListAs', { name: ln.have.name })) : null))),
       chip);
   }
   /** 换日子、换清单、标常备品以后重画下面的几行（焦点在哪一行的勾 / 常备品上，重画后放回去） */
@@ -107,10 +109,12 @@ export function planListSheet(ctx, { from, to }) {
   /** 已经加过、这次去掉了勾的：确认时从清单上拿掉 */
   const dropped = () => shown.lines.filter(l => l.added && !isOn(l));
   const countNames = (/** @type {{ name: string }[]} */ ls) => new Set(ls.map(l => normName(l.name))).size;
+  /** 勾着的都是已经加过的：再生成一次是换成这次的用量（替换，不会多），按钮、提示条说「更新」，不说「加」（看着像又加了一遍） */
+  const updating = () => { const p = picked(); return p.length > 0 && p.every(l => l.added); };
   function paintGo() {
     const n = countNames(picked()), off = countNames(dropped());
     // 一个也没勾、但有加过的去掉了勾：确认就是把它们拿掉（去掉勾就拿掉，全去掉也一样），按钮照实说
-    goBtn.textContent = !n && off ? t('plan.takeOff', { n: off }) : t('rcp.atlGo', { n });
+    goBtn.textContent = !n && off ? t('plan.takeOff', { n: off }) : t(updating() ? 'plan.updateGo' : 'rcp.atlGo', { n });
     goBtn.setAttribute('aria-disabled', String(!(n || off) || !target || !rangeOk()));
   }
 
@@ -133,9 +137,12 @@ export function planListSheet(ctx, { from, to }) {
     const changes = Object.fromEntries([...staples.values()].map(x => [x.name, x.on]));
     const l = lists.find(x => x.id === target);
     const { from: f, to: tt } = range();
-    ctx.mutate(st => generateList(st, { from: f, to: tt, listId: /** @type {string} */ (target), keys: p.map(x => x.key), staples: changes }, Date.now()),
-      { undoLabel: n ? t('rcp.added', { n, name: l ? listName(l, t) : '' }) : t('plan.tookOff', { n: off }) });
+    const name = l ? listName(l, t) : '';
+    const res = ctx.mutate(st => generateList(st, { from: f, to: tt, listId: /** @type {string} */ (target), keys: p.map(x => x.key), staples: changes }, Date.now()),
+      { undoLabel: !n ? t('plan.tookOff', { n: off }) : updating() ? t('plan.updated', { n, name }) : t('rcp.added', { n, name }) });
     s.close();
+    // 什么也没变（同样的再生成一次）：没有改动就没有撤销的提示条，说一句，不然点了像没反应
+    if (res && !res.changed) ctx.toast(t('plan.upToDate'));
   }
   return s;
 }

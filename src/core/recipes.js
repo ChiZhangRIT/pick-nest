@@ -167,7 +167,9 @@ export function parseIngredients(text) {
 
 // ---------- 按人数换算 ----------
 /**
- * 用量按人数换算：qty × servings / recipe.servings，四舍五入到两位小数（太小的至少 0.01）；qty 是 null 的、食谱没写人数的、servings 不对的原样。
+ * 用量按人数换算：qty × servings / recipe.servings（太小的至少 0.01）；qty 是 null 的、食谱没写人数的、servings 不对的原样。
+ * 只去掉浮点的零头（六位小数），不在这里按两位四舍五入：每道菜各记一份，加起来才显示（qtyParts / qtyLabel 再四舍五入）——
+ * 3 人份的炒饭（洋葱 1 个）做三天、每天 1 人份，先各自四舍五入成 0.33 再相加就是「0.99 个」
  * 换算出来的可以超过 9999（那是输入框的上限：2000 ml 水 2 人份 → 10 人份就是 10000 ml），只在 NEED_MAX 封顶（防写坏的数据）
  * @param {{ servings: number | null, ings: Ingredient[] }} recipe @param {unknown} servings
  * @returns {Ingredient[]}
@@ -176,7 +178,7 @@ export function scaleIngredients(recipe, servings) {
   const base = recipe && recipe.servings;
   const want = typeof servings === 'number' && Number.isFinite(servings) && servings > 0 ? servings : null;
   const f = base && base > 0 && want ? want / base : 1;
-  return ((recipe && recipe.ings) || []).map(g => ({ ...g, qty: g.qty == null ? null : f === 1 ? g.qty : Math.min(NEED_MAX, Math.max(0.01, Math.round(g.qty * f * 100) / 100)) }));
+  return ((recipe && recipe.ings) || []).map(g => ({ ...g, qty: g.qty == null ? null : f === 1 ? g.qty : Math.min(NEED_MAX, Math.max(0.01, Math.round(g.qty * f * 1e6) / 1e6)) }));
 }
 
 // ---------- 搜索、联想 ----------

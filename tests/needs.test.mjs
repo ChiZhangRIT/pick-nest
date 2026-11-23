@@ -293,7 +293,7 @@ test('整理：needs 里不认识的来源和字段原样留着，危险的键�
   assert.equal(canon(twice), canon(it), '可重复整理');
 });
 
-test('合并：needs 是记录的一个字段，同一条整条取较新的（拿掉的一份不会被旧的补回来）；各自从头建的同一条，较新的 needs 空着才用另一条的', () => {
+test('合并：needs 是记录的一个字段，同一条整条取较新的（拿掉的一份不会被旧的补回来）；各自从头建的同一条、两条都还没买：两边的合在一起', () => {
   const base = { id: 'i_x', listId: L, name: '洋葱', status: 'need', createdAt: 100 };
   const old = normalizeRecord('items', { ...base, updatedAt: 200, needs: { 'a:1': { qty: 1, unit: '个', label: '红烧肉' } } });
   const cleared = normalizeRecord('items', { ...base, updatedAt: 300, needs: {} });
@@ -303,7 +303,13 @@ test('合并：needs 是记录的一个字段，同一条整条取较新的（�
   assert.deepEqual([m.qty, Object.keys(m.needs), m.createdAt], [2, ['a:1'], 100], '新设备从头建的那条 needs 空着：补上云端那条的');
   assert.equal(canon(mergeRecord('items', fresh, old)), canon(m), '顺序无关');
   const fresh2 = normalizeRecord('items', { ...base, createdAt: 250, updatedAt: 260, needs: { 'a:2': { qty: 3, unit: 'g' } } });
-  assert.deepEqual(Object.keys(mergeRecord('items', old, fresh2).needs), ['a:2'], '较新的有自己的：不混在一起');
+  // 两台设备谁也没拿到过对方这一条（一台生成了第一周，另一台离线生成了第二周）：谁也不是有意拿掉对方的那一份，两份都要买
+  const both = mergeRecord('items', old, fresh2);
+  assert.deepEqual([Object.keys(both.needs).sort(), totalLabel(both)], [['a:1', 'a:2'], '1 + 1 个 + 3 g'], '较新的有自己的：两边的都算');
+  assert.equal(canon(mergeRecord('items', fresh2, old)), canon(both), '顺序无关');
+  assert.equal(canon(mergeRecord('items', both, old)), canon(both), '再合并一次不变');
+  const fresh3 = normalizeRecord('items', { ...base, createdAt: 250, updatedAt: 260, needs: { 'a:1': { qty: 2, unit: '个', label: '红烧肉' } } });
+  assert.equal(mergeRecord('items', old, fresh3).needs['a:1'].qty, 2, '同一个来源：用较新的');
 });
 
 test('合并：各自从头建的同一条，另一条已买 / 已清除 → 它上一轮的 needs 不补过来（不然买过的又成了要买的）；较新的已买、已清除也不补', () => {

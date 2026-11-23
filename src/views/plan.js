@@ -67,7 +67,9 @@ export function render(main, params, ctx) {
     const v = view();
     for (const b of segBtns) { const on = b.dataset.v === v; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }
     const w = weekStart(ui.anchor);
-    title.textContent = v === 'week' ? fmtDayRange(w, addDays(w, 6), lang) : fmtMonth(ui.anchor, lang);
+    // aria-live：只在真的换了一周 / 一个月时改字，不然每次加、删一道菜读屏都把日子重念一遍
+    const range = v === 'week' ? fmtDayRange(w, addDays(w, 6), lang) : fmtMonth(ui.anchor, lang);
+    if (title.textContent !== range) title.textContent = range;
     prev.setAttribute('aria-label', t(v === 'week' ? 'plan.prevWeek' : 'plan.prevMonth'));
     next.setAttribute('aria-label', t(v === 'week' ? 'plan.nextWeek' : 'plan.nextMonth'));
     // 已经在今天这一周 / 这个月：「今天」点了也不动，灰掉（不藏：藏起来标题会左右跳）
@@ -129,7 +131,8 @@ export function render(main, params, ctx) {
       return h('button.pm-cell' + (inMonth ? '' : '.out') + (day === today() ? '.today' : '') + (on ? '.sel' : ''),
         { type: 'button', 'aria-label': label, 'aria-pressed': String(on), dataset: { fid: 'pm-' + day, day },
           // 别的月的日子（前后补上的）：翻到那个月再选上
-          onclick: () => { ui.sel = day; if (!inMonth) { ui.anchor = monthStart(day); draw(); } else drawMonth(); } },
+          // 这个月里的：只换下面那天的卡片，顶上「今天」灰不灰也跟着变（选了别的一天，「今天」又能点了）
+          onclick: () => { ui.sel = day; if (!inMonth) ui.anchor = monthStart(day); draw(); } },
         h('span.pm-num', null, String(+day.slice(8))),
         h('span.pm-dots', { 'aria-hidden': 'true' }, Array.from({ length: Math.min(n, DOTS_MAX) }, () => h('span.pm-dot'))));
     };

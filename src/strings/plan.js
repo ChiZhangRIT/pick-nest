@@ -29,6 +29,8 @@ export const STRINGS = {
     'plan.genAgainHint': '已经在清单上的照样勾着：再生成一次是替换，不会加成两份；去掉勾就从清单上拿掉。买过的默认不勾。',
     'plan.genSkipped': '有 {n} 道菜没连着食谱（比如「{name}」），不算在里面。', 'plan.genEmpty': '这几天还没有连着食谱的菜。',
     'plan.takeOff': '拿掉（{n} 样）', 'plan.tookOff': '已从清单上拿掉这几道菜的 {n} 样',
+    'plan.updateGo': '更新清单（{n} 样）', 'plan.updated': '已更新「{name}」上的 {n} 样', 'plan.upToDate': '清单上已经是这些了，没有要改的',
+    'plan.onListAs': '清单上叫「{name}」',
   },
 
   'zh-Hant-TW': {
@@ -54,6 +56,8 @@ export const STRINGS = {
     'plan.genAgainHint': '已經在清單上的照樣勾著：再產生一次是取代，不會加成兩份；取消勾選就從清單上拿掉。買過的預設不勾。',
     'plan.genSkipped': '有 {n} 道菜沒連著食譜（例如「{name}」），不算在裡面。', 'plan.genEmpty': '這幾天還沒有連著食譜的菜。',
     'plan.takeOff': '拿掉（{n} 項）', 'plan.tookOff': '已從清單上拿掉這幾道菜的 {n} 項',
+    'plan.updateGo': '更新清單（{n} 項）', 'plan.updated': '已更新「{name}」上的 {n} 項', 'plan.upToDate': '清單上已經是這些了，沒有要改的',
+    'plan.onListAs': '清單上叫「{name}」',
   },
 
   en: {
@@ -82,5 +86,9 @@ export const STRINGS = {
     'plan.genEmpty': 'No dishes with recipes on these days yet.',
     'plan.takeOff': en('Remove {n} Item', 'Remove {n} Items'),
     'plan.tookOff': en('Took {n} item for these dishes off your list', 'Took {n} items for these dishes off your list'),
+    'plan.updateGo': en('Update {n} Item', 'Update {n} Items'),
+    'plan.updated': en('Updated {n} item on “{name}”', 'Updated {n} items on “{name}”'),
+    'plan.upToDate': 'Your list already has all of this.',
+    'plan.onListAs': 'On your list as “{name}”',
   },
 };

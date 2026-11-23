@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { t, setLang, getLang, guessLang, has, LANGS, LANG_LABELS, STRINGS, TABLES } from '../src/i18n.js';
+import { t, setLang, getLang, guessLang, has, listJoin, LANGS, LANG_LABELS, STRINGS, TABLES } from '../src/i18n.js';
 import { SYS_LISTS, SYS_CATEGORIES } from '../src/core/store.js';
 
 const fields = s => [...s.matchAll(/\{(\w+)\}/g)].map(x => x[1]).sort();
@@ -106,4 +106,13 @@ test('源码里写死的文案键（t(\'…\')）都有；拼出来的键（t(\'
     }
   }
   assert.ok(n > 20, `只找到 ${n} 处 t()，正则可能坏了`);
+});
+
+test('几个名字连成一串：中文用「、」，英文用逗号（「Uses: buttermilk, butter」，不是「buttermilk、butter」）', () => {
+  assert.equal(listJoin(['buttermilk', 'butter'], 'en'), 'buttermilk, butter');
+  assert.equal(listJoin(['五花肉', '洋葱'], 'zh-Hant-TW'), '五花肉、洋葱');
+  setLang('en');
+  assert.equal(listJoin(['a', 'b']), 'a, b', '不给语言用界面的');
+  setLang('zh-Hans');
+  assert.equal(listJoin(['a', 'b']), 'a、b');
 });

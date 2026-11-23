@@ -27,11 +27,13 @@ import { toSimplified } from './hanzi.js';
 /**
  * @typedef {Base & { listId: string, name: string, qty: number | null, unit: string, note: string,
  *   categoryId: string | null, storeId: string | null, status: ItemStatus, doneAt: number | null,
- *   url: string, price: number | null, needs: Record<string, any>, boughtFor?: Record<string, number>, fromLater?: true }} Item
- * 清单里的一样东西。qty / unit 是自己加的；needs 是食谱、计划加进来的用量：来源 → { qty, unit, label, recipeId }（core/items.js 的 addNeeds），
+ *   url: string, price: number | null, needs: Record<string, any>, boughtFor?: Record<string, number>, fromLater?: true, statusAt?: number }} Item
+ * 清单里的一样东西。qty / unit 是自己加的；needs 是食谱、计划加进来的用量：来源 → { qty, unit, label, recipeId, name? }（core/items.js 的 addNeeds；
+ * name 只在清单上改过名时有：这一份是食谱里的哪一样），
  * 显示的数量是两样加起来（qtyParts）。不认识的来源和字段原样保留。
  * boughtFor：买过以后又加回来时，上一轮计划里哪几道菜的这一样已经买过（来源 'p:<id>' → 买的时间，boughtAfter）；不算在数量里，只给计划看
  * fromLater：从「以后再说」勾成已买的（取消勾选时回以后再说）；只在已买时有
+ * statusAt：状态最后一次改的时间（stampRecord 记；以前的记录没有，当 0）。合并时看另一台设备勾成已买的时候，这一份知不知道（boughtMeanwhile）
  */
 /** @typedef {Base & { name: string, order: number, archived: boolean }} Store 商店 */
 /** @typedef {Base & { sys: string | null, name: string, kind: ListKind | null, order: number }} Category 分类 */
@@ -197,6 +199,9 @@ export function normalizeItem(rec, id = rec && rec.id) {
   if (bf.length) r.boughtFor = Object.fromEntries(bf.sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, BOUGHT_MAX));
   else delete r.boughtFor;
   if (r.fromLater !== true || r.status !== 'done') delete r.fromLater;   // 从「以后再说」勾掉的已买（items.js 的 untickStatus）：只在已买时有
+  // 状态最后一次改的时间（stampRecord）：没改过状态的、以前的记录上没有这个键（不白白多一个字段，也不让旧数据看着像改过）
+  const sa = numOrNull(r.statusAt);
+  if (sa != null && sa >= 0) r.statusAt = sa; else delete r.statusAt;
   return /** @type {Item} */ (r);
 }
 
@@ -372,15 +377,19 @@ function blend(c, w, o) {
     if (w.listId !== o.listId || normName(w.name) !== normName(o.name)) return null;
     const out = { ...w };
     for (const k of ITEM_CARRY) if (blank(out[k]) && !blank(o[k])) out[k] = o[k];
-    // 各道菜的那几份（needs）只在两条都还没买时补：另一条已买、已清除，那是买过的一轮，补过来就又成了要买的；
+    // 各道菜的那几份（needs）只在两条都还没买时合在一起（同一个来源用较新的）：两台设备从来没拿到过对方这一条，谁也不是有意拿掉对方的那几份——
+    // 一台生成了第一周、另一台离线生成了第二周，合并后两周的洋葱都要算上。另一条已买、已清除，那是买过的一轮，补过来就又成了要买的；
     // 较新的已买、已清除，补了也没用（再加回来时会清空），只是白白多改一次
-    if (blank(out.needs) && !blank(o.needs) && openItem(w) && openItem(o)) out.needs = o.needs;
+    if (!blank(o.needs) && openItem(w) && openItem(o)) out.needs = { ...copySafe(o.needs), ...(isObj(w.needs) ? w.needs : {}) };
     // 买过的那几道菜（boughtFor）是历史：两条的都留着；另一条已买、已清除，它那一轮计划的来源这里不带过来，也记成买过的
     // （较新的这条自己还是已买、needs 里还带着的不重复记：再合并一次结果一样）
     const still = out.status === 'done' ? new Set(Object.keys(isObj(out.needs) ? out.needs : {}).map(k => k.replace(/#\d+$/, ''))) : new Set();
     const bf = isObj(w.boughtFor) ? copySafe(w.boughtFor) : {};
     for (const [k, v] of Object.entries(boughtAfter(o, time(o.updatedAt)))) if (!still.has(k)) bf[k] = Math.max(numOrNull(bf[k]) ?? 0, numOrNull(v) ?? 0);
     if (Object.keys(bf).length) out.boughtFor = bf;
+    // 合并出来的这一条两份都见过了：另一条后来勾成的已买也算见过（不然以后和还留着那一份的设备合并，boughtMeanwhile 会以为没见过、把买过的又标回已买）
+    const sa = Math.max(time(w.statusAt), time(o.statusAt));
+    if (sa) out.statusAt = sa;
     return out;
   }
   const ws = isObj(w.stores) ? w.stores : {}, os = isObj(o.stores) ? o.stores : {};
@@ -400,8 +409,47 @@ function blend(c, w, o) {
   return out;
 }
 
+// ---------- 同一条记录：一台设备勾成已买，另一台不知道，又改了它 ----------
+// 两个人一起：一个在店里勾掉洋葱、五花肉，一个在家里还没拉到，加了周五的菜、再生成一次购物清单——同一份清单上共用的几样一下全改写了，
+// 时间更新。整条取较新的话，买过的又回到「要买」，数量还是全部的（每道菜的都算没买），再生成也认不出来。
+// 认法：状态有自己的时间（statusAt，stampRecord 记）。已买的那份 statusAt 比还没买的那份新 = 还没买的那份写的时候没见过这次购买
+// （见过了再改，statusAt 是抄过来的；自己取消勾选、撤销，statusAt 是更新的）；还没买的那份又是在勾掉以后写的（updatedAt 更晚）
+// = 不是单纯的旧版本，是同时改的。这时购买算数：那一轮的 needs（键）、自己加的数量（一样的）算买过了；还没买的那份上多出来的（新加的菜、
+// 新写的数量）是还要买的：有 → 新的一轮（和买过以后又加回来一样，买过的那几道菜记进 boughtFor）；没有 → 已买（买完清除了就还是清除的）。
+// 别的字段照旧用较新的那份
+/** @param {Record<string, any>[]} xs @returns {Record<string, number>} */
+function boughtUnion(...xs) {
+  /** @type {Record<string, number>} */
+  const out = {};
+  for (const x of xs) for (const [k, v] of Object.entries(isObj(x) ? x : {})) if (safeKey(k) && numOrNull(v) != null) out[k] = Math.max(out[k] ?? 0, /** @type {number} */ (numOrNull(v)));
+  return out;
+}
+/** @param {any} w 较新的 @param {any} o 另一份 @returns {any} 合并结果；不是这种情况 → null */
+function boughtMeanwhile(w, o) {
+  const [d, p] = w.status === 'done' ? [w, o] : [o, w];
+  if (d.status !== 'done' || !openItem(p) || !(time(d.statusAt) > time(p.statusAt)) || !(time(p.updatedAt) > time(d.statusAt))) return null;
+  const had = isObj(d.needs) ? d.needs : {};
+  const left = Object.fromEntries(Object.entries(isObj(p.needs) ? p.needs : {}).filter(([k]) => !own(had, k)));
+  const sameOwn = p.qty === d.qty && normName(str(p.unit)) === normName(str(d.unit));
+  const ownLeft = p.qty != null && !sameOwn ? p.qty : null;
+  if (!Object.keys(left).length && ownLeft == null) {
+    if (d === w) return null;              // 较新的就是买过的那份，照旧整条取它
+    const out = { ...w, status: 'done', doneAt: d.doneAt, statusAt: d.statusAt, needs: d.needs, fromLater: d.fromLater };
+    const bf = boughtUnion(w.boughtFor, d.boughtFor);
+    if (Object.keys(bf).length) out.boughtFor = bf; else delete out.boughtFor;
+    if (d.deleted) Object.assign(out, { deleted: true, deletedAt: d.deletedAt });
+    return out;
+  }
+  const { deleted, deletedAt, fromLater, ...rest } = w;
+  const out = { ...rest, status: p.status, doneAt: null, statusAt: d.statusAt, needs: left, qty: ownLeft,
+    boughtFor: boughtUnion(w.boughtFor, p.boughtFor, boughtAfter(d, time(d.updatedAt))) };
+  if (!Object.keys(out.boughtFor).length) delete out.boughtFor;
+  return out;
+}
+
 /**
- * 同一条记录的两份合并成一份（顺序无关）：一般是 pick（较新的一整条）；items、memory 里各自从头建的两条（createdAt 不一样）补上空着的字段，见上面
+ * 同一条记录的两份合并成一份（顺序无关）：一般是 pick（较新的一整条）；items、memory 里各自从头建的两条（createdAt 不一样）补上空着的字段，
+ * items 的同一条（createdAt 一样）里一台设备勾成已买、另一台不知道又改了的，购买算数（boughtMeanwhile），见上面
  * @param {string} c @param {any} a @param {any} b
  */
 export function mergeRecord(c, a, b) {
@@ -409,7 +457,13 @@ export function mergeRecord(c, a, b) {
   if (!a || !b || (c !== 'items' && c !== 'memory')) return w;
   const o = w === a ? b : a;
   const wc = Number(w.createdAt), oc = Number(o.createdAt);
-  if (!(wc >= 0) || !(oc >= 0) || wc === oc) return w;
+  if (!(wc >= 0) || !(oc >= 0)) return w;
+  if (wc === oc) {
+    const out = c === 'items' ? boughtMeanwhile(w, o) : null;
+    if (!out || canon(out) === canon(w)) return w;
+    out.updatedAt = (w.updatedAt || 0) + 1;
+    return out;
+  }
   const out = blend(c, w, o);
   if (!out) return w;
   out.createdAt = Math.min(wc, oc);
@@ -457,6 +511,16 @@ export function mergeStates(a, b) {
 export function stamp(rec, prev, now = Date.now()) {
   return { ...rec, updatedAt: Math.max(now, ((prev && prev.updatedAt) || 0) + 1) };
 }
+/**
+ * 盖修改时间（stamp），items 的状态变了还记下 statusAt（和 updatedAt 一样）：合并时要分得出「改的时候知不知道别的设备勾成了已买」
+ * （boughtMeanwhile）。写记录（writeRecord）、撤销（state.js）都走这里：撤销把状态改回去也是改状态，不能把旧的 statusAt 也搬回来
+ * @param {string} collection @param {Record<string, any>} rec @param {any} prev @param {number} [now]
+ */
+export function stampRecord(collection, rec, prev, now = Date.now()) {
+  const out = stamp(rec, prev, now);
+  if (collection === 'items' && prev && prev.status !== out.status) out.statusAt = out.updatedAt;
+  return out;
+}
 
 /**
  * core 里的操作函数（items.js、lists.js、memory.js，都在 ctx.mutate 里调用）写一条记录：整理字段；
@@ -472,7 +536,7 @@ export function writeRecord(state, collection, rec, now = Date.now()) {
   const prev = own(col, id);
   const next = normalizeRecord(collection, { ...rec, id, updatedAt: prev ? prev.updatedAt : now }, id);
   if (prev && canon(next) === canon(prev)) return prev;
-  return (col[id] = normalizeRecord(collection, stamp(next, prev, now), id));
+  return (col[id] = normalizeRecord(collection, stampRecord(collection, next, prev, now), id));
 }
 
 /** 软删除：内容保留，照样同步，在「最近删除」里能恢复 @param {any} rec @param {number} [now] */

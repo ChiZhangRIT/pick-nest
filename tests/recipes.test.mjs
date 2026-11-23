@@ -113,11 +113,12 @@ test('快速添加照旧不认食谱的单位（「两盒牛奶」的两是数�
 });
 
 // ---------- 按人数换算 ----------
-test('按人数换算：qty × 人数 / 食谱的人数，两位小数；没写数量的、食谱没写人数的、人数不对的原样', () => {
+test('按人数换算：qty × 人数 / 食谱的人数（只去掉浮点零头，显示时才按两位）；没写数量的、食谱没写人数的、人数不对的原样', () => {
   const r = { servings: 2, ings: [ing('五花肉', 500, 'g'), ing('盐', null, '', { note: '适量' }), ing('鸡蛋', 3, '个'), ing('糖', 0.01, 'g')] };
-  assert.deepEqual(scaleIngredients(r, 3).map(g => g.qty), [750, null, 4.5, 0.02]);
+  assert.deepEqual(scaleIngredients(r, 3).map(g => g.qty), [750, null, 4.5, 0.015]);
   assert.deepEqual(scaleIngredients(r, 1).map(g => g.qty), [250, null, 1.5, 0.01], '太小的至少 0.01');
-  assert.deepEqual(scaleIngredients({ servings: 3, ings: [ing('a', 1)] }, 2)[0].qty, 0.67);
+  assert.deepEqual(scaleIngredients({ servings: 3, ings: [ing('a', 1)] }, 2)[0].qty, 0.666667);
+  assert.equal(scaleIngredients({ servings: 10, ings: [ing('a', 0.7)] }, 3)[0].qty, 0.21, '浮点的零头去掉（0.7 × 3 / 10 不是 0.21000000000000002）');
   assert.deepEqual(scaleIngredients(r, 2).map(g => g.qty), [500, null, 3, 0.01]);
   assert.deepEqual(scaleIngredients({ servings: null, ings: r.ings }, 4).map(g => g.qty), [500, null, 3, 0.01], '食谱没写人数');
   for (const bad of [0, -1, NaN, null, '3']) assert.deepEqual(scaleIngredients(r, bad).map(g => g.qty), [500, null, 3, 0.01], String(bad));

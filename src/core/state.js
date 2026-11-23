@@ -17,7 +17,7 @@
 //   reload()                     别的标签页改了数据（storage 事件）：重新读入、合并、通知
 //   storageIssue()               本机数据读不出来 / 存储用不了 → { code: 'corrupt'|'unavailable', count }，正常 → null。这时改数据会抛错
 //   recoveryExport() / recoveryArchive() / recoverFrom(other)   恢复页用（见 ui/recovery.js）
-import { normalizeState, normalizeRecord, mergeStates, canon, stamp, deletedRecord, setSetting, ensureSeeds } from './store.js';
+import { normalizeState, normalizeRecord, mergeStates, canon, stampRecord, deletedRecord, setSetting, ensureSeeds } from './store.js';
 import { isObj, own, safeKey } from './util.js';
 import { createPersistence, LocalDataError, PENDING_PREFIX } from './persistence.js';
 export { PENDING_PREFIX };
@@ -193,7 +193,7 @@ function diff(before, after, now) {
       let next = b;
       if (b === undefined) next = a.deleted ? a : deletedRecord(a, now);        // 硬删除 → 软删除
       else if (a && canon({ ...a, updatedAt: 0 }) === canon({ ...normalizeRecord(c, b, id), updatedAt: 0 })) { B[id] = a; continue; }
-      else if (a ? (b.updatedAt || 0) <= (a.updatedAt || 0) : !(Number(b.updatedAt) > 0)) next = stamp(b, a, now);
+      else if (a ? (b.updatedAt || 0) <= (a.updatedAt || 0) : !(Number(b.updatedAt) > 0)) next = stampRecord(c, b, a, now);
       next = normalizeRecord(c, next, id);
       B[id] = next;
       if (canon(a) === canon(next)) continue;
@@ -258,8 +258,9 @@ export function undo() {
     if (prev && cur && keys) {
       next = { ...cur };
       for (const k of keys) { if (prev[k] === undefined) delete next[k]; else next[k] = structuredClone(prev[k]); }
-      next = stamp(next, cur, now);
-    } else if (prev) next = stamp(structuredClone(prev), cur, now);
+      // 东西的状态改回去了：statusAt 是撤销的这一刻（stampRecord），不是搬回来的旧值——不然别的设备上还留着「已买」那份时，合并会以为撤销的这台没见过那次购买
+      next = stampRecord(c, next, cur, now);
+    } else if (prev) next = stampRecord(c, structuredClone(prev), cur, now);
     else if (cur && !cur.deleted) next = deletedRecord(cur, now);
     else continue;
     S.data[c][id] = normalizeRecord(c, next, id);

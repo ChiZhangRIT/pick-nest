@@ -45,3 +45,5 @@ export function t(key, vars = {}) {
 }
 /** 有没有这个键（可选文案用） */
 export const has = key => STRINGS['zh-Hans'][key] !== undefined;
+/** 几个名字连成一串：中文用顿号「、」，英文用逗号（「Uses: buttermilk、butter」看着是坏的） @param {string[]} names @param {string} [l] */
+export const listJoin = (names, l = lang) => names.join(l === 'en' ? ', ' : '、');

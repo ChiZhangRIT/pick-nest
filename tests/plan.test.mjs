@@ -444,7 +444,7 @@ test('boughtFor 的整理与合并：只留时间是数字的、最多 50 道（
   assert.equal(canon(again), canon(m), '再合并一次结果一样');
 });
 
-test('改人数只重算对得上的那几份：清单上改了名的、食谱里后来删掉的那一样照原样留着；同名不同单位只算生成时勾了的那个单位；没变的不算改了', () => {
+test('改人数只重算对得上的那几份：食谱里后来删掉的那一样照原样留着，清单上改了名的还认得（就地重算、名字不变）；同名不同单位只算生成时勾了的那个单位；没变的不算改了', () => {
   const { s } = world();
   const rid = saveRecipe(s, null, { name: '奶茶', servings: '2', ings: [{ name: '牛奶', qty: '200', unit: 'ml' }, { name: '牛奶', qty: '1', unit: '杯' }, { name: '红茶', qty: '2', unit: '包' }, { name: '洋葱', qty: '1', unit: '个' }] }, now()).id;
   const a = add(s, { date: '2026-11-23', meal: 'snack', recipeId: rid });
@@ -455,11 +455,14 @@ test('改人数只重算对得上的那几份：清单上改了名的、食谱�
   // 清单上的洋葱改名成紫洋葱；食谱里删掉红茶
   editAndMove(s, itemOf(s, '洋葱').id, { name: '紫洋葱' }, null, now());
   saveRecipe(s, rid, { ...s.data.recipes[rid], servings: '2', ings: s.data.recipes[rid].ings.filter(g => g.name !== '红茶') }, now());
-  const purple = canon(itemOf(s, '紫洋葱')), tea = canon(itemOf(s, '红茶'));
+  const purple = itemOf(s, '紫洋葱'), tea = canon(itemOf(s, '红茶'));
+  assert.equal(purple.needs[planSource(a)].name, '洋葱', '改名时记下这一份是食谱里的哪一样');
   const r = editEntry(s, a, { servings: 4 }, now());
-  assert.equal(r.listChanged, 1, '只有牛奶');
+  assert.equal(r.listChanged, 2, '牛奶、改了名的紫洋葱');
   assert.equal(totalLabel(itemOf(s, '牛奶')), '400 ml', '没勾的「杯」不会冒出来');
-  assert.equal(canon(itemOf(s, '紫洋葱')), purple, '改了名的不动（不会被拿掉）');
+  const p2 = itemOf(s, '紫洋葱');
+  assert.deepEqual([p2.id, p2.name, totalLabel(p2), p2.needs[planSource(a)].name, p2.createdAt], [purple.id, '紫洋葱', '2 个', '洋葱', purple.createdAt], '改了名的就地重算，还是那一条');
+  assert.equal(itemOf(s, '洋葱'), undefined, '没有另加一条「洋葱」');
   assert.equal(canon(itemOf(s, '红茶')), tea, '食谱里删掉的不动');
   // 没写人数（照食谱的 2 人份）改成 2：用量一样，不算改了
   const b = add(s, { date: '2026-11-24', meal: 'dinner', recipeId: rid });

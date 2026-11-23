@@ -12,7 +12,7 @@ import { normName, writeRecord, deletedRecord, newId, live, itemId, MEALS } from
 import { own, isObj, str } from './util.js';
 import { readQty } from './parse.js';
 import { isDay } from './dates.js';
-import { liveList, addNeeds, removeNeeds, sourceItems, needsFrom, totalLabel, NEED_MAX } from './items.js';
+import { liveList, addNeeds, removeNeeds, sourceItems, needsFrom, needName, totalLabel, NEED_MAX } from './items.js';
 import { liveRecipe, scaleIngredients, SERVINGS_MAX } from './recipes.js';
 import { isStaple, setStaple } from './memory.js';
 
@@ -146,17 +146,45 @@ export function deleteEntry(state, id, now = Date.now()) {
   if (!e) return null;
   col(state)[id] = deletedRecord(e, now);
   const source = planSource(id);
-  const before = sourceItems(state, source).filter(isOpen);
+  const before = sourceItems(state, source).filter(it => isOpen(state, it));
   removeNeeds(state, source, now);
   const removed = before.filter(it => state.data.items[it.id] && state.data.items[it.id].deleted).length;
   return { entry: e, removed };
 }
 
 // ---------- 清单上这道菜的那一份 ----------
-/** 还没买（要买 / 以后再说，没删除） @param {Item} it */
-const isOpen = (it) => !it.deleted && (it.status === 'need' || it.status === 'later');
-/** 这道菜在这样东西上的那几份是什么单位（normName；同名不同单位的分开记成 'p:<id>'、'p:<id>#2'） @param {Item} it @param {string} source */
-const unitsOf = (it, source) => new Set(needsFrom(it, source).map(([, n]) => normName(str(n.unit))));
+/**
+ * 还没买（要买 / 以后再说，没删除），而且在看得到的清单上：删掉的清单里的东西没有删除标记、只是跟着隐藏，不能算「已经加过」——
+ * 不然生成到「食材」时全写着加过了，确认后要买的都还藏在删掉的那张清单上
+ * @param {State} state @param {Item} it
+ */
+const isOpen = (state, it) => !it.deleted && (it.status === 'need' || it.status === 'later') && !!liveList(state, it.listId);
+/**
+ * 这道菜在这样东西上的那几份是食谱里的哪一样、什么单位：normName(食谱里的名字) + '\n' + normName(单位)。同名不同单位的分开记成 'p:<id>'、'p:<id>#2'；
+ * 名字用 needName：清单上改过名的（有机五花肉）还认得是「五花肉」
+ * @param {Item} it @param {string} source
+ */
+const portionKeys = (it, source) => new Set(needsFrom(it, source).map(([, n]) => normName(needName(it, n)) + '\n' + normName(str(n.unit))));
+/** 这道菜在这样东西上的那几份是食谱里的哪几样（normName） @param {Item} it @param {string} source */
+const portionNames = (it, source) => new Set(needsFrom(it, source).map(([, n]) => normName(needName(it, n))));
+/**
+ * 这几道菜在这张清单上的那几份落在哪几样「改过名的」东西上：食谱里的名字（normName）→ 那样东西（还没买的）。
+ * 「五花肉」在清单上改成了「有机五花肉」（换了商店、写了备注）：还是这一样，再生成、换食谱时就地换它上面的那一份，
+ * 不另加一条「五花肉」（一道菜算在两行上），也不把它当成这几道菜不要了的拿掉（备注、商店跟着没了）
+ * @param {State} state @param {string[]} sources @param {string} listId @returns {Map<string, Item>}
+ */
+function renamedHomes(state, sources, listId) {
+  /** @type {Map<string, Item>} */
+  const m = new Map();
+  for (const it of Object.values(isObj(state.data.items) ? state.data.items : {})) {
+    if (!it || it.listId !== listId || !isOpen(state, it)) continue;
+    const self = normName(it.name);
+    for (const src of sources) for (const k of portionNames(it, src)) if (k !== self && !m.has(k)) m.set(k, it);
+  }
+  return m;
+}
+/** 一行要放到清单上的哪一样：改过名的那一样（renamedHomes）；没有就按食谱里的名字（addNeeds 按名字找、没有就新建） @param {Map<string, Item>} homes @param {{ name: string, qty: number | null, unit: string }} ln */
+const toHome = (homes, ln) => { const it = homes.get(normName(ln.name)); return it ? { ...ln, name: it.name, ing: ln.name } : ln; };
 /**
  * 这道菜现在在清单上的那一份：
  *   open：还没买的（清单 → 那几样东西）；
@@ -175,8 +203,12 @@ function portionOf(state, source) {
   for (const it of Object.values(isObj(state.data.items) ? state.data.items : {})) {
     if (!it) continue;
     const mine = needsFrom(it, source).length > 0;
-    if (mine && isOpen(it)) { if (!open.has(it.listId)) open.set(it.listId, []); /** @type {Item[]} */ (open.get(it.listId)).push(it); }
-    if ((mine && it.status === 'done') || (isObj(it.boughtFor) && own(it.boughtFor, source) != null)) { bought.add(normName(it.name)); boughtLists.add(it.listId); }
+    if (mine && isOpen(state, it)) { if (!open.has(it.listId)) open.set(it.listId, []); /** @type {Item[]} */ (open.get(it.listId)).push(it); }
+    if ((mine && it.status === 'done') || (isObj(it.boughtFor) && own(it.boughtFor, source) != null)) {
+      bought.add(normName(it.name));
+      if (it.status === 'done') for (const k of portionNames(it, source)) bought.add(k);   // 改过名以后买的：食谱里的名字也算买过
+      boughtLists.add(it.listId);
+    }
   }
   const lists = [...open.keys()].sort();
   for (const l of [...boughtLists].sort()) if (!open.has(l)) lists.push(l);
@@ -187,7 +219,7 @@ function dishIngredients(state, e) {
   const r = liveRecipe(state, e.recipeId);
   return r ? scaleIngredients(r, e.servings ?? r.servings).filter(g => g.name.trim()) : [];
 }
-/** @param {{ name: string, qty: number | null, unit: string }} g */
+/** @param {{ name: string, qty: number | null, unit: string }} g @returns {{ name: string, qty: number | null, unit: string, ing?: string }} */
 const needLine = (g) => ({ name: g.name.trim(), qty: g.qty, unit: g.unit.trim() });
 /** 抄在清单上的菜名（食谱的名字；只写一句的用那一句） @param {State} state @param {PlanEntry} e */
 const dishLabel = (state, e) => { const r = liveRecipe(state, e.recipeId); return (r ? r.name : e.title).trim(); };
@@ -198,7 +230,7 @@ const changedSince = (state, before) => Object.entries(isObj(state.data.items) ?
 /**
  * 把这道菜新的那一份放到清单上：targets 是「清单 → 这几行」，addNeeds 就地换掉这个来源的键（已经在清单上的不先删再加：
  * 删掉再加回来是恢复成新的一条，商店按默认的重新定，memory 也多记一次）
- * @param {State} state @param {PlanEntry} e @param {Map<string, { name: string, qty: number | null, unit: string }[]>} targets @param {number} now
+ * @param {State} state @param {PlanEntry} e @param {Map<string, { name: string, qty: number | null, unit: string, ing?: string }[]>} targets @param {number} now
  */
 function putPortion(state, e, targets, now) {
   const meta = { label: dishLabel(state, e), recipeId: e.recipeId };
@@ -232,12 +264,15 @@ function rescale(state, e, now) {
   for (const [listId, its] of open) {
     const lines = [];
     for (const it of its) {
-      const nk = normName(it.name), parts = needsFrom(it, source), units = unitsOf(it, source);
-      const fresh = ings.filter(g => normName(g.name) === nk && units.has(normName(g.unit.trim())));
+      // 按食谱里的名字 + 单位对（needName：清单上改过名的还认得）；放回去时按这样东西现在的名字（addNeeds 按名字找它），食谱里的名字另记着
+      const parts = needsFrom(it, source), keys = portionKeys(it, source);
+      const fresh = ings.filter(g => keys.has(normName(g.name) + '\n' + normName(g.unit.trim())));
       if (!fresh.length) continue;
-      lines.push(...fresh.map(needLine));
+      lines.push(...fresh.map(g => ({ ...needLine(g), name: it.name, ing: g.name.trim() })));
       // 同一样东西上这道菜别的单位的那一份，食谱里已经没有了：照原来的留着（addNeeds 会换掉这个来源所有的键，不放回去就丢了）
-      for (const [, n] of parts) if (!fresh.some(g => normName(g.unit.trim()) === normName(str(n.unit)))) lines.push({ name: it.name, qty: n.qty, unit: str(n.unit) });
+      for (const [, n] of parts) {
+        if (!fresh.some(g => normName(g.name) === normName(needName(it, n)) && normName(g.unit.trim()) === normName(str(n.unit)))) lines.push({ name: it.name, qty: n.qty, unit: str(n.unit), ing: needName(it, n) });
+      }
     }
     targets.set(listId, lines);
   }
@@ -253,14 +288,18 @@ function rescale(state, e, now) {
 function swapRecipe(state, e, now) {
   const { open, bought, lists } = portionOf(state, planSource(e.id));
   if (!lists.length) return 0;
+  const source = planSource(e.id);
   const to = lists.find(l => liveList(state, l));
-  const openNames = new Set([...open.values()].flat().map(it => normName(it.name)));
+  const openNames = new Set([...open.values()].flat().flatMap(it => [...portionNames(it, source)]));
+  // 现在还在清单上要买的（新旧都要的）一律就地换成新的用量：常备品、可选的、买过的那几条默认只管还没在清单上的——
+  // 自己勾上的生抽、香菜（家里没了）换一道也用它们的菜，不能被拿掉
   const ings = dishIngredients(state, e).filter(g => {
     const nk = normName(g.name);
-    return !g.optional && !isStaple(state, g.name) && (openNames.has(nk) || !bought.has(nk));
+    return openNames.has(nk) || (!g.optional && !isStaple(state, g.name) && !bought.has(nk));
   }).map(needLine);
   const before = snapshot(state);
-  const targets = to ? new Map([[to, ings]]) : new Map();
+  const homes = to ? renamedHomes(state, [source], to) : new Map();
+  const targets = to ? new Map([[to, ings.map(ln => toHome(homes, ln))]]) : new Map();
   putPortion(state, e, targets, now);
   dropPortion(state, e, targets, now);
   return changedSince(state, before);
@@ -306,7 +345,7 @@ export function planLines(state, from, to, { listId = null } = {}) {
     // 这道菜已经在清单上（还没买）的那几行：名字 + 单位。同名不同单位的分开算：生成时只勾了「牛奶 ml」，「牛奶 杯」不算加过
     /** @type {Set<string>} */
     const addedKeys = new Set();
-    for (const its of open.values()) for (const it of its) for (const u of unitsOf(it, source)) addedKeys.add(normName(it.name) + '\n' + u);
+    for (const its of open.values()) for (const it of its) for (const k of portionKeys(it, source)) addedKeys.add(k);
     for (const g of dishIngredients(state, e)) {
       const name = g.name.trim(), unit = g.unit.trim(), nk = normName(name), key = nk + '\n' + normName(unit);
       let line = byKey.get(key);
@@ -325,10 +364,12 @@ export function planLines(state, from, to, { listId = null } = {}) {
     }
   }
   const lines = [...byKey.values()];
+  const homes = list ? renamedHomes(state, dishes.map(e => planSource(e.id)), list.id) : new Map();
   for (const line of lines) {
     line.staple = isStaple(state, line.name);
-    const it = list ? own(items, itemId(state, list.id, line.name)) : null;
-    line.have = it && !it.deleted && (it.status === 'need' || it.status === 'later') ? it : null;
+    // 这几道菜的这一样已经在一样改过名的东西上：就是它（确认时就地换它的那一份）；不然按名字找
+    const it = list ? homes.get(normName(line.name)) || own(items, itemId(state, list.id, line.name)) : null;
+    line.have = it && isOpen(state, it) ? it : null;
     line.haveLabel = line.have ? totalLabel(line.have) : '';
     line.added = line.sources.some(s => s.state === 'added');
     if (line.have && line.added) {
@@ -342,6 +383,28 @@ export function planLines(state, from, to, { listId = null } = {}) {
     line.checked = line.added || (!line.staple && !line.optional && !line.bought);
   }
   return { lines, dishes, skipped };
+}
+
+/**
+ * 删掉了的菜在清单上还没买的那一份拿掉（只为它加的软删除）。平常删菜时就拿掉了（deleteEntry），可还有两条路会剩下：
+ * 勾掉以后删菜（已买的不动）、30 分钟内又取消勾选（点错了照原样放回去，连同那道菜的那一份）；另一台设备还不知道删了，
+ * 又生成了一次（它那份更新，合并后那道菜的那一份回来了）。这时没有哪个计划的操作会再碰它，只好每次生成时顺手清掉。
+ * 只认计划里还记着、标了删除的菜：计划里根本没有的来源不知道是什么，原样留着
+ * @param {State} state @param {number} now
+ */
+function dropOrphans(state, now) {
+  const plan = col(state);
+  /** @type {Set<string>} */
+  const gone = new Set();
+  for (const it of Object.values(isObj(state.data.items) ? state.data.items : {})) {
+    if (!it || it.deleted || (it.status !== 'need' && it.status !== 'later') || !isObj(it.needs)) continue;
+    for (const k of Object.keys(it.needs)) {
+      if (!k.startsWith('p:')) continue;
+      const id = k.slice(2).replace(/#\d+$/, ''), e = own(plan, id);
+      if (e && e.deleted) gone.add(id);
+    }
+  }
+  for (const id of gone) removeNeeds(state, planSource(id), now);
 }
 
 /**
@@ -363,13 +426,16 @@ export function generateList(state, { from, to, listId, keys = null, staples = {
   const per = new Map(dishes.map(e => [e.id, []]));
   for (const line of lines) {
     if (!pick.has(line.key)) continue;
-    for (const s of addingSources(line)) /** @type {any[]} */ (per.get(s.entryId)).push({ name: line.name, qty: s.qty, unit: s.unit });
+    // 放到 have 上（改过名的那一样就是它）；食谱里的名字另记着（addNeeds 的 ing），下次还认得
+    const name = line.have ? line.have.name : line.name;
+    for (const s of addingSources(line)) /** @type {any[]} */ (per.get(s.entryId)).push({ name, qty: s.qty, unit: s.unit, ing: line.name });
   }
   const before = snapshot(state);
   /** @param {PlanEntry} e */
   const targetsOf = (e) => new Map([[listId, /** @type {{ name: string, qty: number | null, unit: string }[]} */ (per.get(e.id))]]);
   for (const e of dishes) putPortion(state, e, targetsOf(e), now);
   for (const e of dishes) dropPortion(state, e, targetsOf(e), now);
+  dropOrphans(state, now);
   const touched = new Set();
   for (const e of dishes) for (const ln of /** @type {any[]} */ (per.get(e.id))) touched.add(itemId(state, listId, ln.name));
   return { items: touched.size, dishes: dishes.length, changed: changedSince(state, before) };

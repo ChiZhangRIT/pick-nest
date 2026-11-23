@@ -46,7 +46,8 @@ export function render(main, params, ctx) {
           ? h('a.rcp-source', { href: url, target: '_blank', rel: 'noopener noreferrer' }, icon('open'), h('span', null, r.source.trim()))
           : h('p.rcp-source', null, r.source.trim())) : null,
         h('div.rcp-acts', null,
-          h('button.btn.primary.rcp-add', { type: 'button', dataset: { fid: 'rcp-add' }, onclick: () => addToListSheet(ctx, id) }, icon('cart'), t('rcp.addToList')),
+          // 还没写食材：「加到清单」不当主按钮（打开也没什么可加的），主要的事是去「编辑」
+          h('button.btn.rcp-add' + (ings.length ? '.primary' : ''), { type: 'button', dataset: { fid: 'rcp-add' }, onclick: () => addToListSheet(ctx, id) }, icon('cart'), t('rcp.addToList')),
           h('button.btn.rcp-plan', { type: 'button', dataset: { fid: 'rcp-plan' }, onclick: () => dishSheet(ctx, { recipeId: id, date: todayDay(), meal: 'dinner' }) }, icon('calendar'), t('rcp.addToPlan')))),
       h('section.page.rcp-sec', null,
         h('h2.group-h', null, t('rcp.ings')),
