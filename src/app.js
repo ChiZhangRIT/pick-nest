@@ -590,14 +590,16 @@ function checkUpdate() {
   }).catch(() => { /* 离线、GitHub Pages 出错：下次再看 */ });
 }
 function watchUpdate(reg) {
-  if (watchedReg === reg) return;
-  watchedReg = reg;
   const mark = () => { if (reg.waiting && !updateReady) { updateReady = true; emit('update', true); } };
-  mark();
-  reg.addEventListener?.('updatefound', () => {
-    const w = reg.installing;
-    if (w) w.addEventListener('statechange', () => { if (w.state === 'installed') mark(); });
-  });
+  // update() 在新的 worker 开始安装时就返回了，装好（校验完所有文件）要等 statechange 到 installed
+  const follow = w => { if (w) w.addEventListener('statechange', () => { if (w.state === 'installed') mark(); }); };
+  if (watchedReg !== reg) {
+    watchedReg = reg;
+    reg.addEventListener?.('updatefound', () => follow(reg.installing));
+    // 冷启动时浏览器自己（导航）也会去看新版：App 载入时它可能已经在装了，updatefound 早就过去了，接着等它装好
+    follow(reg.installing);
+  }
+  mark();            // 每次看都再对一下 waiting：万一上面哪一步错过了，下次切回来也补得上
 }
 
 // ---------- 系统事件 ----------

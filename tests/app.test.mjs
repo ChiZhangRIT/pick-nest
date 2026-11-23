@@ -278,3 +278,34 @@ test('装好的 App：启动后、切回来时（最多半小时一次）自己�
     await settle();
   } finally { Date.now = realNow; dom.restore(); }
 });
+
+test('冷启动时浏览器已经在装新版（updatefound 在 App 载入前就过去了）：装好以后照样在设置 → 关于里说', async () => {
+  const storage = fakeStorage();
+  const loc = { hash: '#/settings', protocol: 'http:' };
+  const w = { state: 'installing', events: [], addEventListener(type, fn) { this.events.push(fn); } };
+  const reg = { waiting: null, installing: w, events: {}, addEventListener(type, fn) { (this.events[type] ||= []).push(fn); },
+    async update() {} };
+  const dom = installDom({ localStorage: storage, location: loc, history: { state: {}, replaceState(s, title, hash) { loc.hash = hash; }, back() {} },
+    navigator: { languages: ['zh-CN'], locks: { request: async (name, fn) => fn() },
+      serviceWorker: { controller: {}, getRegistration: async () => reg }, storage: { persist: async () => true } },
+    matchMedia: () => ({ matches: false, addEventListener() {} }),
+    setTimeout: () => 0, setInterval: () => 0, getComputedStyle: () => ({ bottom: '24px' }), requestAnimationFrame: () => 0,
+    MutationObserver: class { observe() {} disconnect() {} }, CSS: { escape: String } });
+  try {
+    const shell = new Element('div'); shell.className = 'app';
+    for (const id of ['side', 'main']) { const el = new Element('div'); el.id = id; shell.append(el); }
+    const tabs = new Element('nav'); tabs.id = 'tabs';
+    dom.doc.body.append(shell, tabs);
+    dom.doc.visibilityState = 'visible';
+    await import('../src/app.js?test=update-cold');
+    const { ctx } = window.__picknest;
+    const main = dom.doc.querySelector('#main');
+    const settle = async () => { for (let i = 0; i < 8; i++) await new Promise(r => queueMicrotask(r)); };
+    await settle();
+    assert.equal(ctx.updateReady(), false, '还在装：先不说');
+    w.state = 'installed'; reg.waiting = w; reg.installing = null;
+    for (const fn of w.events) fn();
+    assert.equal(ctx.updateReady(), true, '装好了：说');
+    assert.equal(main.querySelector('.set-update').hidden, false);
+  } finally { dom.restore(); }
+});
