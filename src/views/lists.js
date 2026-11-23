@@ -11,7 +11,8 @@
 // 「编辑」「已归档」这种只改显示的开关就地重画（不用 ctx.refresh 重建所有页面），焦点照样放回同一个按钮。
 import { h, icon, keepUnderFinger } from '../ui/dom.js';
 import { t } from '../i18n.js';
-import { homeLists, needCounts, listName, listIcon } from '../core/store.js';
+import { homeLists, needCounts, listName } from '../core/store.js';
+import { listTile } from '../ui/listTile.js';
 import { archivedLists, moveList } from '../core/lists.js';
 import { listSheet } from '../ui/listEditor.js';
 import { searchLink } from './search.js';
@@ -48,7 +49,7 @@ export function render(main, params, ctx) {
   ];
   const sel = (l) => !!params.selected && params.selected === l.id;
   const linkRow = (l, n) => h('li', null, h('a.group-row.list-row.go' + (sel(l) ? '.sel' : ''), { href: href(l), dataset: { id: l.id }, 'aria-current': sel(l) ? 'page' : null },
-    h('span.list-icon', { 'aria-hidden': 'true' }, listIcon(l)), h('span.list-name', null, listName(l, t)), count(n)));
+    listTile(l, 'list-icon'), h('span.list-name', null, listName(l, t)), count(n)));
 
   const searching = params.pane === 'list' && !!ctx.route && ctx.route.name === 'search';
   function draw() {
@@ -63,7 +64,7 @@ export function render(main, params, ctx) {
         return h('button.icon-btn.mv-btn', { type: 'button', 'aria-label': t(key, { name }), 'aria-disabled': String(edge), dataset: { fid },
           onclick: () => { if (!edge) keepUnderFinger(ctx, main, fid, () => ctx.mutate(s => moveList(s, l.id, dir, Date.now()))); } }, icon(ic)); };
       return h('li.group-row.list-row.editing', { dataset: { id: l.id } },
-        h('span.list-icon', { 'aria-hidden': 'true' }, listIcon(l)), h('span.list-name', null, name), count(counts.get(l.id) || 0),
+        listTile(l, 'list-icon'), h('span.list-name', null, name), count(counts.get(l.id) || 0),
         h('span.mv', null, mv(-1, 'up', 'list.moveUp', i === 0), mv(1, 'down', 'list.moveDown', i === lists.length - 1)));
     };
 

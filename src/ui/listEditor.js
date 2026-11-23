@@ -1,12 +1,14 @@
 // 新建 / 编辑清单的面板（首页「新建清单」、清单页「⋯ → 编辑清单」共用）。面板不在页面里：数据变了页面重画也不会打断输入。
-// 名字、图标、默认商店点「保存」才存；类型只在新建时选（里面的东西的分类、「以后再说」都跟着类型）。
+// 名字、颜色、图标、默认商店点「保存」才存；类型只在新建时选（里面的东西的分类、「以后再说」都跟着类型）。
 // 归档、删除马上生效，由调用的页面做（它要先离开这一页，再改数据、弹「撤销」）。
 import { h } from './dom.js';
 import { t } from '../i18n.js';
 import { field, showErr, discardGuard, closeThen, onEnter } from './form.js';
-import { createList, editList, LIST_ICONS, firstGrapheme } from '../core/lists.js';
-import { listName, live, byOrder, DEFAULT_LIST_ICON } from '../core/store.js';
+import { createList, editList } from '../core/lists.js';
+import { listName, live, byOrder } from '../core/store.js';
 import { liveStore } from '../core/stores.js';
+import { LIST_GLYPHS, LIST_COLORS, GLYPH_PREFIX, customIcon, listLook } from '../core/listIcons.js';
+import { listTile, glyph } from './listTile.js';
 
 /**
  * listSheet(ctx, { list })：list 给了就是编辑，否则新建。
@@ -15,9 +17,12 @@ import { liveStore } from '../core/stores.js';
 export function listSheet(ctx, { list = null, onCreated = null, onArchive = null, onDelete = null } = {}) {
   const editing = !!list;
   let kind = editing ? list.kind : 'general';          // 预置的「食材」已经有了，自己建的多半是一般清单（木工、衣服……）
-  let chosen = editing ? list.icon : '';
+  // icon / color 是要存的值（空的 = 按类型默认，见 core/listIcons.js）；面板上选中哪个按 listLook 显示，和首页看到的一样
+  let icon = editing ? list.icon : '', color = editing ? list.color : '';
   // 默认商店删掉了：显示「未指定」，不动它就不算修改（存的时候也不交这一项：商店恢复了，默认商店跟着回来）
-  const init = { name: editing ? list.name : '', icon: chosen, store: (editing && list.defaultStoreId && liveStore(ctx.state, list.defaultStoreId) && list.defaultStoreId) || '', kind };
+  const init = { name: editing ? list.name : '', icon, color, store: (editing && list.defaultStoreId && liveStore(ctx.state, list.defaultStoreId) && list.defaultStoreId) || '', kind };
+  const isCustom = (v) => !!v && !v.startsWith(GLYPH_PREFIX);
+  let lastGlyph = isCustom(icon) ? '' : icon;         // 自定义的字删光了，回到之前选的图标
 
   const nameIn = h('input.f-in', { type: 'text', value: init.name, maxlength: 80, autocomplete: 'off', enterkeyhint: 'done',
     placeholder: editing && list.sys ? listName({ ...list, name: '' }, t) : t('list.namePh'),
@@ -26,22 +31,36 @@ export function listSheet(ctx, { list = null, onCreated = null, onArchive = null
 
   const kindRow = editing ? null : field(t('list.kind'), h('div.kind-pick', { role: 'radiogroup' }, ['general', 'grocery'].map(k =>
     h('label.kind-opt', null,
-      h('input', { type: 'radio', name: 'list-kind', value: k, checked: k === kind, onchange: () => { kind = k; paintIcons(); } }),
+      h('input', { type: 'radio', name: 'list-kind', value: k, checked: k === kind, onchange: () => { kind = k; paint(); } }),
       h('span.kind-text', null, h('b', null, t('list.kind.' + k)), h('small', null, t('list.kind.' + k + 'Hint')))))),
   { help: t('list.kindFixed') });
 
-  // 图标：16 个常用的 + 自己输入一个 emoji。没选的显示成按类型的默认图标（存的是空的，换了类型跟着变）
-  const iconBtns = LIST_ICONS.map(e => h('button.icon-opt', { type: 'button', onclick: () => { chosen = e; customIn.value = ''; paintIcons(); } }, e));
-  const customIn = h('input.f-in.icon-custom', { type: 'text', value: chosen && !LIST_ICONS.includes(chosen) ? chosen : '', autocomplete: 'off',
-    placeholder: t('list.iconCustom'), 'aria-label': t('list.iconCustom'),
-    oninput: () => { const g = firstGrapheme(customIn.value); if (g) { chosen = g; paintIcons(); } },
-    onblur: () => { customIn.value = firstGrapheme(customIn.value); if (!customIn.value && !LIST_ICONS.includes(chosen)) { chosen = ''; paintIcons(); } } });
-  function paintIcons() {
-    const cur = chosen || DEFAULT_LIST_ICON[kind];
-    for (const b of iconBtns) { const on = b.textContent === cur; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }
+  // 最上面的预览：和首页的方块一样（同一个 listTile），选什么马上变
+  const preview = h('div.le-head');
+  // 颜色：一排色块（名字给读屏）；图标：画好的一格一格，选中的那格用选的颜色；「自定义」：一个 emoji 或一两个字
+  const swatches = LIST_COLORS.map(c => h('button.swatch.tint-' + c, { type: 'button', 'aria-label': t('list.tint.' + c), title: t('list.tint.' + c), dataset: { fid: 'tint-' + c },
+    onclick: () => { color = c; paint(); } }, h('span.swatch-dot')));
+  const glyphBtns = LIST_GLYPHS.map(k => h('button.glyph-opt', { type: 'button', 'aria-label': t('list.glyph.' + k), title: t('list.glyph.' + k), dataset: { fid: 'glyph-' + k },
+    onclick: () => { icon = lastGlyph = GLYPH_PREFIX + k; customIn.value = ''; paint(); } }, glyph(k)));
+  const customIn = h('input.f-in.icon-custom', { type: 'text', value: isCustom(icon) ? customIcon(icon) : '', autocomplete: 'off', autocapitalize: 'off', enterkeyhint: 'done',
+    placeholder: t('list.iconCustomPh'), dataset: { fid: 'icon-custom' },
+    oninput: () => { icon = customIcon(customIn.value) || lastGlyph; paint(); },
+    onblur: () => { customIn.value = customIcon(customIn.value); },
+    onkeydown: onEnter(() => save()) });
+  // 整组的名字是字段的标题「图标」（field 给 aria-labelledby）
+  const iconPick = h('div.icon-pick', { role: 'group' }, h('div.glyph-grid', null, glyphBtns),
+    h('label.icon-custom-row', null, h('span.icon-custom-label', null, t('list.iconCustom')), customIn));
+  function paint() {
+    const look = listLook({ kind, icon, color });
+    preview.replaceChildren(listTile({ kind, icon, color }, 'le-preview'));
+    iconPick.setAttribute('class', 'icon-pick tint-' + look.color);
+    LIST_GLYPHS.forEach((k, n) => { const on = look.glyph === k; glyphBtns[n].classList.toggle('on', on); glyphBtns[n].setAttribute('aria-pressed', String(on)); });
+    LIST_COLORS.forEach((c, n) => { const on = look.color === c; swatches[n].classList.toggle('on', on); swatches[n].setAttribute('aria-pressed', String(on)); });
+    customIn.classList.toggle('on', !look.glyph);
   }
-  paintIcons();
-  const iconRow = field(t('list.icon'), h('div.icon-pick', null, h('div.icon-grid', { role: 'group' }, iconBtns), customIn));
+  paint();
+  const colorRow = field(t('list.color'), h('div.swatches', { role: 'group' }, swatches));
+  const iconRow = field(t('list.icon'), iconPick);
 
   // 默认商店：没归档的，按顺序；现在选着的那家归档了也留在选项里（不然一打开就悄悄改掉了）
   const stores = live(ctx.state, 'stores').filter(s => !s.archived || s.id === init.store).sort(byOrder);
@@ -59,9 +78,9 @@ export function listSheet(ctx, { list = null, onCreated = null, onArchive = null
       ? h('p.f-help', null, t('list.sysNoDelete'))
       : h('button.btn.block.danger', { type: 'button', onclick: act(onDelete) }, t('list.delete'))) : null;
 
-  const vals = () => ({ name: nameIn.value.trim(), icon: chosen, store: storeSel.value, kind });
-  const dirty = () => { const v = vals(); return v.name !== init.name.trim() || v.icon !== init.icon || v.store !== init.store || v.kind !== init.kind; };
-  const s = ctx.sheet(h('div.form', null, nameRow, kindRow, iconRow, storeRow, actions), {
+  const vals = () => ({ name: nameIn.value.trim(), icon, color, store: storeSel.value, kind });
+  const dirty = () => { const v = vals(); return v.name !== init.name.trim() || v.icon !== init.icon || v.color !== init.color || v.store !== init.store || v.kind !== init.kind; };
+  const s = ctx.sheet(h('div.form', null, preview, nameRow, kindRow, colorRow, iconRow, storeRow, actions), {
     title: editing ? t('list.editTitle') : t('list.new'), cls: 'list-sheet',
     beforeClose: discardGuard(ctx, dirty, () => s),
     foot: [
@@ -74,8 +93,10 @@ export function listSheet(ctx, { list = null, onCreated = null, onArchive = null
   function save() {
     const v = vals(), now = Date.now();
     const res = editing
-      ? ctx.mutate(st => editList(st, list.id, { name: v.name, icon: v.icon, ...(v.store !== init.store ? { defaultStoreId: v.store || null } : {}) }, now))
-      : ctx.mutate(st => createList(st, { name: v.name, kind: v.kind, icon: v.icon, defaultStoreId: v.store || null }, now));
+      // 图标、颜色、默认商店只交改了的：新版才有的图标、色调（这里显示成默认的）没动就原样留着
+      ? ctx.mutate(st => editList(st, list.id, { name: v.name, ...(v.icon !== init.icon ? { icon: v.icon } : {}), ...(v.color !== init.color ? { color: v.color } : {}),
+        ...(v.store !== init.store ? { defaultStoreId: v.store || null } : {}) }, now))
+      : ctx.mutate(st => createList(st, { name: v.name, kind: v.kind, icon: v.icon, color: v.color, defaultStoreId: v.store || null }, now));
     if (!res.ok) { showErr(nameRow, res.errors.name || res.errors.list); if (res.errors.name) nameIn.focus(); return; }
     s.close();
     if (!editing && onCreated) onCreated(res.id);

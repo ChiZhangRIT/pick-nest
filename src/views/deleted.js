@@ -5,7 +5,8 @@
 // 没有输入框，数据变了由 app 整页重画；恢复之前焦点先给下一行的「恢复」（没有了给标题），重画后 app 按 data-fid 放回，键盘、读屏不掉回页首。
 import { h, icon, pushFrame } from '../ui/dom.js';
 import { t } from '../i18n.js';
-import { listName, listIcon, categoryName } from '../core/store.js';
+import { listName, categoryName } from '../core/store.js';
+import { listTile } from '../ui/listTile.js';
 import { liveList } from '../core/items.js';
 import { recentlyDeleted, restoreBlock, itemsWithList, DELETED_KINDS } from '../core/deleted.js';
 import { fmtWhen } from '../core/dates.js';
@@ -26,7 +27,7 @@ export function render(main, params, ctx) {
     const bits = [];
     if (c === 'items') {
       const l = liveList(ctx.state, r.listId);
-      if (l) bits.push(h('span.store-chip.list-chip', null, h('span.list-chip-ic', { 'aria-hidden': 'true' }, listIcon(l)), listName(l, t)));
+      if (l) bits.push(h('span.store-chip.list-chip', null, listTile(l, 'list-chip-ic'), h('span.list-chip-name', null, listName(l, t))));
       if (r.status === 'done') bits.push(h('span.tag', null, t('deleted.cleared')));
     }
     if (c === 'lists') { const n = itemsWithList(ctx.state, r.id); if (n) bits.push(h('span', null, t('deleted.withItems', { n }))); }
@@ -36,7 +37,7 @@ export function render(main, params, ctx) {
   function row(c, r, i, arr) {
     const name = nameOf(c, r);
     return h('li.group-row.del-row', { dataset: { id: r.id } },
-      c === 'lists' ? h('span.list-icon', { 'aria-hidden': 'true' }, listIcon(r)) : null,
+      c === 'lists' ? listTile(r, 'list-icon') : null,
       h('span.del-text', null, h('span.del-name', null, name), sub(c, r)),
       h('button.btn.small', { type: 'button', 'aria-label': t('deleted.restoreName', { name }), dataset: { fid: fid(c, r) },
         onclick: () => restore(c, r, name, arr[i + 1] || arr[i - 1] || null) }, t('deleted.restore')));

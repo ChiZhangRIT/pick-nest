@@ -1,7 +1,7 @@
 /* PickNest 的全部样式，一个文件：变量、基础、外壳、通用组件、深色 → 首页清单 → 清单页 → 商店 → 购物模式 → 搜索 → 面板里的表单 → 设置 → 同步、数据、最近删除 → 恢复页。
    页面样式请只用下面的变量，深色模式就自动对了：
      --bg 底色  --card 卡片 / 分组底  --ink 正文  --ink-2 次要正文  --muted 说明文字  --faint 占位 / 最淡
-     --line 分隔线  --fill 浅填充（分段控件底、输入框底）  --seg-on 分段控件选中的那段  --side-bg 侧栏底  --tile 清单图标的底
+     --line 分隔线  --fill 浅填充（分段控件底、输入框底）  --seg-on 分段控件选中的那段  --side-bg 侧栏底  --tile 购物模式里商店图标的底
      --accent 主色（按钮底）  --accent-text 主色文字和线条图标（深色下更亮）  --on-accent 主色上的文字
      --accent-soft 浅主色底  --accent-line 输入框聚焦边  --accent-ring 聚焦光圈
      --danger / --danger-soft  --warn 提醒（令牌快到期）  --tabbar-bg 底栏（半透明，后面模糊）  --toast-* 提示条  --scrim 面板后面的遮罩
@@ -12,6 +12,7 @@
    通用组件：.navbar .back .push-nav .nb-title（推入的页面：返回 · 标题 · 操作）| .page-head .toolbar .tb-btn .lt | .page .row | .btn(.primary .ghost .danger .danger-fill .small .block) .icon-btn .link-btn
              .card .group .group-row(.go .sel) .group-h .group-foot | .seg | .chips .chip | .tag（「已归档」这种小标记）| .sec-toggle .sec-chev（折叠的一组）| .empty .detail-empty
              .sync-badge(.ok .wait .warn .err .off)（同步状态的小标签，ui/syncBadge.js）
+             .list-tile .tint-<色调>（清单的图标方块，ui/listTile.js；色调的深浅两套在 --tint-*，大小由各处的类给：.list-icon .lp-icon .sr-list-ic .list-chip-ic .shop-icon .le-preview）
              dialog.sheet .sheet-actions | .form .f-row .f-label .f-help .f-err（ui/form.js）| #toast | .ic（图标，见 ui/dom.js 的 icon()） */
 
 :root {
@@ -24,6 +25,11 @@
   --shadow-card: 0 0 0 .5px rgba(31, 36, 32, .07), 0 1px 2px rgba(31, 36, 32, .04), 0 6px 16px -12px rgba(31, 36, 32, .16);
   --shadow-pop: 0 0 0 .5px rgba(31, 36, 32, .10), 0 10px 26px -10px rgba(31, 36, 32, .28); --pop: #ffffff;
   --hl: #fbe38e; --sel: #e3f0e5;
+  /* 清单图标的色调：-bg 方块的底（浅），-fg 图标（深，和底的对比度都过 4.3:1）；第一个就是 App 的绿 */
+  --tint-green-bg: #e3f0e5; --tint-green-fg: #2b7a47;  --tint-teal-bg: #dcefee; --tint-teal-fg: #1d7471;
+  --tint-blue-bg: #e1ebf7; --tint-blue-fg: #2c63a8;    --tint-indigo-bg: #e8e6f6; --tint-indigo-fg: #4f46a3;
+  --tint-rose-bg: #f8e4e8; --tint-rose-fg: #ad3656;    --tint-amber-bg: #f7ebcf; --tint-amber-fg: #94600a;
+  --tint-clay-bg: #f6e4da; --tint-clay-fg: #ac4f27;    --tint-graphite-bg: #e9eae6; --tint-graphite-fg: #4b524c;
   --radius: 12px; --radius-btn: 10px;
   --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "PingFang TC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", "Segoe UI", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
   color-scheme: light;
@@ -38,6 +44,11 @@
   --shadow-card: 0 0 0 .5px rgba(255, 255, 255, .06), 0 6px 16px -10px rgba(0, 0, 0, .6);
   --shadow-pop: 0 0 0 .5px rgba(255, 255, 255, .08), 0 12px 30px -10px rgba(0, 0, 0, .7); --pop: #272b27;
   --hl: rgba(240, 184, 96, .38); --sel: #22382a;
+  /* 深色：底是压暗的色调（比卡片亮一点就看得出方块），图标换亮的 */
+  --tint-green-bg: #1e3326; --tint-green-fg: #7fcf98;  --tint-teal-bg: #163231; --tint-teal-fg: #6fcdc6;
+  --tint-blue-bg: #1a2a3e; --tint-blue-fg: #8cb6ec;    --tint-indigo-bg: #25233e; --tint-indigo-fg: #aba4ee;
+  --tint-rose-bg: #3a1e27; --tint-rose-fg: #f093aa;    --tint-amber-bg: #382b12; --tint-amber-fg: #efbb62;
+  --tint-clay-bg: #3a2419; --tint-clay-fg: #ef9c76;    --tint-graphite-bg: #2a2e2a; --tint-graphite-fg: #c5cbc3;
   color-scheme: dark;
 }
 
@@ -283,7 +294,23 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
 .list-row { min-height: 56px; }
 /* 分隔线从文字开始，和 iOS 一样不切过图标（行是 <li> 里的 <a>，排顺序时 <li> 本身是行） */
 .lists > li + li > .list-row::before, .lists > li.list-row + li.list-row::before { content: ""; position: absolute; top: 0; left: 64px; right: 0; height: .5px; background: var(--line); }
-.list-icon { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: var(--tile); font-size: 21px; line-height: 1; }
+/* 清单的图标方块（ui/listTile.js）：底和图标的颜色来自色调（.tint-*，深色模式换的是 --tint-* 变量）；大小、圆角、emoji 的字号由各处的类给。
+   图标占方块的 2/3（画的部分约一半，和 iOS 提醒事项的清单图标差不多），自己写的字用图标的颜色、粗一点，两个字小一号 */
+.list-tile { flex: none; display: inline-grid; place-items: center; overflow: hidden; background: var(--t-bg); color: var(--t-fg); line-height: 1; }
+.lt-glyph { flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.list-tile .lt-glyph { width: 66.667%; height: 66.667%; }   /* 36 的方块里正好 24 px：线条落在整像素上 */
+.lt-text { font-size: .86em; font-weight: 650; white-space: nowrap; }
+.lt-two { font-size: .6em; letter-spacing: -.02em; }
+.lt-emoji { font-size: 1em; font-weight: 400; }
+.tint-green { --t-bg: var(--tint-green-bg); --t-fg: var(--tint-green-fg); }
+.tint-teal { --t-bg: var(--tint-teal-bg); --t-fg: var(--tint-teal-fg); }
+.tint-blue { --t-bg: var(--tint-blue-bg); --t-fg: var(--tint-blue-fg); }
+.tint-indigo { --t-bg: var(--tint-indigo-bg); --t-fg: var(--tint-indigo-fg); }
+.tint-rose { --t-bg: var(--tint-rose-bg); --t-fg: var(--tint-rose-fg); }
+.tint-amber { --t-bg: var(--tint-amber-bg); --t-fg: var(--tint-amber-fg); }
+.tint-clay { --t-bg: var(--tint-clay-bg); --t-fg: var(--tint-clay-fg); }
+.tint-graphite { --t-bg: var(--tint-graphite-bg); --t-fg: var(--tint-graphite-fg); }
+.list-icon { width: 36px; height: 36px; border-radius: 10px; font-size: 21px; }
 .list-name { flex: 1; min-width: 0; font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .list-count { flex: none; min-width: 1.5em; text-align: right; font-size: 17px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .list-count.zero { color: var(--muted); }   /* 0 淡一级，但还要在店里亮处看得清：--faint 对比度不到 3:1，--muted 在深浅两色下都过 4.5:1 */
@@ -303,7 +330,7 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
 /* ================= 清单页（#/l/<id>） ================= */
 .lp-head { padding-top: 2px; }
 .lp-title { display: flex; align-items: center; gap: 12px; padding: 0 4px; }
-.lp-icon { flex: none; display: grid; place-items: center; width: 46px; height: 46px; border-radius: 12px; background: var(--tile); font-size: 27px; line-height: 1; }
+.lp-icon { width: 46px; height: 46px; border-radius: 12px; font-size: 27px; }
 .lp-name { min-width: 0; font-size: 30px; font-weight: 700; line-height: 1.2; letter-spacing: .01em; overflow-wrap: anywhere; }
 .lp-sub { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin-top: 10px; padding: 0 4px; }
 .lp-count { color: var(--muted); font-size: 14px; }
@@ -423,8 +450,11 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
 .sp-icon { color: var(--accent-text); }
 .sp-icon .ic { width: 26px; height: 26px; }
 .sp-hint { margin-top: 8px; padding: 0 4px; color: var(--muted); font-size: 14px; line-height: 1.5; }
-/* 来自哪张清单：小标签（.store-chip，长了截断）里一个小图标 + 清单名 */
-.list-chip-ic { margin-right: 3px; font-size: 11px; }
+/* 来自哪张清单：小标签（.store-chip，长了截断）里一个小图标方块 + 清单名（方块太小，线条加粗一点才看得出是什么） */
+.list-chip { display: inline-flex; align-items: center; padding-left: 2px; }
+.list-chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.list-chip-ic { width: 15px; height: 15px; margin-right: 4px; border-radius: 4px; font-size: 10px; }
+.list-chip-ic .lt-glyph { width: 12px; height: 12px; stroke-width: 2.3; }
 
 /* 清单页、商店页顶栏右边的「开始购物」 */
 .shop-btn .ic { width: 21px; height: 21px; }
@@ -438,6 +468,7 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
 .shop-title:focus { outline: none; }
 .shop-icon { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: var(--tile); font-size: 21px; line-height: 1; color: var(--accent-text); }
 .shop-icon .ic { width: 22px; height: 22px; }
+.shop-icon.list-tile { background: var(--t-bg); color: var(--t-fg); }   /* 购物模式的商店图标用 --tile，清单的用自己的色调 */
 .shop-name { min-width: 0; overflow: hidden; overflow-wrap: break-word; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }   /* 长名字折成两行，窄屏上不只剩「Woo…」 */
 .shop-finish { flex: none; }
 .shop-prog { margin-top: 8px; color: var(--ink-2); font-size: 16px; font-weight: 550; font-variant-numeric: tabular-nums; }
@@ -485,7 +516,7 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
 .sr-list { display: inline-flex; align-items: center; gap: 8px; min-width: 0; min-height: 32px; color: var(--ink-2); }
 .sr-list::after { content: ""; flex: none; width: 7px; height: 7px; margin-left: 2px; border: solid var(--faint); border-width: 2px 2px 0 0; transform: rotate(45deg); }
 .sr-list:hover { color: var(--accent-text); }
-.sr-list-ic { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: var(--tile); font-size: 16px; line-height: 1; }
+.sr-list-ic { width: 28px; height: 28px; border-radius: 8px; font-size: 16px; }
 .sr-list-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sr-later { flex: none; }
 /* 命中的字：底色标出来（<mark> 里只有文字） */
@@ -504,10 +535,21 @@ select.f-in { width: 100%; }
 .kind-opt input { flex: none; width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--accent); }
 .kind-text b { display: block; font-weight: 600; }
 .kind-text small { display: block; margin-top: 2px; font-size: 13px; line-height: 1.45; color: var(--muted); }
-.icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 6px; }
-.icon-opt { height: 44px; padding: 0; border: 1px solid transparent; border-radius: 10px; background: var(--fill); font-size: 24px; line-height: 1; }
-.icon-opt.on { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
-.icon-custom { margin-top: 8px; }
+/* 编辑清单：最上面的预览方块；颜色一排圆点（选中的套一圈）；图标 6 列（选中的那格用选的颜色，再描一圈：不只靠颜色分辨）；「自定义」一行 */
+.le-head { display: flex; justify-content: center; margin: 2px 0 18px; }
+.le-preview { width: 68px; height: 68px; border-radius: 17px; font-size: 38px; }
+.swatches { display: grid; grid-template-columns: repeat(8, 1fr); max-width: 400px; }
+.swatch { display: grid; place-items: center; height: 44px; padding: 0; border: 0; background: none; }
+.swatch-dot { width: 28px; height: 28px; border-radius: 50%; background: var(--t-fg); }
+.swatch.on .swatch-dot { box-shadow: 0 0 0 2.5px var(--card), 0 0 0 4.5px var(--t-fg); }
+.glyph-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; max-width: 400px; }
+.glyph-opt { display: grid; place-items: center; height: 46px; padding: 0; border: 0; border-radius: 12px; background: var(--fill); color: var(--ink-2); }
+.glyph-opt .lt-glyph { width: 26px; height: 26px; }
+.glyph-opt.on { background: var(--t-bg); color: var(--t-fg); box-shadow: inset 0 0 0 2px var(--t-fg); }
+.icon-custom-row { display: flex; align-items: center; gap: 12px; margin-top: 10px; max-width: 400px; }
+.icon-custom-label { flex: none; font-size: 15px; color: var(--ink-2); }
+.icon-custom { flex: 1; min-width: 0; }
+.icon-custom.on { border-color: var(--t-fg); box-shadow: inset 0 0 0 1px var(--t-fg); }
 .stepper { display: flex; align-items: center; gap: 8px; }
 .stepper .qty-in { flex: 0 1 140px; text-align: center; font-variant-numeric: tabular-nums; }
 .step-btn { background: var(--fill); }

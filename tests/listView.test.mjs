@@ -8,6 +8,7 @@ import * as state from '../src/core/state.js';
 import { deletedRecord, itemId, normalizeRecord } from '../src/core/store.js';
 import { memoryOf, memoryId } from '../src/core/memory.js';
 import { setStatus } from '../src/core/items.js';
+import { LIST_GLYPHS, LIST_COLORS } from '../src/core/listIcons.js';
 import { setLang, t } from '../src/i18n.js';
 import { Element, all, find, installDom } from './helpers/dom.mjs';
 
@@ -618,7 +619,7 @@ test('编辑：指定的商店、分类删掉了 → 显示未指定 / 未分类
 });
 
 // ---------- ⋯ → 编辑清单 ----------
-test('⋯ → 编辑清单：改名、换图标；自建清单能删除（先确认，离开这一页，能撤销）；预置的只能归档', async () => {
+test('⋯ → 编辑清单：改名、换图标和颜色；自建清单能删除（先确认，离开这一页，能撤销）；预置的只能归档', async () => {
   const env = setup({ listId: 'l_wood', seed: s => { s.data.lists.l_wood = normalizeRecord('lists', { id: 'l_wood', name: '木工', kind: 'general', order: 2, updatedAt: 1 }); } });
   try {
     await env.enter('砂纸 2张');
@@ -630,11 +631,38 @@ test('⋯ → 编辑清单：改名、换图标；自建清单能删除（先确
     assert.equal(byCls(sh.el, 'kind-pick'), undefined, '类型建好以后不能改');
     const name = find(sh.el, el => el.tag === 'input' && el.attrs.maxlength === '80');
     name.value = '木工活';
-    await allCls(sh.el, 'icon-opt')[13].fire('click');
+    const fid = (k) => find(sh.el, el => el.dataset && el.dataset.fid === k);
+    const pressed = (prefix) => all(sh.el, el => el.dataset && String(el.dataset.fid || '').startsWith(prefix) && el.attrs['aria-pressed'] === 'true').map(el => el.dataset.fid);
+    assert.deepEqual([pressed('glyph-'), pressed('tint-')], [['glyph-bag'], ['tint-amber']], '没选过：一般清单的默认（购物袋、琥珀）标成选中');
+    assert.equal(fid('glyph-saw').attrs['aria-label'], '木工', '图标有读屏的名字');
+    assert.equal(fid('tint-clay').attrs['aria-label'], '陶土');
+    await fid('glyph-saw').fire('click');
+    await fid('tint-clay').fire('click');
+    assert.deepEqual([pressed('glyph-'), pressed('tint-')], [['glyph-saw'], ['tint-clay']]);
+    assert.equal(byCls(sh.el, 'le-preview').attrs.class, 'list-tile tint-clay le-preview', '预览马上变');
+    assert.equal(byCls(byCls(sh.el, 'le-preview'), 'lt-glyph').attrs.class, 'lt-glyph g-saw');
     await btn(sh.el, '保存').fire('click');
     await settle();
     assert.equal(byCls(env.main, 'lp-name').textContent, '木工活');
-    assert.equal(S().data.lists.l_wood.icon, byCls(env.main, 'lp-icon').textContent);
+    assert.deepEqual([S().data.lists.l_wood.icon, S().data.lists.l_wood.color], ['i:saw', 'clay']);
+    assert.equal(byCls(env.main, 'lp-icon').attrs.class, 'list-tile tint-clay lp-icon', '清单页的标题用同一个方块');
+    // 再打开：选中的是存着的；只改名字时图标、颜色不交（新版才有的不会被冲掉）
+    await more.fire('click');
+    await btn(env.sheet().el, '编辑清单').fire('click');
+    sh = env.sheet();
+    assert.deepEqual([pressed('glyph-'), pressed('tint-')], [['glyph-saw'], ['tint-clay']]);
+    sh.tryClose();
+    assert.equal(sh.open, false, '没改：直接关');
+    S().data.lists.l_wood = { ...S().data.lists.l_wood, icon: 'i:future-glyph', color: 'future-tint' };
+    await more.fire('click');
+    await btn(env.sheet().el, '编辑清单').fire('click');
+    sh = env.sheet();
+    assert.deepEqual([pressed('glyph-'), pressed('tint-')], [['glyph-bag'], ['tint-amber']], '认不出的：显示成默认');
+    find(sh.el, el => el.tag === 'input' && el.attrs.maxlength === '80').value = '木工';
+    await btn(sh.el, '保存').fire('click');
+    await settle();
+    assert.deepEqual([S().data.lists.l_wood.name, S().data.lists.l_wood.icon, S().data.lists.l_wood.color], ['木工', 'i:future-glyph', 'future-tint']);
+    S().data.lists.l_wood.name = '木工活';
     // 删除
     await more.fire('click');
     await btn(env.sheet().el, '编辑清单').fire('click');
@@ -809,14 +837,25 @@ test('清单页：⌘N（别的系统 Ctrl+N）把光标放进快速添加；面
   } finally { win.done(); }
 });
 
-test('首页：新建清单（名字、类型、图标、默认商店），建好进清单页；名字空着报错', async () => {
+test('首页：新建清单（名字、类型、颜色、图标、默认商店），建好进清单页；名字空着报错', async () => {
   const env = setup({ view: 'home' });
   try {
     await find(env.main, el => el.tag === 'button' && el.textContent === '新建清单').fire('click');
     const sh = env.sheet();
     assert.equal(sh.opts.title, '新建清单');
-    assert.deepEqual(allCls(sh.el, 'f-label').map(x => x.textContent), ['名字', '类型', '图标', '默认商店']);
-    assert.equal(allCls(sh.el, 'icon-opt').length, 16);
+    assert.deepEqual(allCls(sh.el, 'f-label').map(x => x.textContent), ['名字', '类型', '颜色', '图标', '默认商店']);
+    assert.equal(allCls(sh.el, 'glyph-opt').length, LIST_GLYPHS.length);
+    assert.equal(allCls(sh.el, 'swatch').length, LIST_COLORS.length);
+    const on = (c) => allCls(sh.el, c).filter(el => el.attrs['aria-pressed'] === 'true').map(el => el.dataset.fid);
+    const preview = () => byCls(sh.el, 'le-preview');
+    assert.deepEqual([on('glyph-opt'), on('swatch')], [['glyph-bag'], ['tint-amber']], '一般清单的默认');
+    // 换成食材：没选过的跟着类型变
+    const groceryRadio = find(sh.el, el => el.tag === 'input' && el.attrs.type === 'radio' && el.value === 'grocery');
+    await groceryRadio.fire('change');
+    assert.deepEqual([on('glyph-opt'), on('swatch')], [['glyph-basket'], ['tint-green']]);
+    assert.equal(preview().attrs.class, 'list-tile tint-green le-preview');
+    await find(sh.el, el => el.tag === 'input' && el.attrs.type === 'radio' && el.value === 'general').fire('change');
+    await find(sh.el, el => el.dataset && el.dataset.fid === 'glyph-hammer').fire('click');
     await btn(sh.el, '创建').fire('click');
     assert.equal(byCls(sh.el, 'f-err').textContent, '请写个名字');
     assert.ok(sh.open);
@@ -824,13 +863,23 @@ test('首页：新建清单（名字、类型、图标、默认商店），建�
     name.value = '木工';
     const custom = byCls(sh.el, 'icon-custom');
     custom.value = '🪚🔨'; await custom.fire('input');
+    assert.deepEqual([on('glyph-opt'), preview().textContent], [[], '🪚'], '自定义：格子都不选中，预览是写的字');
+    assert.ok(custom.attrs.class.includes('on'));
+    custom.value = ''; await custom.fire('input');
+    assert.deepEqual(on('glyph-opt'), ['glyph-hammer'], '删光了回到之前选的图标');
+    custom.value = '木工活'; await custom.fire('input');
+    assert.equal(preview().textContent, '木工');
+    await custom.fire('blur');
+    assert.equal(custom.value, '木工', '离开时输入框里也截成两个字');
+    custom.value = '🪚🔨'; await custom.fire('input');
+    await find(sh.el, el => el.dataset && el.dataset.fid === 'tint-teal').fire('click');
     const store = find(sh.el, el => el.tag === 'select');
     store.value = 's_homedepot';
     await btn(sh.el, '创建').fire('click');
     await settle();
     assert.equal(sh.open, false);
     const l = Object.values(S().data.lists).find(x => x.name === '木工');
-    assert.deepEqual([l.kind, l.icon, l.defaultStoreId, l.order], ['general', '🪚', 's_homedepot', 2]);
+    assert.deepEqual([l.kind, l.icon, l.color, l.defaultStoreId, l.order], ['general', '🪚', 'teal', 's_homedepot', 2]);
     assert.deepEqual(env.navs, ['/l/' + l.id]);
   } finally { env.done(); }
 });

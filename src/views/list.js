@@ -8,7 +8,8 @@
 // ⌘N（别的系统 Ctrl+N）：光标放进快速添加（Babble、房屋账本的 ⌘N 是新建一条，这里新建的就是一样东西）；一栏的清单页、双栏右栏的清单页都算。
 import { h, icon, backText } from '../ui/dom.js';
 import { t } from '../i18n.js';
-import { listName, listIcon, needCounts } from '../core/store.js';
+import { listName, needCounts } from '../core/store.js';
+import { listTile } from '../ui/listTile.js';
 import { liveList, addFromInput, addItem, clearDone, countItems, storeExists } from '../core/items.js';
 import { parseQuickAdd } from '../core/parse.js';
 import { suggestions } from '../core/memory.js';
@@ -56,7 +57,7 @@ export function render(main, params, ctx, deps = {}) {
     paintSeg();
     head.replaceChildren(...[
       // 标题能接焦点（tabindex -1）：按过的按钮重画后没了（取消归档、删掉了的一样），焦点给它（ui/checklist.js 的 keepFocus）
-      h('div.lp-title', null, h('span.lp-icon', { 'aria-hidden': 'true' }, listIcon(l)), h('h1.lp-name', { tabindex: -1, dataset: { fid: 'lp-title' } }, listName(l, t))),
+      h('div.lp-title', null, listTile(l, 'lp-icon'), h('h1.lp-name', { tabindex: -1, dataset: { fid: 'lp-title' } }, listName(l, t))),
       h('div.lp-sub', null, h('span.lp-count', null, t('list.needN', { n })), seg),
       l.archived ? h('div.lp-banner', { role: 'status' }, h('span', null, t('list.archivedBanner')),
         h('button.btn.small', { type: 'button', dataset: { fid: 'lp-unarchive' }, onclick: () => ctx.mutate(s => setArchived(s, listId, false, Date.now()), { undoLabel: t('list.unarchived', { name: listName(l, t) }) }) },

@@ -14,7 +14,8 @@
 import { h, icon } from './dom.js';
 import { t } from '../i18n.js';
 import { liveItem, liveList, setStatus, untickStatus, storeExists, swipeActions } from '../core/items.js';
-import { listName, listIcon, categoryName } from '../core/store.js';
+import { listName, categoryName } from '../core/store.js';
+import { listTile } from './listTile.js';
 import { qtyLabel } from '../core/parse.js';
 import { itemSheet, removeItem } from './itemEditor.js';
 import { createSwipes } from './swipe.js';
@@ -223,7 +224,7 @@ export function storeChip(ctx, it, defaultStoreId) {
 /** 来自哪张清单：图标给眼睛看（aria-hidden），读屏念清单名 */
 export function listChip(ctx, it) {
   const l = liveList(ctx.state, it.listId);
-  return l ? h('span.store-chip.list-chip', null, h('span.list-chip-ic', { 'aria-hidden': 'true' }, listIcon(l)), listName(l, t)) : null;
+  return l ? h('span.store-chip.list-chip', null, listTile(l, 'list-chip-ic'), h('span.list-chip-name', null, listName(l, t))) : null;
 }
 /** 组名：按分类分组时是分类名，按商店分组时是店名；null 是「未分类 / 未指定商店」 */
 export function groupTitle(ctx, id, groupBy = 'category') {

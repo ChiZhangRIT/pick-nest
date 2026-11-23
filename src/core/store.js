@@ -19,9 +19,10 @@ import { toSimplified } from './hanzi.js';
 /** @typedef {'grocery' | 'general'} ListKind */
 /** @typedef {'need' | 'done' | 'later'} ItemStatus */
 /**
- * @typedef {Base & { sys: string | null, name: string, kind: ListKind, icon: string, order: number,
+ * @typedef {Base & { sys: string | null, name: string, kind: ListKind, icon: string, color: string, order: number,
  *   defaultStoreId: string | null, archived: boolean }} List
- * 清单。sys：预置清单的标记（'groceries' | 'tobuy'），name 为空时显示界面语言的文案
+ * 清单。sys：预置清单的标记（'groceries' | 'tobuy'），name 为空时显示界面语言的文案。
+ * icon：'i:<名字>' 画好的图标、别的是自己写的（一个 emoji 或一两个字）、空的按类型默认；color：色调名，空的按类型默认（core/listIcons.js）
  */
 /**
  * @typedef {Base & { listId: string, name: string, qty: number | null, unit: string, note: string,
@@ -123,6 +124,8 @@ export function normalizeList(rec, id = rec && rec.id) {
   r.name = str(r.name);
   r.kind = LIST_KINDS.includes(r.kind) ? r.kind : r.sys === 'groceries' ? 'grocery' : 'general';
   r.icon = str(r.icon);
+  // 色调认不出的（新版才有的）也原样留着，显示时按默认（core/listIcons.js 的 listLook）：旧版改名字时不会把它冲掉
+  r.color = str(r.color);
   r.order = numOrNull(r.order) ?? 0;
   r.defaultStoreId = idOrNull(r.defaultStoreId);
   r.archived = r.archived === true;
@@ -410,8 +413,8 @@ export function seedRecords() {
   const at = { createdAt: 0, updatedAt: 0 };
   return {
     lists: [
-      { id: 'l_groceries', sys: 'groceries', name: '', kind: 'grocery', icon: '', order: 0, defaultStoreId: 's_wholefoods', archived: false, ...at },
-      { id: 'l_tobuy', sys: 'tobuy', name: '', kind: 'general', icon: '', order: 1, defaultStoreId: null, archived: false, ...at },
+      { id: 'l_groceries', sys: 'groceries', name: '', kind: 'grocery', icon: '', color: '', order: 0, defaultStoreId: 's_wholefoods', archived: false, ...at },
+      { id: 'l_tobuy', sys: 'tobuy', name: '', kind: 'general', icon: '', color: '', order: 1, defaultStoreId: null, archived: false, ...at },
     ],
     stores: SEED_STORES.map(([id, name], i) => ({ id, name, order: i, archived: false, ...at })),
     categories: SYS_CATEGORIES.map((sys, i) => ({ id: 'c_' + sys, sys, name: '', kind: GROCERY_CATEGORIES.includes(sys) ? 'grocery' : 'general', order: i, ...at })),
@@ -497,9 +500,6 @@ export function itemId(state, listId, name) {
 }
 
 // ---------- 显示和排序 ----------
-// 默认图标写成转义，免得编辑器把变体选择符弄丢
-export const DEFAULT_LIST_ICON = { grocery: '\u{1F96C}', general: '\u{1F6CD}\uFE0F' };
-
 /** 清单的显示名：用户写的名字 → 预置清单的文案 → 「未命名清单」。t 由调用的地方给（core 不依赖界面语言） @param {List} list @param {Translate} t */
 export function listName(list, t) {
   const name = str(list && list.name).trim();
@@ -511,10 +511,6 @@ export function categoryName(cat, t) {
   const name = str(cat && cat.name).trim();
   if (name) return name;
   return cat && cat.sys && SYS_CATEGORIES.includes(cat.sys) ? t('cat.sys.' + cat.sys) : t('cat.untitled');
-}
-/** 清单的图标：用户选的 emoji，没选就按 kind 用默认的 @param {List} list */
-export function listIcon(list) {
-  return str(list && list.icon).trim() || DEFAULT_LIST_ICON[list && list.kind === 'grocery' ? 'grocery' : 'general'];
 }
 
 /** 排序：order，再 createdAt，再 id（保证每台设备一样） @param {{ order: number, createdAt: number, id: string }} a @param {{ order: number, createdAt: number, id: string }} b */

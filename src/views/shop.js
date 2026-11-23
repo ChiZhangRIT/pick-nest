@@ -10,7 +10,8 @@
 // 行能左右滑（ui/checklist.js，和普通页面一样：编辑、删除、以后再说）；正在滑时数据变了，滑完再重画。
 import { h, icon } from '../ui/dom.js';
 import { t } from '../i18n.js';
-import { listName, listIcon } from '../core/store.js';
+import { listName } from '../core/store.js';
+import { listTile } from '../ui/listTile.js';
 import { liveList, clearDone } from '../core/items.js';
 import { liveStore, groupStore, clearStoreDone } from '../core/stores.js';
 import { groupNeed, collatorFor, listView, NO_STORE } from '../core/group.js';
@@ -58,7 +59,7 @@ export function render(main, params, ctx, deps = {}) {
     h('div.shop-row', null,
       // 标题能接焦点（tabindex -1）：按过的按钮重画后没了（清除已买），焦点给它（ui/checklist.js 的 keepFocus）
       h('h1.shop-title', { tabindex: -1, dataset: { fid: 'lp-title' } },
-        h('span.shop-icon', { 'aria-hidden': 'true' }, kind === 'list' ? listIcon(list()) : icon('store')), nameEl),
+        (kind === 'list' ? listTile(list(), 'shop-icon') : h('span.shop-icon', { 'aria-hidden': 'true' }, icon('store'))), nameEl),
       finishBtn('shop-finish')),
     h('div.shop-prog', null, progText), bar));
   function drawTop() {

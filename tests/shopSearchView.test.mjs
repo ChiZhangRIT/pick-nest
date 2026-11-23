@@ -180,7 +180,8 @@ test('购物模式（商店）：所有清单里在这家买的，标来自哪�
     assert.equal(byCls(env.main, 'shop-name').textContent, 'Whole Foods');
     assert.equal(env.prog(), '1 bought · 3 to go');
     assert.deepEqual(env.rows(), ['牛奶', '鸡蛋', '台灯'], '雨伞以后再说、雞蛋卷在归档的清单上：都不在（英文界面按英文的规则排）；已买的折着');
-    assert.equal(byCls(env.row('台灯'), 'list-chip').textContent, '\u{1F6CD}️To Buy');
+    assert.equal(byCls(env.row('台灯'), 'list-chip').textContent, 'To Buy');
+    assert.equal(byCls(env.row('台灯'), 'list-chip-ic').attrs.class, 'list-tile tint-amber list-chip-ic');
     assert.equal(byCls(env.main, 'shop-wake').textContent, 'This device can’t keep the screen on');
     assert.equal(byCls(env.main, 'shop-wake').hidden, false);
     await byCls(env.sec('done'), 'sec-toggle').fire('click');

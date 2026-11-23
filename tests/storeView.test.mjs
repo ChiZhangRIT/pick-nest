@@ -123,7 +123,9 @@ test('一家店：要买的按分类分组，每行标着来自哪张清单；�
     assert.deepEqual(env.rows(), ['苹果', '牛奶', '木胶', '鸡蛋']);
     assert.equal(byCls(env.row('苹果'), 'item-note').textContent, '要脆的', '备注的第一行');
     assert.equal(byCls(env.row('木胶'), 'list-chip').textContent, '\u{1FAB5}木工', '来自哪张清单：图标 + 名字');
-    assert.equal(byCls(env.row('牛奶'), 'list-chip').textContent, '\u{1F96C}食材', '没选图标的用默认图标');
+    assert.equal(byCls(env.row('牛奶'), 'list-chip').textContent, '食材', '没选图标的用默认的（画好的菜篮，没有字）');
+    assert.equal(byCls(env.row('牛奶'), 'list-chip-ic').attrs.class, 'list-tile tint-green list-chip-ic');
+    assert.equal(byCls(byCls(env.row('牛奶'), 'list-chip-ic'), 'lt-glyph').attrs.class, 'lt-glyph g-basket');
     assert.equal(byCls(env.row('牛奶'), 'list-chip-ic').attrs['aria-hidden'], 'true');
     assert.equal(byCls(env.row('牛奶'), 'item-qty').textContent, '2');
     assert.equal(byCls(env.sec('done'), 'sec-toggle').textContent, '已买（1）');

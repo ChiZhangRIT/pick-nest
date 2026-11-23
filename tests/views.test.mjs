@@ -8,7 +8,9 @@ import * as lists from '../src/views/lists.js';
 import * as settings from '../src/views/settings.js';
 
 const text = el => el ? el.textContent : null;
-const rowsOf = main => main.querySelectorAll('.list-row').map(r => [text(r.querySelector('.list-name')), text(r.querySelector('.list-icon')), text(r.querySelector('.list-count'))]);
+// 图标方块写成「图标 色调」：画好的是 'i:名字'，自己写的是那个字
+const tileOf = el => { const g = el.querySelector('.lt-glyph'); const cls = el.attrs.class; return (g ? 'i:' + /g-(\w+)/.exec(g.attrs.class)[1] : text(el)) + ' ' + /tint-(\w+)/.exec(cls)[1]; };
+const rowsOf = main => main.querySelectorAll('.list-row').map(r => [text(r.querySelector('.list-name')), tileOf(r.querySelector('.list-icon')), text(r.querySelector('.list-count'))]);
 function seededWithItems() {
   const s = ensureSeeds(blankState());
   const add = (id, listId, status, extra = {}) => { s.data.items[id] = normalizeRecord('items', { id, listId, name: id, status, updatedAt: 1, ...extra }); };
@@ -24,7 +26,7 @@ test('首页：预置的两张清单按顺序显示名字、默认图标、还�
     const main = new Element('section');
     lists.render(main, { name: 'lists' }, { state: seededWithItems() });
     assert.equal(text(main.querySelector('h1')), '清单');
-    assert.deepEqual(rowsOf(main), [['食材', '\u{1F96C}', '2'], ['想买', '\u{1F6CD}\uFE0F', '1']]);
+    assert.deepEqual(rowsOf(main), [['食材', 'i:basket green', '2'], ['想买', 'i:bag amber', '1']], '预置清单没选过：食材是绿底菜篮、想买是琥珀底购物袋');
     const srOnly = main.querySelectorAll('.sr-only').map(text);
     assert.deepEqual(srOnly, ['还要买 2 样', '还要买 1 样'], '读屏念整句');
     // 每一行是去清单页的链接；按钮只有上面的「编辑」「新建清单」
@@ -38,14 +40,16 @@ test('首页：改过名的显示用户写的名字（不做简繁转换），�
   try {
     const s = seededWithItems();
     s.data.lists.l_tobuy = stamp({ ...s.data.lists.l_tobuy, name: '想買的東西', icon: '🎁' }, s.data.lists.l_tobuy, 2000);
-    s.data.lists.l_wood = normalizeRecord('lists', { id: 'l_wood', name: '木工', order: 5, createdAt: 3000, updatedAt: 3000 });
+    s.data.lists.l_wood = normalizeRecord('lists', { id: 'l_wood', name: '木工', icon: 'i:saw', color: 'clay', order: 5, createdAt: 3000, updatedAt: 3000 });
+    s.data.lists.l_cloth = normalizeRecord('lists', { id: 'l_cloth', name: '衣服', icon: '衣', color: 'future-tint', order: 6, createdAt: 3000, updatedAt: 3000 });
     s.data.lists.l_old = normalizeRecord('lists', { id: 'l_old', name: '归档的', archived: true, updatedAt: 3000 });
     s.data.lists.l_gone = deletedRecord(normalizeRecord('lists', { id: 'l_gone', name: '删掉的', updatedAt: 3000 }), 4000);
     for (const lang of ['zh-Hans', 'en']) {
       setLang(lang);
       const main = new Element('section');
       lists.render(main, { name: 'lists' }, { state: s });
-      assert.deepEqual(rowsOf(main), [[lang === 'en' ? 'Groceries' : '食材', '\u{1F96C}', '2'], ['想買的東西', '🎁', '1'], ['木工', '\u{1F6CD}\uFE0F', '0']], lang);
+      assert.deepEqual(rowsOf(main), [[lang === 'en' ? 'Groceries' : '食材', 'i:basket green', '2'], ['想買的東西', '🎁 amber', '1'], ['木工', 'i:saw clay', '0'], ['衣服', '衣 amber', '0']], lang);
+      assert.equal(main.querySelectorAll('.list-icon')[0].attrs['aria-hidden'], 'true', '方块给眼睛看，读屏念名字');
       assert.ok(main.querySelectorAll('.list-count')[2].attrs.class.includes('zero'));
     }
   } finally { setLang('zh-Hans'); dom.restore(); }

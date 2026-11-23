@@ -1,10 +1,10 @@
 // 内置的常见食材对照（core/catalog.js）、分组排序（core/group.js）、清单本身（core/lists.js）。全是编的数据
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ensureSeeds, blankState, normalizeRecord, deletedRecord, restoredRecord, homeLists, needCounts, GROCERY_CATEGORIES, SYS_CATEGORIES, DEFAULT_LIST_ICON } from '../src/core/store.js';
+import { ensureSeeds, blankState, normalizeRecord, deletedRecord, restoredRecord, homeLists, needCounts, GROCERY_CATEGORIES, SYS_CATEGORIES } from '../src/core/store.js';
 import { CATALOG, catalogSys, catalogCategory, isCatalogName } from '../src/core/catalog.js';
 import { groupNeed, collatorFor, listView, listViewPatch } from '../src/core/group.js';
-import { createList, editList, setArchived, deleteList, moveList, archivedLists, visibleItems, firstGrapheme, LIST_ICONS } from '../src/core/lists.js';
+import { createList, editList, setArchived, deleteList, moveList, archivedLists, visibleItems } from '../src/core/lists.js';
 import { addFromInput, toggleDone, setStatus } from '../src/core/items.js';
 import { normName } from '../src/core/store.js';
 import * as state from '../src/core/state.js';
@@ -138,31 +138,38 @@ test('改一张清单的显示方式（listViewPatch）：整个 view 换掉，�
 });
 
 // ---------- 清单 ----------
-test('新建清单：排在最后，名字不能空，类型认不出按食材，图标只留一个字形，默认商店只收在的、没归档的', () => {
+test('新建清单：排在最后，名字不能空，类型认不出按食材，图标、颜色按 lookFields 整理，默认商店只收在的、没归档的', () => {
   const s = seeded();
   assert.deepEqual(createList(s, { name: '  ' }, now()), { ok: false, errors: { name: 'list.err.name' } });
-  const r = createList(s, { name: ' 木工 ', kind: 'general', icon: '🪵🔨', defaultStoreId: 's_homedepot' }, now());
+  const r = createList(s, { name: ' 木工 ', kind: 'general', icon: '🪵🔨', color: 'clay', defaultStoreId: 's_homedepot' }, now());
   assert.equal(r.ok, true);
   const l = s.data.lists[r.id];
   assert.match(r.id, /^l_/);
-  assert.deepEqual([l.name, l.kind, l.icon, l.order, l.defaultStoreId, l.sys, l.archived], ['木工', 'general', '🪵', 2, 's_homedepot', null, false]);
+  assert.deepEqual([l.name, l.kind, l.icon, l.color, l.order, l.defaultStoreId, l.sys, l.archived], ['木工', 'general', '🪵', 'clay', 2, 's_homedepot', null, false]);
   assert.deepEqual(homeLists(s).map(x => x.id), ['l_groceries', 'l_tobuy', r.id]);
   s.data.stores.s_target = { ...s.data.stores.s_target, archived: true };
   const r2 = createList(s, { name: '别的', kind: 'project', defaultStoreId: 's_target' }, now());
   assert.deepEqual([s.data.lists[r2.id].kind, s.data.lists[r2.id].defaultStoreId, s.data.lists[r2.id].order], ['grocery', null, 3]);
-  assert.equal(firstGrapheme('👨‍👩‍👧 家'), '👨‍👩‍👧');
-  assert.equal(firstGrapheme('🇹🇼'), '🇹🇼');
-  assert.equal(firstGrapheme('  '), '');
-  assert.equal(LIST_ICONS.length, 16);
-  assert.equal(new Set(LIST_ICONS).size, 16);
-  // 两个默认图标都在可选的里面（不然编辑时默认的那个不会标成选中；FE0F 被编辑器弄丢了也会在这里发现）
-  for (const icon of Object.values(DEFAULT_LIST_ICON)) assert.ok(LIST_ICONS.includes(icon), icon);
+  assert.deepEqual([s.data.lists[r2.id].icon, s.data.lists[r2.id].color], ['', ''], '没选：按类型默认（存空的）');
+  const r3 = createList(s, { name: '工具', kind: 'general', icon: 'i:hammer', color: 'nope' }, now());
+  assert.deepEqual([s.data.lists[r3.id].icon, s.data.lists[r3.id].color], ['i:hammer', ''], '认不出的颜色存空的');
+  const r4 = createList(s, { name: '菜', kind: 'grocery', icon: 'i:basket', color: 'green' }, now());
+  assert.deepEqual([s.data.lists[r4.id].icon, s.data.lists[r4.id].color], ['', ''], '选的就是这一类的默认：存空的');
+  const r5 = createList(s, { name: '书', kind: 'general', icon: 'i:no-such', color: 'blue' }, now());
+  assert.deepEqual([s.data.lists[r5.id].icon, s.data.lists[r5.id].color], ['', 'blue'], '认不出的图标名不存');
 });
 
-test('改清单：名字、图标、默认商店；预置清单名字可以清空（显示界面语言的名字），自建的不行；类型不改', () => {
+test('改清单：名字、图标、颜色、默认商店；预置清单名字可以清空（显示界面语言的名字），自建的不行；类型不改', () => {
   const s = seeded();
-  const r = editList(s, 'l_groceries', { name: '  ', icon: '🛒', defaultStoreId: 's_costco', kind: 'general' }, now());
-  assert.deepEqual([r.list.name, r.list.icon, r.list.defaultStoreId, r.list.kind], ['', '🛒', 's_costco', 'grocery']);
+  const r = editList(s, 'l_groceries', { name: '  ', icon: '🛒', color: 'teal', defaultStoreId: 's_costco', kind: 'general' }, now());
+  assert.deepEqual([r.list.name, r.list.icon, r.list.color, r.list.defaultStoreId, r.list.kind], ['', '🛒', 'teal', 's_costco', 'grocery']);
+  assert.deepEqual(['icon', 'color'].map(k => editList(s, 'l_groceries', { icon: 'i:basket', color: 'green' }, now()).list[k]), ['', ''], '改回默认的样子：存空的');
+  // 只交了一样：另一样原样留着（新版才有的色调、图标，面板没动就不交）
+  s.data.lists.l_tobuy = { ...s.data.lists.l_tobuy, icon: 'i:future-glyph', color: 'future-tint' };
+  const kept = editList(s, 'l_tobuy', { name: '想要的', color: 'rose' }, now()).list;
+  assert.deepEqual([kept.icon, kept.color], ['i:future-glyph', 'rose']);
+  assert.deepEqual([editList(s, 'l_tobuy', { icon: '木工活' }, now()).list.icon, s.data.lists.l_tobuy.color], ['木工', 'rose'], '自己写的最多两个字');
+  s.data.lists.l_tobuy = { ...s.data.lists.l_tobuy, name: '', icon: '', color: '', updatedAt: 0 };
   const { id } = createList(s, { name: '木工', kind: 'general' }, now());
   assert.deepEqual(editList(s, id, { name: '' }, now()), { ok: false, errors: { name: 'list.err.name' } });
   assert.equal(editList(s, id, { defaultStoreId: 's_nope' }, now()).list.defaultStoreId, null, '不存在的商店不改');

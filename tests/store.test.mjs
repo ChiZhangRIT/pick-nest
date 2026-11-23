@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   blankState, normalizeState, normalizeRecord, mergeStates, mergeRecord, canon, pick, stamp, deletedRecord, restoredRecord, newId, setSetting,
-  ensureSeeds, seedRecords, normName, hash64, itemId, listName, categoryName, listIcon, byOrder, live, homeLists, needCounts,
-  COLLECTIONS, SEED_STORES, SYS_CATEGORIES, DEFAULT_LIST_ICON, writeRecord,
+  ensureSeeds, seedRecords, normName, hash64, itemId, listName, categoryName, byOrder, live, homeLists, needCounts,
+  COLLECTIONS, SEED_STORES, SYS_CATEGORIES, writeRecord,
 } from '../src/core/store.js';
 
 // 测试只用编出来的数据（仓库是公开的）
@@ -56,7 +56,7 @@ test('整理 lists / stores / categories / memory：补齐字段，预置标记�
     memory: { m_x: { name: '砂纸', kind: 'general', stores: { s_homedepot: { n: '3', at: 5, extra: 1 }, bad: 7, __proto__: { n: 1 } }, uses: -2 } },
   } });
   const l = s.data.lists.l_x;
-  assert.deepEqual([l.name, l.sys, l.kind, l.archived, l.defaultStoreId, l.icon, l.order], ['木工 ', 'future-sys', 'general', false, null, '', 0]);
+  assert.deepEqual([l.name, l.sys, l.kind, l.archived, l.defaultStoreId, l.icon, l.color, l.order], ['木工 ', 'future-sys', 'general', false, null, '', '', 0]);
   assert.equal(s.data.lists.l_groceries.kind, 'grocery', '旧数据缺 kind：食材清单还是食材');
   assert.deepEqual([s.data.stores.s_x.name, s.data.stores.s_x.order, s.data.stores.s_x.archived], [' 本地 小店', 3, false]);
   assert.deepEqual([s.data.categories.c_x.kind, s.data.categories.c_x.sys], [null, null]);
@@ -329,9 +329,8 @@ test('显示名：用户写的名字 → 预置的文案 → 未命名；图标�
   assert.equal(categoryName(s.data.categories.c_dairy, T), '«cat.sys.dairy»');
   assert.equal(categoryName({ ...s.data.categories.c_dairy, name: '奶制品' }, T), '奶制品');
   assert.equal(categoryName({ sys: null, name: '' }, T), '«cat.untitled»');
-  assert.equal(listIcon(s.data.lists.l_groceries), DEFAULT_LIST_ICON.grocery);
-  assert.equal(listIcon(s.data.lists.l_tobuy), DEFAULT_LIST_ICON.general);
-  assert.equal(listIcon({ ...s.data.lists.l_tobuy, icon: '🪵' }), '🪵');
+  // 预置清单的图标、颜色是空的（按类型默认，core/listIcons.js）
+  assert.deepEqual([s.data.lists.l_groceries.icon, s.data.lists.l_groceries.color, s.data.lists.l_tobuy.icon, s.data.lists.l_tobuy.color], ['', '', '', '']);
 });
 
 test('首页清单：没删除、没归档，按 order、createdAt、id 排；还要买几样只数 need 且没删除的', () => {

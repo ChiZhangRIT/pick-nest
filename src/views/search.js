@@ -7,7 +7,8 @@
 // 后退回来（不是点按）时 iPhone 不弹键盘，结果照样看得到，想改搜索词直接打字（iPad、Mac 的键盘）。
 import { h, icon, linkTo, backText } from '../ui/dom.js';
 import { t } from '../i18n.js';
-import { listName, listIcon } from '../core/store.js';
+import { listName } from '../core/store.js';
+import { listTile } from '../ui/listTile.js';
 import { searchItems, searchTerms, hitCount, highlight } from '../core/search.js';
 import { collatorFor } from '../core/group.js';
 import { checklist, storeChip } from '../ui/checklist.js';
@@ -65,7 +66,7 @@ export function render(main, params, ctx, deps = {}) {
       body.replaceChildren(...groups.map(g => h('section.grp.sr-grp', null,
         h('h2.sr-head', null,
           h('a.sr-list', { href: '#/l/' + encodeURIComponent(g.list.id) },
-            h('span.sr-list-ic', { 'aria-hidden': 'true' }, listIcon(g.list)), h('span.sr-list-name', null, listName(g.list, t)),
+            listTile(g.list, 'sr-list-ic'), h('span.sr-list-name', null, listName(g.list, t)),
             g.archived ? h('span.tag', null, t('search.archived')) : null)),
         h('ul.group.items', null, g.hits.map(({ item, note }) => cl.row(item,
           // 「以后再说」的标出来（清单页上它们在单独一组里）；商店照清单页的规则，只标不在默认商店买的
