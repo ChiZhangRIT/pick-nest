@@ -1,5 +1,6 @@
 // 能勾的一行和勾选的节奏：清单页（views/list.js）、商店页（views/store.js）、购物模式（views/shop.js）、搜索（views/search.js）共用。
 // 一行：左边的大圆勾 + 名字（下面一行是页面给的小标签——清单页标商店、商店页标来自哪张清单——和备注的第一行）+ 数量 + ›。
+// 数量是自己加的和各道菜的加起来（core/items.js 的 totalLabel：「洋葱 2 个 + 200 g」），四种页面一样。
 // 只有点左边的圆圈才勾掉 / 取消（以前点整行就勾，推着车、滚着页面很容易误勾）；点这一行别的地方打开编辑面板（ui/itemEditor.js），› 只是提示。
 // 圆圈是单独的按钮，占满左边一栏、整行高（≥ 48 × 48，在店里单手也点得中）。
 // 小标签（storeChip、listChip）、组名（groupTitle）和分好的组（groupSections）也在这里，几个页面画得一样。
@@ -13,10 +14,10 @@
 // 一行是 <li.item-row>（可滑的那一层）> <div.item-in>（跟着手指动的：圆圈 + 这一行的编辑按钮）+ 露出来时才建的按钮。
 import { h, icon } from './dom.js';
 import { t } from '../i18n.js';
-import { liveItem, liveList, setStatus, untickStatus, storeExists, swipeActions } from '../core/items.js';
+import { liveItem, liveList, setStatus, untickStatus, storeExists, swipeActions, qtyParts } from '../core/items.js';
+import { qtyLabel } from '../core/parse.js';
 import { listName, categoryName } from '../core/store.js';
 import { listTile } from './listTile.js';
-import { qtyLabel } from '../core/parse.js';
 import { itemSheet, removeItem } from './itemEditor.js';
 import { createSwipes } from './swipe.js';
 
@@ -50,13 +51,15 @@ export function checklist(ctx, main, swipeEnv) {
   const checkedNow = (it) => (pending.has(it.id) ? pending.get(it.id) === 'done' : it.status === 'done');
   function row(it, chip = null, { name = null, note = null } = {}) {
     const was = it.status === 'done', checked = checkedNow(it);
-    const q = qtyLabel(it.qty, it.unit);
+    const parts = qtyParts(it);
     const nt = note || firstLine(it.note);
     const hasChip = Array.isArray(chip) ? chip.some(Boolean) : !!chip;
     // 圆圈的名字只是东西的名字（读屏：「牛奶，复选框，未勾选」），数量、小标签、备注当说明念（这一行的按钮名字是「编辑「牛奶」」，那里念不到）。
     // id 一页里不会重：一样东西在一页上只画一次
     const sub = hasChip || nt ? h('span.item-sub', { id: 'pn-sub-' + it.id }, chip, nt ? h('span.item-note', null, nt) : null) : null;
-    const qty = q ? h('span.item-qty', { id: 'pn-qty-' + it.id }, q) : null;
+    // 几份的「3 个 + 200 g」：每份不拆开（窄的一栏里只在「+」那儿折行，不会把「200」「g」分在两行）
+    const qty = parts.length ? h('span.item-qty' + (parts.length > 1 ? '.multi' : ''), { id: 'pn-qty-' + it.id },
+      parts.map((p, i) => [i ? ' + ' : '', h('span.qty-part', null, qtyLabel(p.qty, p.unit))])) : null;
     const desc = [qty, sub].filter(Boolean).map(x => x.id).join(' ');
     const check = h('button.item-tick', { type: 'button', role: 'checkbox', 'aria-checked': String(checked), 'aria-label': it.name,
       'aria-describedby': desc || null, dataset: { fid: 'it-' + it.id }, onclick: () => tap(it.id) },

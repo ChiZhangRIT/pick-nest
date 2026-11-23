@@ -38,11 +38,12 @@ export function backupAge(lastAt, now = Date.now()) {
   return { days, stale: days == null || days >= BACKUP_STALE_DAYS };
 }
 
-/** 看得见的有几样（确认框里说「备份里有 3 张清单、42 样东西」）：没删除的清单、在没删除的清单上的东西、商店、分类 @param {State} state */
+/** 看得见的有几样（确认框里说「备份里有 3 张清单、42 样东西」，有食谱再说几道）：没删除的清单、在没删除的清单上的东西、食谱、商店、分类 @param {State} state */
 export function backupCounts(state) {
   return {
     lists: live(state, 'lists').length,
     items: live(state, 'items').filter(it => liveList(state, it.listId)).length,
+    recipes: live(state, 'recipes').length,
     stores: live(state, 'stores').length,
     categories: live(state, 'categories').length,
   };

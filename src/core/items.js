@@ -4,7 +4,7 @@
 // 记录经过 writeRecord（内容没变的不盖新时间）或 deletedRecord（软删除），买过的东西的习惯记在 memory（memory.js）。
 import { itemId, normName, writeRecord, deletedRecord, ITEM_STATUS } from './store.js';
 import { own, isObj, str } from './util.js';
-import { parseQuickAdd, readQty, QTY_MAX } from './parse.js';
+import { parseQuickAdd, readQty, qtyLabel, QTY_MAX } from './parse.js';
 import { catalogCategory } from './catalog.js';
 import { memoryOf, usualStore, recordUse, recordPurchase, unrecordPurchase, recordPrefs } from './memory.js';
 
@@ -62,14 +62,16 @@ export function defaultsFor(state, list, name, prev = null) {
 }
 
 /**
- * @typedef {'added' | 'restored' | 'exists' | 'empty' | 'nolist'} AddOutcome
+ * @typedef {'added' | 'restored' | 'exists' | 'own' | 'empty' | 'nolist'} AddOutcome
  * @typedef {{ outcome: AddOutcome, id: string | null, item: Item | null }} AddResult
  */
 
 /**
  * 加一样东西（名字已经拆好了）。id 用 itemId（先找这张清单里同名的，已买、已清除的也算）：
- *   已经是「要买」→ 'exists'（什么也不改，页面提示「已经在清单上了」）；
- *   已买、以后再说、已清除 → 'restored'（同一条恢复成要买：带着上次的分类、单位、备注、链接，商店按常去的重新定，数量用这次写的或 1）；
+ *   已经是「要买」→ 'exists'（什么也不改，页面提示「已经在清单上了」）；只是因为食谱在清单上（自己加的是空的）、这次又写了数量（「洋葱 2」）
+ *     → 'own'：把写的数量记成自己加的（各道菜的不动）——明明写了要几个，不能只说一句「已经在了」就丢掉；
+ *   已买、以后再说、已清除 → 'restored'（同一条恢复成要买：带着上次的分类、单位、备注、链接，商店按常去的重新定，数量用这次写的或 1；
+ *     已买、已清除的连上一轮各道菜的那几份（needs）一起清空：那一轮已经买过了，不然再从食谱加一次会算两遍）；
  *   没有 → 'added'（按默认值新建）。加进去的都记一次 memory（uses + 1）；输入里写了单位也记成这样东西的单位
  * @param {State} state @param {string} listId @param {{ name: string, qty?: number | null, unit?: string }} input @param {number} [now]
  * @returns {AddResult}
@@ -81,19 +83,149 @@ export function addItem(state, listId, input, now = Date.now()) {
   if (!name) return { outcome: 'empty', id: null, item: null };
   const id = itemId(state, listId, name);
   const prev = own(col(state, 'items'), id) || null;
-  if (prev && !prev.deleted && prev.status === 'need') return { outcome: 'exists', id, item: prev };
-  const d = defaultsFor(state, list, name, prev);
+  const typedQty = input.qty != null && input.qty > 0 && input.qty <= QTY_MAX ? input.qty : null;
   const typedUnit = str(input.unit).trim();
-  const fields = { listId, name, qty: input.qty != null && input.qty > 0 && input.qty <= QTY_MAX ? input.qty : 1, unit: typedUnit || d.unit,
+  if (prev && !prev.deleted && prev.status === 'need') {
+    if (typedQty == null || qtyOrNull(prev.qty) != null || !needsOf(prev).length) return { outcome: 'exists', id, item: prev };
+    const item = /** @type {Item} */ (writeRecord(state, 'items', { ...prev, qty: typedQty, unit: typedUnit || prev.unit }, now));
+    if (typedUnit) recordPrefs(state, name, list.kind, { unit: typedUnit }, now);
+    return { outcome: 'own', id, item };
+  }
+  const d = defaultsFor(state, list, name, prev);
+  const fields = { listId, name, qty: typedQty ?? 1, unit: typedUnit || d.unit,
     storeId: d.storeId, categoryId: d.categoryId, status: 'need', doneAt: null };
   let rec;
-  if (prev) { const { deleted, deletedAt, ...rest } = prev; rec = { ...rest, ...fields }; }
-  else rec = { id, note: '', url: '', price: null, needs: {}, createdAt: now, ...fields };
+  if (prev) {
+    const { deleted, deletedAt, ...rest } = prev;
+    rec = { ...rest, ...fields };
+    if (prev.deleted || prev.status === 'done') rec.needs = {};
+  } else rec = { id, note: '', url: '', price: null, needs: {}, createdAt: now, ...fields };
   const item = /** @type {Item} */ (writeRecord(state, 'items', rec, now));
   recordUse(state, name, list.kind, now);
   if (typedUnit) recordPrefs(state, name, list.kind, { unit: typedUnit }, now);
   return { outcome: prev ? 'restored' : 'added', id, item };
 }
+
+// ---------- 来自食谱的数量（needs） ----------
+// 一样东西要买的量分两部分：自己加的（qty + unit，快速添加、编辑面板里改的就是它）和各道菜的（needs，每个来源一份：
+// 从食谱页「加到清单」一次是 'a:<随机>'，以后计划里的一道菜是 'p:<那一道的 id>'）。分开记：删掉一道菜只减它那一份，自己加的不动。
+// 见 docs/DATA_MODEL.md 的「来自食谱的数量」。
+
+/**
+ * 算出来的用量（按人数换算过的、几道菜加在一起的）最多到多少。QTY_MAX（9999）是输入框的上限：2 人份的 2000 ml 水换算成 10 人份是 10000 ml，
+ * 卡在 9999 就是一个悄悄算错的数；这里只防 Infinity、写坏的数据
+ */
+export const NEED_MAX = 999999;
+/** 能当数量的：0 < q ≤ NEED_MAX 的数；别的 → null @param {unknown} q */
+const qtyOrNull = (q) => (typeof q === 'number' && Number.isFinite(q) && q > 0 && q <= NEED_MAX ? q : null);
+/** 这个键是不是这个来源的（同一次加的同名食材单位不一样时另记一份 '<来源>#2'） @param {string} key @param {string} source */
+const ofSource = (key, source) => key === source || key.startsWith(source + '#');
+
+/**
+ * @typedef {{ name: string, qty?: number | null, unit?: string }} NeedLine
+ * @typedef {{ qty: number | null, unit: string, label: string, recipeId: string | null }} Need
+ */
+
+/**
+ * 把一道菜（一个来源）的食材加进一张清单（食谱页「加到清单」、以后计划的「生成购物清单」）。每一行按 itemId 找这张清单上同名的：
+ *   有、而且是「要买」或「以后再说」→ 在它的 needs 里放这个来源（已经有同一个键就替换），状态变成「要买」，自己加的不动；
+ *   有、但已买或已清除，或者没有 → 新建 / 恢复成「要买」：自己加的设成 null、needs 清空后只放这个来源（上一次买过的那一轮不算了），
+ *     商店、分类、单位照「新加一样东西时的默认值」（defaultsFor），memory 记一次用过（和 addItem 一样：已经在清单上的不算）。
+ * 同一次里同名（normName）的几行：单位一样的相加，单位不一样的另记一份（键 '<来源>#2'、'#3'…，removeNeeds 一起拿掉）。
+ * 返回 { added：新建 / 恢复了几样, updated：记进已有的几样, ids }；清单不在 → null
+ * @param {State} state @param {string} listId @param {NeedLine[]} lines @param {string} source
+ * @param {{ label?: string, recipeId?: string | null }} [meta] @param {number} [now]
+ */
+export function addNeeds(state, listId, lines, source, { label = '', recipeId = null } = {}, now = Date.now()) {
+  const list = liveList(state, listId);
+  if (!list || !source) return null;
+  // 先把同名的几行合在一起：同一张清单里同名的是同一条记录，一行一行加的话后一行会把前一行的那份替换掉
+  /** @type {Map<string, { name: string, parts: { qty: number | null, unit: string }[] }>} */
+  const byName = new Map();
+  for (const ln of lines || []) {
+    const name = str(ln && ln.name).trim();
+    if (!name) continue;
+    const key = normName(name), qty = qtyOrNull(ln.qty), unit = str(ln.unit).trim();
+    if (!byName.has(key)) byName.set(key, { name, parts: [] });
+    const g = /** @type {{ name: string, parts: { qty: number | null, unit: string }[] }} */ (byName.get(key));
+    const same = g.parts.find(p => normName(p.unit) === normName(unit));
+    if (same) same.qty = same.qty == null ? qty : qty == null ? same.qty : Math.round((same.qty + qty) * 1000) / 1000;
+    else g.parts.push({ qty, unit });
+  }
+  let added = 0, updated = 0;
+  /** @type {string[]} */
+  const ids = [];
+  for (const { name, parts } of byName.values()) {
+    /** @type {Record<string, Need>} */
+    const mine = {};
+    parts.forEach((p, i) => { mine[i ? source + '#' + (i + 1) : source] = { qty: p.qty, unit: p.unit, label: str(label), recipeId: recipeId || null }; });
+    const id = itemId(state, listId, name);
+    const prev = own(col(state, 'items'), id) || null;
+    if (prev && !prev.deleted && (prev.status === 'need' || prev.status === 'later')) {
+      const needs = Object.fromEntries(Object.entries(isObj(prev.needs) ? prev.needs : {}).filter(([k]) => !ofSource(k, source)));
+      writeRecord(state, 'items', { ...prev, needs: { ...needs, ...mine }, status: 'need', doneAt: null }, now);
+      updated++;
+    } else {
+      const d = defaultsFor(state, list, name, prev);
+      const fields = { listId, name, qty: null, unit: d.unit, storeId: d.storeId, categoryId: d.categoryId, status: 'need', doneAt: null, needs: mine };
+      let rec;
+      if (prev) { const { deleted, deletedAt, ...rest } = prev; rec = { ...rest, ...fields }; }
+      else rec = { id, note: '', url: '', price: null, createdAt: now, ...fields };
+      writeRecord(state, 'items', rec, now);
+      recordUse(state, name, list.kind, now);
+      added++;
+    }
+    ids.push(id);
+  }
+  return { added, updated, ids };
+}
+
+/**
+ * 拿掉一个来源（以后计划里删掉 / 挪走一道菜、改人数前先拿掉旧的）：只动「要买」「以后再说」的东西，已买、已清除的不动（买过的历史留着）。
+ * 拿掉以后自己加的是 null 或 0、needs 也空了 → 这样东西本来就只是为这道菜加的，软删除；还有别的就留着。返回动了几样
+ * @param {State} state @param {string} source @param {number} [now]
+ */
+export function removeNeeds(state, source, now = Date.now()) {
+  if (!source) return 0;
+  let n = 0;
+  const items = col(state, 'items');
+  for (const it of Object.values(items)) {
+    if (!it || it.deleted || (it.status !== 'need' && it.status !== 'later') || !isObj(it.needs)) continue;
+    const keys = Object.keys(it.needs);
+    if (!keys.some(k => ofSource(k, source))) continue;
+    const needs = Object.fromEntries(Object.entries(it.needs).filter(([k]) => !ofSource(k, source)));
+    if (!qtyOrNull(it.qty) && !Object.keys(needs).length) items[it.id] = deletedRecord(it, now);
+    else writeRecord(state, 'items', { ...it, needs }, now);
+    n++;
+  }
+  return n;
+}
+
+/**
+ * 显示的数量拆成几份：自己加的和各来源里单位一样的（normName 比单位：「個」「个」一样）相加，单位不一样的分开；
+ * 自己加的那一份在前，别的按 needs 里出现的先后。没写数量的（null）不算；都没写 → []
+ * @param {{ qty: number | null, unit: string, needs?: Record<string, any> }} it
+ * @returns {{ qty: number, unit: string }[]}
+ */
+export function qtyParts(it) {
+  /** @type {{ key: string, unit: string, qty: number }[]} */
+  const parts = [];
+  const add = (/** @type {unknown} */ q, /** @type {unknown} */ u) => {
+    const qty = qtyOrNull(typeof q === 'string' ? Number(q) : q);
+    if (qty == null) return;
+    const unit = str(u).trim(), key = normName(unit);
+    const p = parts.find(x => x.key === key);
+    if (p) p.qty += qty; else parts.push({ key, unit, qty });
+  };
+  add(it.qty, it.unit);
+  for (const n of Object.values(isObj(it.needs) ? it.needs : {})) if (isObj(n)) add(n.qty, n.unit);
+  return parts.map(p => ({ qty: Math.round(p.qty * 1000) / 1000, unit: p.unit }));
+}
+/** 一行上显示的数量：「2.5 个 + 200 g」；都没写数量 → '' @param {{ qty: number | null, unit: string, needs?: Record<string, any> }} it */
+export const totalLabel = (it) => qtyParts(it).map(p => qtyLabel(p.qty, p.unit)).join(' + ');
+/** 这样东西上各道菜的那几份（编辑面板列出来）：[[键, { qty, unit, label, recipeId }]]，按 needs 里的先后 @param {Item} it @returns {[string, Need][]} */
+export const needsOf = (it) => Object.entries(isObj(it && it.needs) ? it.needs : {}).filter(([, n]) => isObj(n))
+  .map(([k, n]) => [k, { qty: qtyOrNull(n.qty), unit: str(n.unit), label: str(n.label), recipeId: typeof n.recipeId === 'string' ? n.recipeId : null }]);
 
 /**
  * 快速添加：拆出数量和单位（parse.js），再 addItem
@@ -113,6 +245,13 @@ export function addFromInput(state, listId, text, now = Date.now()) {
 export const UNTICK_MS = 30 * 60 * 1000;
 /** 已买的这一样是不是刚勾上的。别的设备的时钟快了（doneAt 在将来）也算刚勾上 @param {Item} it @param {number} now */
 const justBought = (it, now) => it.status === 'done' && it.doneAt != null && now - it.doneAt < UNTICK_MS;
+/**
+ * 已买的隔久了（UNTICK_MS 以后）才放回要买 / 以后再说：是「又要买了」，上一轮各道菜的那几份（needs）已经买过了，要清空——
+ * 和再加一次已买的东西一样（addItem、addNeeds）。留着的话再从食谱加一次会算两遍，以后计划里删掉那道旧菜（removeNeeds）
+ * 还会把这样又要买的东西从清单上拿掉。刚勾上就取消是点错了，照原样放回去
+ * @param {Item} it @param {string} status @param {number} now
+ */
+const roundOver = (it, status, now) => it.status === 'done' && status !== 'done' && !justBought(it, now);
 
 /**
  * 改状态：need 要买 / later 以后再说（只有一般清单）/ done 已买（记下 doneAt）。
@@ -128,7 +267,7 @@ export function setStatus(state, id, status, now = Date.now()) {
   if (it.status === status) return it;
   // fromLater：从「以后再说」勾掉的（取消勾选时回哪，见 untickStatus）；不是已买时 normalizeItem 会去掉它
   const out = /** @type {Item} */ (writeRecord(state, 'items', { ...it, status, doneAt: status === 'done' ? now : null,
-    fromLater: status === 'done' && it.status === 'later' ? true : undefined }, now));
+    fromLater: status === 'done' && it.status === 'later' ? true : undefined, needs: roundOver(it, status, now) ? {} : it.needs }, now));
   const at = storeKeyOf(state, it);
   if (status === 'done') recordPurchase(state, it.name, at, list.kind, now);
   else if (justBought(it, now)) unrecordPurchase(state, it.name, at, now);
@@ -230,13 +369,19 @@ const blankField = (/** @type {unknown} */ v) => v == null || (typeof v === 'str
 function mergeMoved(state, it, other, to, typed, now) {
   const next = { ...other };
   const take = (/** @type {string} */ k) => typed.includes(k) || blankField(/** @type {any} */ (other)[k]);
-  for (const k of ['url', 'price', 'unit', 'storeId']) if (take(k)) /** @type {any} */ (next)[k] = /** @type {any} */ (it)[k];
+  for (const k of ['url', 'price', 'storeId']) if (take(k)) /** @type {any} */ (next)[k] = /** @type {any} */ (it)[k];
   if (take('categoryId') && (it.categoryId == null || categoryFits(state, it.categoryId, to.kind))) next.categoryId = it.categoryId;
   const a = str(other.note).trim(), b = str(it.note).trim();
   next.note = !b ? other.note : !a ? it.note : normName(a) === normName(b) ? other.note : a + '\n' + b;
-  // 数量：这次改过就用改的；那一条本来就在要买的，用它的；不然（已买、已清除）用移过来的这一条的
-  next.qty = typed.includes('qty') || other.status !== 'need' ? it.qty : other.qty;
-  if (isObj(it.needs) && isObj(other.needs)) next.needs = { ...it.needs, ...other.needs };
+  // 自己加的数量：这次改过就用改的；那一条本来就在要买、而且自己写了数量，用它的；不然（已买、只是因为食谱才在清单上）用移过来的这一条的。
+  // 单位跟着数量走：「2 个」移过去不能变成那一条的「2 g」
+  const mine = typed.includes('qty') || other.status !== 'need' || qtyOrNull(other.qty) == null;
+  next.qty = mine ? it.qty : other.qty;
+  if (typed.includes('unit') || (mine && it.qty != null) || blankField(other.unit)) next.unit = it.unit;
+  // 各道菜的那几份：只带还没买的（要买、以后再说）。已买的那一条上的是上一轮的（已经买过了），移过来的这一条是已买的也一样，
+  // 不然合并成要买以后，上周买过的用量又回到清单上
+  const open = (/** @type {Item} */ x) => (!x.deleted && (x.status === 'need' || x.status === 'later') && isObj(x.needs) ? x.needs : {});
+  next.needs = { ...open(it), ...open(other) };
   const status = typed.includes('status') ? (it.status === 'later' && to.kind !== 'general' ? 'need' : it.status) : 'need';
   Object.assign(next, { status, doneAt: status === 'done' ? (it.doneAt ?? now) : null, fromLater: undefined });
   writeRecord(state, 'items', next, now);
@@ -283,8 +428,9 @@ export function cleanUrl(v) {
 
 /**
  * @typedef {{ name?: unknown, qty?: unknown, unit?: unknown, note?: unknown, storeId?: unknown, categoryId?: unknown,
- *   status?: unknown, url?: unknown, price?: unknown }} ItemPatch
- * 编辑面板交来的改动：只放改过的字段（没动的字段不覆盖，别的设备同时改的留着）。qty、price 可以是输入框里的字
+ *   status?: unknown, url?: unknown, price?: unknown, dropNeeds?: unknown }} ItemPatch
+ * 编辑面板交来的改动：只放改过的字段（没动的字段不覆盖，别的设备同时改的留着）。qty、price 可以是输入框里的字；
+ * dropNeeds：拿掉的几道菜的那一份（needs 的键），存成 clean.needs（这时的 needs 去掉它们，别的设备刚加的照样留着）
  */
 /**
  * 检查改动，返回整理好的字段（clean）或者每个字段的错误（文案的键）：
@@ -325,6 +471,10 @@ export function validateItemPatch(state, item, patch, { moving = false } = {}) {
     else if (!Number.isFinite(p) || p < 0) errors.price = 'item.err.price';
     else clean.price = p;
   }
+  if (has('dropNeeds') && Array.isArray(patch.dropNeeds) && isObj(item.needs)) {
+    const drop = new Set(patch.dropNeeds.map(String));
+    if (Object.keys(item.needs).some(k => drop.has(k))) clean.needs = Object.fromEntries(Object.entries(item.needs).filter(([k]) => !drop.has(k)));
+  }
   return { ok: !Object.keys(errors).length, clean, errors };
 }
 
@@ -342,6 +492,7 @@ export function editItem(state, id, patch, now = Date.now(), { moving = false } 
   if (!v.ok) return { ok: false, errors: v.errors };
   const next = { ...it, ...v.clean };
   if (next.status !== it.status) next.doneAt = next.status === 'done' ? now : null;
+  if (roundOver(it, next.status, now)) next.needs = {};                 // 和勾选一样：隔久了才改回要买是新的一轮
   const item = /** @type {Item} */ (writeRecord(state, 'items', next, now));
   const wasDone = it.status === 'done', isDone = next.status === 'done';
   // 和 setStatus 一样按「算在哪家」记：删掉的商店当未指定，不计

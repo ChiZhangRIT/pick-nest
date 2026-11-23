@@ -2,12 +2,15 @@
 // 一般清单还有状态（要买 / 以后再说 / 已买）、商品链接（只收 http / https，「打开」在新标签页）、价格；所在的清单（换一张就移过去）；删除（可撤销）。
 // 点「保存」才存，只交改过的字段（别的设备同时改的其它字段留着）；规则在 core/items.js（validateItemPatch、editAndMove：改和移在一起做，
 // 合并到那边同名的一条时这次改的落在留下来的那条上）。删除和关面板一样，有没存的修改先问（closeThen）。
+// 食谱加进来的（needs）：数量那一项叫「自己加的」（改的只是它），下面「来自食谱」列出每道菜的那一份（红烧肉 500 g），每份能拿掉（点「保存」才算，
+// 交 dropNeeds），再下面一句「清单上显示一共：2 个 + 500 g」跟着改的数量、拿掉的份数变。
 // 面板不在页面里：数据变了页面重画不会打断输入。
 import { h, icon } from './dom.js';
 import { t } from '../i18n.js';
 import { field, showErr, discardGuard, closeThen, onEnter } from './form.js';
-import { liveItem, liveList, validateItemPatch, editAndMove, moveConflict, categoryFits, cleanUrl } from '../core/items.js';
-import { formatQty, readQty, stepQty, UNIT_SUGGESTIONS } from '../core/parse.js';
+import { liveItem, liveList, validateItemPatch, editAndMove, moveConflict, categoryFits, cleanUrl, needsOf, totalLabel } from '../core/items.js';
+import { formatQty, readQty, stepQty, qtyLabel, UNIT_SUGGESTIONS } from '../core/parse.js';
+import { liveRecipe } from '../core/recipes.js';
 import { listName, categoryName, live, byOrder } from '../core/store.js';
 
 const STATUSES = ['need', 'later', 'done'];
@@ -29,7 +32,9 @@ export function itemSheet(ctx, itemId) {
   const general = list.kind === 'general';
   // 面板里的值（字符串，和输入框里一样的写法），「保存」时和它比，只交改过的
   const init = { name: it.name.trim(), qty: formatQty(it.qty), unit: it.unit.trim(), storeId: it.storeId || '', categoryId: it.categoryId || '', note: it.note,
-    status: it.status, url: it.url.trim(), price: it.price == null ? '' : String(it.price), listId: it.listId };
+    status: it.status, url: it.url.trim(), price: it.price == null ? '' : String(it.price), listId: it.listId, dropNeeds: '' };
+  const needs = needsOf(it);
+  const dropped = new Set();          // 这次拿掉的那几份（needs 的键），「保存」时交 dropNeeds
   /** @type {Record<string, any>} */
   const rows = {};
   const enter = onEnter(() => save());
@@ -39,23 +44,50 @@ export function itemSheet(ctx, itemId) {
 
   // 数量：可以空着（不写数量）；−/+ 每次 1，减到 0 就是空的
   const qtyIn = h('input.f-in.qty-in', { type: 'text', inputmode: 'decimal', value: init.qty, placeholder: t('item.qtyPh'), autocomplete: 'off', enterkeyhint: 'done',
-    onkeydown: enter, oninput: () => paintStep() });
-  const step = (dir) => { const q = readQty(qtyIn.value); qtyIn.value = formatQty(stepQty(Number.isFinite(q) ? q : null, dir)); paintStep(); };
+    onkeydown: enter, oninput: () => { paintStep(); paintTotal(); } });
+  const step = (dir) => { const q = readQty(qtyIn.value); qtyIn.value = formatQty(stepQty(Number.isFinite(q) ? q : null, dir)); paintStep(); paintTotal(); };
   const dec = h('button.icon-btn.step-btn', { type: 'button', 'aria-label': t('item.qtyDec'), onclick: () => step(-1) }, icon('minus'));
   const inc = h('button.icon-btn.step-btn', { type: 'button', 'aria-label': t('item.qtyInc'), onclick: () => step(1) }, icon('plus'));
   // 空着时「−」没有可减的：aria-disabled（不用 disabled，焦点不会突然丢掉）
   function paintStep() { const empty = !qtyIn.value.trim(); dec.setAttribute('aria-disabled', String(empty)); }
   paintStep();
-  rows.qty = field(t('item.qty'), qtyIn, { wrap: h('div.stepper', null, dec, qtyIn, inc) });
+  rows.qty = field(t(needs.length ? 'item.ownQty' : 'item.qty'), qtyIn, { wrap: h('div.stepper', null, dec, qtyIn, inc) });
 
   // 单位：随便写；下面是常用单位，点一下填进去（再点一下清掉）
   const unitIn = h('input.f-in', { type: 'text', value: init.unit, maxlength: 20, placeholder: t('item.unitPh'), autocomplete: 'off', enterkeyhint: 'done',
-    onkeydown: enter, oninput: () => paintChips() });
+    onkeydown: enter, oninput: () => { paintChips(); paintTotal(); } });
   const chips = (UNIT_SUGGESTIONS[ctx.lang()] || UNIT_SUGGESTIONS['zh-Hans']).map(u => h('button.chip', { type: 'button',
-    onclick: () => { unitIn.value = unitIn.value.trim() === u ? '' : u; paintChips(); } }, u));
+    onclick: () => { unitIn.value = unitIn.value.trim() === u ? '' : u; paintChips(); paintTotal(); } }, u));
   function paintChips() { for (const c of chips) c.setAttribute('aria-pressed', String(c.textContent === unitIn.value.trim())); }
   paintChips();
   rows.unit = field(t('item.unit'), unitIn, { extra: h('div.chips.unit-chips', null, chips) });
+
+  // 来自食谱的那几份（放在单位后面：先改自己的数量、单位，再看各道菜的和一共多少）：菜名（抄下来的；没抄到用食谱现在的名字）+ 用量 + 拿掉（×）。
+  // 拿掉的先藏起来，「保存」才改数据，「取消」就是没拿
+  const totalEl = h('p.f-help.need-total', { 'aria-live': 'polite' });
+  const needRows = needs.map(([key, n]) => {
+    const r = n.recipeId ? liveRecipe(st, n.recipeId) : null;
+    const label = n.label.trim() || (r && r.name.trim()) || t('item.needUnnamed');
+    const x = h('button.icon-btn.need-x', { type: 'button', 'aria-label': t('item.needRemove', { name: label }), dataset: { fid: 'need-x-' + key }, onclick: () => {
+      dropped.add(key);
+      li.hidden = true;
+      paintTotal();
+      // 焦点给下一份的 ×（没有了给上一份的，都拿掉了给数量）
+      const i = needRows.findIndex(y => y.li === li), rest = needRows.filter(y => !y.li.hidden);
+      const next = rest.find(y => needRows.indexOf(y) > i) || rest[rest.length - 1];
+      (next ? next.x : qtyIn).focus();
+    } }, icon('x'));
+    const li = h('li.need-row', { dataset: { key } }, h('span.need-label', null, label), h('span.need-qty', null, qtyLabel(n.qty, n.unit)), x);
+    return { li, x };
+  });
+  function paintTotal() {
+    if (!needs.length) return;
+    const q = readQty(qtyIn.value);
+    const total = totalLabel({ qty: Number.isFinite(q) ? q : null, unit: unitIn.value, needs: Object.fromEntries(needs.filter(([k]) => !dropped.has(k))) });
+    totalEl.textContent = total ? t('item.needsTotal', { total }) : t('item.needsTotalNone');
+  }
+  if (needs.length) rows.needs = field(t('item.fromRecipes'), h('ul.need-list', null, needRows.map(x => x.li)), { extra: totalEl });
+  paintTotal();
 
   // 商店：没归档的按顺序；现在指定的那家归档了也留着（标出来），不然一打开就悄悄换成「未指定」
   const stores = live(st, 'stores').filter(s => !s.archived || s.id === init.storeId).sort(byOrder);
@@ -100,7 +132,7 @@ export function itemSheet(ctx, itemId) {
   rows.listId = field(t('item.list'), listSel, { help: t('item.listHelp') });
 
   const vals = () => ({ name: nameIn.value.trim(), qty: qtyIn.value.trim(), unit: unitIn.value.trim(), storeId: storeSel.value, categoryId: catSel.value,
-    note: noteIn.value, status: general ? status : init.status, url: urlIn.value.trim(), price: priceIn.value.trim(), listId: listSel.value });
+    note: noteIn.value, status: general ? status : init.status, url: urlIn.value.trim(), price: priceIn.value.trim(), listId: listSel.value, dropNeeds: [...dropped].sort().join('\n') });
   const changed = () => { const v = vals(); return Object.keys(init).filter(k => v[k] !== init[k]); };
   const dirty = () => changed().length > 0;
 
@@ -122,7 +154,7 @@ export function itemSheet(ctx, itemId) {
     const v = vals();
     /** @type {Record<string, any>} */
     const patch = {};
-    for (const k of changed()) if (k !== 'listId') patch[k] = k === 'storeId' || k === 'categoryId' ? v[k] || null : v[k];
+    for (const k of changed()) if (k !== 'listId') patch[k] = k === 'storeId' || k === 'categoryId' ? v[k] || null : k === 'dropNeeds' ? [...dropped] : v[k];
     const cur = liveItem(ctx.state, itemId);
     if (!cur) { s.close(); ctx.toast(t('item.err.gone')); return; }
     const to = v.listId !== cur.listId ? liveList(ctx.state, v.listId) : null;

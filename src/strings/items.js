@@ -1,9 +1,9 @@
 // 清单里的东西：已经在清单上的提示、编辑面板（名字、数量、单位、商店、分类、备注、状态、链接、价格、所在的清单（换一张就移过去）、删除）、
-// 一行左右滑露出的按钮（item.sw*：按钮上的字短，读屏念的带上名字）、错误提示。
+// 一行左右滑露出的按钮（item.sw*：按钮上的字短，读屏念的带上名字）、来自食谱的那几份（item.own*、item.need*、item.fromRecipes）、错误提示。
 // item.err.* 是 core/items.js 的 validateItemPatch / editItem 返回的键。繁體（台灣）用台灣用語。
 export const STRINGS = {
   'zh-Hans': {
-    'item.exists': '「{name}」已经在清单上了', 'item.edit': '编辑「{name}」', 'item.editTitle': '编辑',
+    'item.exists': '「{name}」已经在清单上了', 'item.own': '「{name}」已经因为食谱在清单上了，另记了你自己要的 {qty}', 'item.edit': '编辑「{name}」', 'item.editTitle': '编辑',
     'item.name': '名字', 'item.qty': '数量', 'item.qtyDec': '减一', 'item.qtyInc': '加一', 'item.qtyPh': '不写',
     'item.unit': '单位', 'item.unitPh': '比如 盒',
     'item.store': '商店', 'item.storeNone': '未指定', 'item.storeArchived': '{name}（已归档）', 'item.storeHelp': '只改这一次，不会改掉以后的默认。',
@@ -14,11 +14,13 @@ export const STRINGS = {
     'item.delete': '删除这一样', 'item.deleted': '已删除「{name}」',
     'item.swEdit': '编辑', 'item.swDelete': '删除「{name}」',
     'item.discardQ': '放弃没保存的修改？', 'item.discard': '放弃',
+    'item.ownQty': '自己加的', 'item.fromRecipes': '来自食谱', 'item.needsTotal': '清单上显示一共：{total}', 'item.needsTotalNone': '清单上不显示数量（都没写数量）',
+    'item.needRemove': '拿掉「{name}」的这一份', 'item.needUnnamed': '一道菜',
     'item.err.name': '名字不能空着', 'item.err.nameTaken': '这张清单上已经有同名的了', 'item.err.qty': '数量要大于 0，最多 9999',
     'item.err.url': '链接要以 http:// 或 https:// 开头', 'item.err.price': '价格要是 0 或更大的数字', 'item.err.gone': '这一样已经不在了',
   },
   'zh-Hant-TW': {
-    'item.exists': '「{name}」已經在清單上了', 'item.edit': '編輯「{name}」', 'item.editTitle': '編輯',
+    'item.exists': '「{name}」已經在清單上了', 'item.own': '「{name}」已經因為食譜在清單上了，另外記下你自己要的 {qty}', 'item.edit': '編輯「{name}」', 'item.editTitle': '編輯',
     'item.name': '名稱', 'item.qty': '數量', 'item.qtyDec': '減一', 'item.qtyInc': '加一', 'item.qtyPh': '不填',
     'item.unit': '單位', 'item.unitPh': '例如 盒',
     'item.store': '商店', 'item.storeNone': '未指定', 'item.storeArchived': '{name}（已封存）', 'item.storeHelp': '只改這一次，不會改掉以後的預設。',
@@ -29,11 +31,13 @@ export const STRINGS = {
     'item.delete': '刪除這一項', 'item.deleted': '已刪除「{name}」',
     'item.swEdit': '編輯', 'item.swDelete': '刪除「{name}」',
     'item.discardQ': '捨棄沒儲存的修改？', 'item.discard': '捨棄',
+    'item.ownQty': '自己加的', 'item.fromRecipes': '來自食譜', 'item.needsTotal': '清單上顯示總共：{total}', 'item.needsTotalNone': '清單上不顯示數量（都沒填數量）',
+    'item.needRemove': '拿掉「{name}」的這一份', 'item.needUnnamed': '一道菜',
     'item.err.name': '名稱不能空白', 'item.err.nameTaken': '這張清單上已經有同名的了', 'item.err.qty': '數量要大於 0，最多 9999',
     'item.err.url': '連結要以 http:// 或 https:// 開頭', 'item.err.price': '價格要是 0 或更大的數字', 'item.err.gone': '這一項已經不在了',
   },
   en: {
-    'item.exists': '“{name}” is already on the list', 'item.edit': 'Edit “{name}”', 'item.editTitle': 'Edit Item',
+    'item.exists': '“{name}” is already on the list', 'item.own': '“{name}” was already on the list for a recipe; added your own {qty}', 'item.edit': 'Edit “{name}”', 'item.editTitle': 'Edit Item',
     'item.name': 'Name', 'item.qty': 'Quantity', 'item.qtyDec': 'Decrease', 'item.qtyInc': 'Increase', 'item.qtyPh': 'None',
     'item.unit': 'Unit', 'item.unitPh': 'e.g. bag',
     'item.store': 'Store', 'item.storeNone': 'None', 'item.storeArchived': '{name} (archived)', 'item.storeHelp': 'Just for this time; your usual store stays the same.',
@@ -44,6 +48,8 @@ export const STRINGS = {
     'item.delete': 'Delete Item', 'item.deleted': 'Deleted “{name}”',
     'item.swEdit': 'Edit', 'item.swDelete': 'Delete “{name}”',
     'item.discardQ': 'Discard unsaved changes?', 'item.discard': 'Discard',
+    'item.ownQty': 'Your own amount', 'item.fromRecipes': 'From recipes', 'item.needsTotal': 'Shown on the list: {total}', 'item.needsTotalNone': 'No amount shown on the list (none written)',
+    'item.needRemove': 'Remove the amount for “{name}”', 'item.needUnnamed': 'A dish',
     'item.err.name': 'Name can’t be empty', 'item.err.nameTaken': 'This list already has an item with that name', 'item.err.qty': 'Quantity must be more than 0 and at most 9999',
     'item.err.url': 'Links must start with http:// or https://', 'item.err.price': 'Price must be a number, 0 or more', 'item.err.gone': 'This item no longer exists',
   },

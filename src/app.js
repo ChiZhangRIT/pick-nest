@@ -4,11 +4,13 @@
 // export function render(main, params, ctx) → 清理函数 | { cleanup?(), onChange?(info), flush?() } | undefined
 //   main    空的容器（<section class="pane view view-<name>">，双栏时 .pane-list / .pane-detail，一栏 .pane-main），页面自己画标题和内容
 //   params  { name, path, id, sub, query, pane, selected, hash }
-//           name: 'lists' | 'list' | 'stores' | 'store' | 'shop' | 'search' | 'settings' | 'deleted'
+//           name: 'lists' | 'list' | 'stores' | 'store' | 'shop' | 'search' | 'recipes' | 'recipe' | 'recipeEdit' | 'settings' | 'deleted'
 //           #/ → lists（首页「清单」）；#/l/<listId> → list（一张清单，id；清单不在了由页面自己回首页）；
 //           #/stores → stores（「商店」）；#/s/<storeId> → store（一家店，id；#/s/none 是「未指定」；商店不在了由页面自己回「商店」）；
 //           #/l/<listId>?shop=1、#/s/<storeId>?shop=1 → shop（购物模式，id，sub 'list' | 'store'）；
 //           #/search、#/search?q=<词> → search（query.q）；
+//           #/recipes → recipes（「食谱」）；#/r/<recipeId> → recipe（一道食谱，id；不在了由页面自己回「食谱」）；
+//           #/r/new → recipeEdit（新建，sub 'new'）；#/r/<recipeId>/edit → recipeEdit（改，id）；
 //           #/settings → settings（sub null）；#/settings/stores、/categories、/sync、/data → settings（sub 'stores' | 'categories' | 'sync' | 'data'）；
 //           #/deleted → deleted（最近删除，从设置首页「数据」那一组进去）；不认识的地址 → lists
 //           pane: 'main'（一栏）| 'list'（双栏左）| 'detail'（双栏右）；selected: 双栏时右栏正在看的清单 / 商店的 id（左栏高亮那一行）
@@ -17,17 +19,18 @@
 //            否则 app 把这个页面整个重画一遍（保留滚动位置；带 data-fid 的控件重画后恢复焦点）。
 //   flush：页面上点过、还没写进数据的（勾选要停一下才改数据）马上写进去。切到后台时 app 先调它，再决定要不要马上上传
 //   三种布局（照 babble）：
-//     手机（<720px）：顶层页面（#/、#/stores、#/settings）显示底栏；推入的页面（#/l/…、#/s/…、#/search、#/settings/…、#/deleted）不显示底栏，自己画返回按钮（ctx.back）。
-//     侧栏（720–999px）：左边侧栏（清单、商店、搜索、设置），内容栏自己滚动；推入的页面照样有返回（和 babble 一样）。
+//     手机（<720px）：顶层页面（#/、#/stores、#/recipes、#/settings）显示底栏；推入的页面（#/l/…、#/s/…、#/r/…、#/search、#/settings/…、#/deleted）不显示底栏，自己画返回按钮（ctx.back）。
+//     侧栏（720–999px）：左边侧栏（清单、商店、食谱、搜索、设置），内容栏自己滚动；推入的页面照样有返回（和 babble 一样）。
 //     双栏（≥1000px，iPad 横放、Mac）：侧栏 + 两栏。#/、#/l/…、#/search 左栏是首页，右栏是那张清单 / 搜索（#/ 时右栏是提示）；
-//            #/stores、#/s/… 左栏是「商店」，右栏是那家店（#/stores 时是 App 图标 + 提示）。右栏的返回由 CSS 藏起来（左栏就是上一页）；别的页面一栏、有返回。
+//            #/stores、#/s/… 左栏是「商店」，右栏是那家店（#/stores 时是 App 图标 + 提示）；#/recipes、#/r/… 左栏是「食谱」，右栏是那道食谱 / 编辑食谱。
+//            右栏的返回由 CSS 藏起来（左栏就是上一页；编辑食谱的「取消」是 .back.text，照样显示）；别的页面一栏、有返回。
 //     购物模式不管哪种布局都占满整个窗口（没有底栏、侧栏）。
 //   换布局（转 iPad、拉窗口）：同一栏的页面原样留着；要换栏时，有 onChange 的页面（清单页、一家店、搜索）整个搬过去（params.pane / selected 原地更新），
 //            输入框里打了一半的字、焦点都不丢；其余重画。要随布局变化的页面听 ctx.on('layout')。
 //
 // ===== ctx =====
 // 数据（src/core/state.js 的包装；改数据一律走这些，app 会保存、重画）
-//   ctx.state                  当前数据（只读）：{ app, v, data: { lists, items, stores, categories, memory }, settings, settingsAt }
+//   ctx.state                  当前数据（只读）：{ app, v, data: { lists, items, stores, categories, memory, recipes }, settings, settingsAt }
 //   ctx.local                  本机设置 picknest.local（只读）：{ lang, theme, device, sync, lastBackupAt, view, storeView, storeFilter }
 //   ctx.mutate(fn, { undoLabel })  fn(state) 直接改（同步函数），返回 fn 的返回值；修改时间自动补；给 undoLabel 会弹 10 秒「撤销」提示
 //   ctx.put(collection, rec, { undoLabel })   新建（没有 id 就生成）或整条替换：整理字段、盖修改时间，返回存好的记录。
@@ -50,6 +53,8 @@
 //   ctx.route                  当前路由（同 params 的结构，不含 pane / selected）；ctx.params 是这个页面挂载时的路由（双栏时 pane / selected 原地更新）
 //   ctx.refresh()              重画当前所有页面（保留滚动，焦点在带 data-fid 的控件上时重画后放回去）
 //   ctx.layout()               'phone'（<720）| 'side'（720–999，有侧栏）| 'two'（≥1000，侧栏 + 双栏）
+//   ctx.guard(isDirty, onDiscard)  离开前检查（照 babble；编辑食谱用）：isDirty() 为 true 时，换页（链接、底栏、侧栏、ctx.navigate、ctx.back、浏览器后退）、
+//                              关掉标签页之前先问「放弃没保存的修改？」[继续编辑] [放弃]，放弃了先调 onDiscard()；ctx.guard(null) 取消；页面清理时自动取消
 // 同步（core/sync.js；令牌只在 picknest.local 的 sync 里）
 //   ctx.sync.now(opts)         立即同步一轮 → Promise<{ ok, skipped?, error?, offline? }>（本机数据有问题时不同步 → { ok: false, skipped: true }）
 //   ctx.sync.connect({ repo, token, tokenExp })  保存同步设置（只存本机）并马上同步一次 → 同上（tokenExp：用户填的令牌到期时刻，可选）
@@ -89,11 +94,15 @@ import * as settings from './views/settings.js';
 import * as deleted from './views/deleted.js';
 import * as shop from './views/shop.js';
 import * as search from './views/search.js';
+import * as recipes from './views/recipes.js';
+import * as recipe from './views/recipe.js';
+import * as recipeEdit from './views/recipeEdit.js';
+import { liveRecipe, recipeName } from './core/recipes.js';
 
-const VIEWS = { lists, list, stores, store, shop, search, settings, deleted };
+const VIEWS = { lists, list, stores, store, shop, search, recipes, recipe, recipeEdit, settings, deleted };
 const SETTINGS_SUBS = ['stores', 'categories', 'sync', 'data'];
 const THEME_COLOR = { light: '#f6f5f0', dark: '#121412' };          // 和 styles.css 的 --bg 一样：状态栏和页面连成一片
-const ID_PREFIX = { lists: 'l_', items: 'i_', stores: 's_', categories: 'c_', memory: 'm_' };
+const ID_PREFIX = { lists: 'l_', items: 'i_', stores: 's_', categories: 'c_', memory: 'm_', recipes: 'r_' };
 
 state.load();
 const S = () => state.getState();
@@ -122,6 +131,10 @@ function parseRoute(hash) {
   else if (a === 'stores') r = { name: 'stores' };
   else if (a === 's' && path[1]) r = shopping ? { name: 'shop', sub: 'store', id: path[1] } : { name: 'store', id: path[1] };
   else if (a === 'search') r = { name: 'search' };
+  else if (a === 'recipes') r = { name: 'recipes' };
+  else if (a === 'r' && path[1] === 'new') r = { name: 'recipeEdit', sub: 'new' };
+  else if (a === 'r' && path[1] && path[2] === 'edit') r = { name: 'recipeEdit', id: path[1] };
+  else if (a === 'r' && path[1]) r = { name: 'recipe', id: path[1] };
   else r = { name: 'lists' };                  // #/ 和不认识的地址（比如以后才有的页面的旧链接）
   return { id: null, sub: null, ...r, path, query, hash: '#/' + raw };
 }
@@ -129,9 +142,9 @@ const route = () => parseRoute(location.hash);
 
 const mqSide = matchMedia('(min-width: 720px)'), mqTwo = matchMedia('(min-width: 1000px)');
 const layout = () => (mqTwo.matches ? 'two' : mqSide.matches ? 'side' : 'phone');
-const TOP_LEVEL = r => r.name === 'lists' || r.name === 'stores' || (r.name === 'settings' && !r.sub);
-// 双栏时左栏放什么：清单这一边（首页、一张清单、搜索）是首页，商店这一边（「商店」、一家店）是「商店」
-const LEFT = { lists: 'lists', list: 'lists', search: 'lists', stores: 'stores', store: 'stores' };
+const TOP_LEVEL = r => r.name === 'lists' || r.name === 'stores' || r.name === 'recipes' || (r.name === 'settings' && !r.sub);
+// 双栏时左栏放什么：清单这一边（首页、一张清单、搜索）是首页，商店这一边（「商店」、一家店）是「商店」，食谱这一边（「食谱」、一道食谱、编辑）是「食谱」
+const LEFT = { lists: 'lists', list: 'lists', search: 'lists', stores: 'stores', store: 'stores', recipes: 'recipes', recipe: 'recipes', recipeEdit: 'recipes' };
 
 /** 这个路由在这个布局下要画哪些栏（照 babble）。双栏时左栏本身的地址（#/、#/stores）右栏是提示（'empty'） */
 function planPanes(r, lay) {
@@ -158,8 +171,27 @@ function track(hash) {
 const norm = p => '#/' + String(p || '').replace(/^#?\/?/, '');
 let currentHash = null;
 
+// ---------- 离开前先问（照 babble 的 ctx.guard：编辑食谱改了没保存） ----------
+// 没有要问的时候一切照旧、同步地换页（iPhone 要在点按里画出新页面才弹键盘）；有的时候先问「放弃没保存的修改？」，放弃了再走
+const safeCall = fn => { try { return !!fn(); } catch (e) { return false; } };
+const guarded = () => Object.values(mounted).some(m => m.guard && safeCall(m.guard));
+function confirmLeave() {
+  return confirmDialog({ message: t('item.discardQ'), cancelLabel: t('common.keepEditing'), confirmLabel: t('item.discard'), danger: true })
+    .then(ok => {
+      if (!ok) return false;
+      // 放弃了：告诉有修改的页面（编辑食谱要删掉另存的草稿，不然下次打开又回来了）
+      for (const m of Object.values(mounted)) {
+        const dirty = m.guard && safeCall(m.guard), onDiscard = m.guardDiscard;
+        m.guard = null; m.guardDiscard = null;
+        if (dirty && onDiscard) { try { onDiscard(); } catch (e) { console.error(e); } }
+      }
+      return true;
+    });
+}
+
 function navigate(path, { replace = false } = {}) {
   if (state.storageIssue()) return false;
+  if (guarded()) { confirmLeave().then(ok => { if (ok) navigate(path, { replace }); }); return false; }
   const target = norm(path);
   if ((location.hash || '#/') === target && !replace) { refresh(); return true; }
   if (replace) {
@@ -186,6 +218,8 @@ function replaceHash(path) {
   for (const m of Object.values(mounted)) if (m.params.hash === before) { m.params.hash = after; m.key = m.slot + '|' + m.name + '|' + after; }
 }
 function back(fallback = '/') {
+  // 先问再后退：后退以后再问的话，历史记录已经退了一格，留下来时只能把地址改回去
+  if (guarded()) { confirmLeave().then(ok => { if (ok) back(fallback); }); return; }
   if (navStack.length > 1) history.back();
   else navigate(fallback, { replace: true });
 }
@@ -196,6 +230,9 @@ function pageTitle(r) {
   if (r.name === 'lists') return t('nav.lists');
   if (r.name === 'stores') return t('nav.stores');
   if (r.name === 'search') return t('nav.search');
+  if (r.name === 'recipes') return t('nav.recipes');
+  if (r.name === 'recipe') { const rc = liveRecipe(S(), r.id); return rc ? recipeName(rc, t) : null; }
+  if (r.name === 'recipeEdit') return t(r.sub === 'new' ? 'rcp.newTitle' : 'rcp.editTitle');
   if (r.name === 'settings') return t(r.sub ? SUB_TITLE[r.sub] : 'nav.settings');
   if (r.name === 'deleted') return t('deleted.title');
   if (r.name === 'list') { const l = liveList(S(), r.id); return l ? listName(l, t) : null; }
@@ -207,6 +244,20 @@ const backLabel = (fallback) => (navStack.length > 1 && pageTitle(parseRoute(nav
 function onUrlChange() {
   const target = location.hash || '#/';
   if (target === currentHash) return;
+  // 浏览器自己的后退 / 前进（Safari 标签页里边缘右滑、Mac 上 ⌘[）：地址已经变了，先改回原地址，问过再走（照 babble）。
+  // App 里的链接、按钮在这之前就问过了（navigate、back、下面的 click）
+  if (guarded()) {
+    const here = currentHash || '#/';
+    try { history.replaceState(history.state, '', here); } catch (e) { /* 换不成也照样问 */ }
+    // 放弃了：把这一格换回它本来的地址（不能 location.hash = target：那是再推一格，历史变成「食谱、编辑、食谱」，
+    // 在食谱页上点「‹ 食谱」后退又回到编辑页）。babble 的同一处也该这样改
+    confirmLeave().then(ok => {
+      if (!ok) return;
+      try { history.replaceState(history.state, '', target); } catch (e) { location.hash = target; }
+      onUrlChange();
+    });
+    return;
+  }
   if (currentHash) rememberScroll();
   currentHash = target;
   track(target);
@@ -214,6 +265,16 @@ function onUrlChange() {
 }
 window.addEventListener('hashchange', onUrlChange);
 window.addEventListener('popstate', onUrlChange);
+// 有没保存的修改时点 App 里的链接（底栏、侧栏、双栏左栏的一行）：在浏览器换地址之前拦下来先问，历史记录不乱；面板里的链接不管
+document.addEventListener('click', e => {
+  if (!guarded() || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  const a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+  if (!a || a.closest('dialog')) return;
+  e.preventDefault();
+  e.stopPropagation();
+  confirmLeave().then(ok => { if (ok) navigate(a.getAttribute('href')); });
+}, true);
+window.addEventListener('beforeunload', e => { if (guarded()) { e.preventDefault(); e.returnValue = ''; } });
 
 // ---------- 主题 ----------
 const prefersDark = matchMedia('(prefers-color-scheme: dark)');
@@ -348,6 +409,7 @@ const ctx = {
   setTheme(th) { state.setLocal({ theme: th }); applyTheme(); },
   theme: () => document.documentElement.dataset.theme || 'light',
   toast, sheet, confirm: confirmDialog,
+  guard: () => {},              // 每个页面拿到的是自己的版本（见 viewCtx）
   on, onChange: (fn) => on('change', fn),
   build: BUILD,
   updateReady: () => updateReady,
@@ -363,25 +425,27 @@ function renderShell(r) {
   document.body.dataset.route = r.name;
   document.body.dataset.layout = layout();
   document.body.dataset.tabs = TOP_LEVEL(r) ? '1' : '0';
-  // 清单页算在「清单」下面，一家店算在「商店」下面，购物模式算在它来的那一边，最近删除算在「设置」下面
-  const cur = r.name === 'list' ? 'lists' : r.name === 'store' ? 'stores' : r.name === 'shop' ? (r.sub === 'store' ? 'stores' : 'lists')
-    : r.name === 'deleted' ? 'settings' : r.name;
+  // 清单页算在「清单」下面，一家店算在「商店」下面，一道食谱、编辑食谱算在「食谱」下面，购物模式算在它来的那一边，最近删除算在「设置」下面
+  const cur = r.name === 'list' ? 'lists' : r.name === 'store' ? 'stores' : r.name === 'recipe' || r.name === 'recipeEdit' ? 'recipes'
+    : r.name === 'shop' ? (r.sub === 'store' ? 'stores' : 'lists') : r.name === 'deleted' ? 'settings' : r.name;
   const item = (id, href, ic, label, onclick = null) => h('a.nav-item' + (cur === id ? '.on' : ''), { href, onclick, 'aria-current': cur === id ? 'page' : null }, ic, h('span', null, label));
   const tab = (id, href, ic, label) => h('a.tab' + (cur === id ? '.on' : ''), { href, 'aria-current': cur === id ? 'page' : null }, ic, h('span', null, label));
   $('#side').replaceChildren(
     h('div.brand', null, h('img', { src: 'icons/icon-180.png', alt: '', width: 32, height: 32, onerror: e => { e.target.style.visibility = 'hidden'; } }), h('b', null, t('common.appName'))),
     // 搜索在点按里就换页（search.searchLink）：iPad 上搜索框的键盘才弹得出来；已经在搜索页上就只把焦点给搜索框，搜索词不清掉
     h('nav', { 'aria-label': t('nav.label') }, item('lists', '#/', icon('list'), t('nav.lists')), item('stores', '#/stores', icon('store'), t('nav.stores')),
-      item('search', '#/search', icon('search'), t('nav.search'), search.searchLink(ctx))),
+      item('recipes', '#/recipes', icon('recipe'), t('nav.recipes')), item('search', '#/search', icon('search'), t('nav.search'), search.searchLink(ctx))),
     h('div.side-foot', null, h('nav', { 'aria-label': t('nav.settings') }, item('settings', '#/settings', icon('gear'), t('nav.settings'))), ctx.syncBadge()),
   );
   const tabs = $('#tabs');
   tabs.setAttribute('aria-label', t('nav.label'));
-  tabs.replaceChildren(tab('lists', '#/', icon('list'), t('nav.lists')), tab('stores', '#/stores', icon('store'), t('nav.stores')), tab('settings', '#/settings', icon('gear'), t('nav.settings')));
+  // 底栏：清单 · 商店 · 食谱 · 设置（第 9 步「计划」和计划页一起加，不放点了没反应的入口）
+  tabs.replaceChildren(tab('lists', '#/', icon('list'), t('nav.lists')), tab('stores', '#/stores', icon('store'), t('nav.stores')),
+    tab('recipes', '#/recipes', icon('recipe'), t('nav.recipes')), tab('settings', '#/settings', icon('gear'), t('nav.settings')));
 }
 
 // ---------- 页面挂载（一栏，或者双栏的左右两栏；照 babble） ----------
-const mounted = {};           // slot（'main' | 'list' | 'detail'）→ { slot, name, key, params, el, handle, offs }
+const mounted = {};           // slot（'main' | 'list' | 'detail'）→ { slot, name, key, params, el, handle, offs, guard }
 const scroller = (el) => (layout() === 'phone' ? document.scrollingElement : el);
 // 后退回来时的滚动位置：每一栏各记各的（键是 mount 的 key：栏 | 页面 | 地址）。双栏时左栏的首页、右栏的清单页滚到哪儿不一样，
 // 只记一个数的话会把右栏的位置套到左栏上（右栏只是提示时又把左栏的丢了）；换了栏、换了页面的不套
@@ -393,15 +457,16 @@ function viewCtx(m) {
   const c = Object.create(ctx);
   c.on = (ev, fn) => { const off = on(ev, fn); m.offs.push(off); return off; };
   c.onChange = (fn) => c.on('change', fn);
+  c.guard = (fn, onDiscard) => { m.guard = typeof fn === 'function' ? fn : null; m.guardDiscard = m.guard && typeof onDiscard === 'function' ? onDiscard : null; };
   c.params = m.params;
   return c;
 }
 function runView(m) {
-  m.offs = []; m.handle = null;
-  // 双栏右边还没选的时候：App 图标 + 一句提示（和 Babble 一样；左栏是首页就说选清单，是「商店」就说选商店）。图标是装饰，读屏只念那句话
+  m.offs = []; m.handle = null; m.guard = null; m.guardDiscard = null;
+  // 双栏右边还没选的时候：App 图标 + 一句提示（和 Babble 一样；左栏是首页就说选清单，是「商店」就说选商店，是「食谱」就说选食谱）。图标是装饰，读屏只念那句话
   if (m.name === 'empty') {
-    const st = m.params.name === 'stores';
-    m.el.append(h('div.detail-empty', null, h('img', { src: 'icons/icon.svg', alt: '', width: 96, height: 96, onerror: e => e.target.remove() }), h('p', null, t(st ? 'store.pick' : 'list.pick'))));
+    const pick = m.params.name === 'stores' ? 'store.pick' : m.params.name === 'recipes' ? 'rcp.pick' : 'list.pick';
+    m.el.append(h('div.detail-empty', null, h('img', { src: 'icons/icon.svg', alt: '', width: 96, height: 96, onerror: e => e.target.remove() }), h('p', null, t(pick))));
     return;
   }
   try {
@@ -411,7 +476,7 @@ function runView(m) {
 }
 function cleanupView(m) {
   for (const off of m.offs || []) off();
-  m.offs = [];
+  m.offs = []; m.guard = null; m.guardDiscard = null;
   try { if (m.handle && m.handle.cleanup) m.handle.cleanup(); } catch (e) { console.error(e); }
   m.handle = null;
 }
@@ -435,7 +500,7 @@ function mount(p, main) {
   const el = old ? old.el : h('section.pane');
   el.className = `pane pane-${p.slot} view view-${p.name}`;
   el.replaceChildren();
-  const m = { slot: p.slot, name: p.name, key, params: p.params, el, handle: null, offs: [] };
+  const m = { slot: p.slot, name: p.name, key, params: p.params, el, handle: null, offs: [], guard: null };
   mounted[p.slot] = m;
   if (!old) main.append(el);
   runView(m);

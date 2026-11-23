@@ -2,7 +2,7 @@
 // memory：买过的东西（跨清单的习惯），每个 normName 一条，id = 'm_' + hash64(normName)。
 //   加进清单时 recordUse（uses + 1、lastAt、最近一次的写法、kind）；勾成已买时 recordPurchase（这次的商店 n + 1）；
 //   改分类、单位时 recordPrefs（下次同名的东西直接用，改成「未分类」也记得）。常去的商店 usualStore 按「买的次数」算：偶尔换一家买一次不改习惯。
-//   输入联想 suggestions 也从这里来。
+//   输入联想 suggestions 也从这里来。常备品（staple：盐、油、生抽……）也记在这里，按名字，不分食谱：加食谱的食材时默认不勾。
 // 写法和 items.js 一样：直接改传进来的 state（在 ctx.mutate 里调用），记录经过 writeRecord 盖时间。
 import { normName, hash64, writeRecord } from './store.js';
 import { own, isObj, str } from './util.js';
@@ -64,6 +64,20 @@ export function recordPrefs(state, name, kind, prefs, now = Date.now()) {
     if ('categoryId' in prefs) { m.categoryId = prefs.categoryId || null; m.categorySet = true; }
     if ('unit' in prefs) m.unit = str(prefs.unit).trim();
   }, now);
+}
+
+/** 这个名字是不是常备品（memory 里标过 staple） @param {State} state @param {unknown} name */
+export const isStaple = (state, name) => { const m = memoryOf(state, name); return !!(m && m.staple === true); };
+
+/**
+ * 标 / 取消常备品（「加到清单」面板里每一行的「常备品」）：按名字记，以后所有食谱、计划都认。取消就去掉这个键（没标过的记录上没有它）。
+ * 还没有这个名字的记录就新建一条（uses 是 0：只是记住了，不算买过）；值没变不盖新时间
+ * @param {State} state @param {string} name @param {boolean} on @param {number} [now]
+ */
+export function setStaple(state, name, on, now = Date.now()) {
+  const nm = str(name).trim();
+  if (!normName(nm) || isStaple(state, nm) === !!on) return memoryOf(state, nm);
+  return change(state, nm, 'grocery', m => { if (on) m.staple = true; else delete m.staple; }, now);
 }
 
 /**

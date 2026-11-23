@@ -55,7 +55,7 @@ export function dataPage(main, params, ctx) {
     let b;
     try { b = readBackup(await f.text()); }
     catch (e) { ctx.toast(t(e instanceof BackupError ? 'backup.err.' + e.code : 'backup.err.read'), { ms: 8000 }); return; }
-    const message = [t('backup.counts', b.counts), b.exportedAt ? t('backup.from', { time: fmtFull(b.exportedAt, lang) }) : null, t('backup.merge')].filter(Boolean).join('\n');
+    const message = [t('backup.counts', b.counts), b.counts.recipes ? t('backup.countsRecipes', { n: b.counts.recipes }) : null, b.exportedAt ? t('backup.from', { time: fmtFull(b.exportedAt, lang) }) : null, t('backup.merge')].filter(Boolean).join('\n');
     if (!(await ctx.confirm({ title: t('backup.restoreQ'), message, confirmLabel: t('backup.go') }))) return;
     const { changed } = ctx.mergeIn(b.state);
     // 开着同步时合并的结果由 app 马上传（不等两秒的防抖，app.js）

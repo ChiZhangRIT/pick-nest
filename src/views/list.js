@@ -5,15 +5,18 @@
 // 点左边的圆圈 = 勾掉 / 取消，点这一行别的地方 = 编辑：行和勾选的节奏（先在原地打勾，停一下再挪）在 ui/checklist.js，商店页也用它。
 // 行能左右滑（也在 ui/checklist.js）：往右露出「编辑」，往左露出「删除」，点了按钮才做；正在滑时数据变了，滑完再重画。
 // 顶栏右边「开始购物」进购物模式（#/l/<id>?shop=1，views/shop.js）。
+// 食材清单上打字时，联想的最后还有「用到它的食谱」（core/recipes.js 的 recipesUsing，最多 3 道），点了打开「加到清单」（ui/addToList.js），默认加到这张清单。
 // ⌘N（别的系统 Ctrl+N）：光标放进快速添加（Babble、房屋账本的 ⌘N 是新建一条，这里新建的就是一样东西）；一栏的清单页、双栏右栏的清单页都算。
 import { h, icon, backText } from '../ui/dom.js';
 import { t } from '../i18n.js';
 import { listName, needCounts } from '../core/store.js';
 import { listTile } from '../ui/listTile.js';
 import { liveList, addFromInput, addItem, clearDone, countItems, storeExists } from '../core/items.js';
-import { parseQuickAdd } from '../core/parse.js';
+import { parseQuickAdd, qtyLabel } from '../core/parse.js';
 import { suggestions } from '../core/memory.js';
 import { groupNeed, collatorFor, listView, listViewPatch } from '../core/group.js';
+import { recipesUsing, recipeName } from '../core/recipes.js';
+import { addToListSheet } from '../ui/addToList.js';
 import { setArchived, deleteList } from '../core/lists.js';
 import { checklist, foldSec, storeChip, groupSections } from '../ui/checklist.js';
 import { listSheet } from '../ui/listEditor.js';
@@ -92,10 +95,11 @@ export function render(main, params, ctx, deps = {}) {
     if (!text.trim()) return;
     after(ctx.mutate(s => addFromInput(s, listId, text, Date.now())));
   }
-  // 点联想：加以前买过的那个名字；输入里写了数量（「鸡蛋 12」时点「鸡蛋」）照样用上
+  // 点联想：加以前买过的那个名字；输入里写了数量（「鸡蛋 12」时点「鸡蛋」）照样用上。点的是食谱：打开「加到清单」，默认加到这张
   function pick(sg) {
     const l = list();
     if (!l) return;
+    if (sg.kind === 'recipe') { closeSugs(); addToListSheet(ctx, sg.id, { listId }); return; }
     const p = parseQuickAdd(input.value, { kind: l.kind });
     after(ctx.mutate(s => addItem(s, listId, { name: sg.name, qty: p.qty, unit: p.unit }, Date.now())));
     input.focus();
@@ -107,10 +111,16 @@ export function render(main, params, ctx, deps = {}) {
     cl.flash(r.id);
     // 已经在清单上的：数据没变、不会重画，现在就闪；新加的、恢复的：重画后（onChange → drawBody）在新位置闪
     if (r.outcome === 'exists') { ctx.toast(t('item.exists', { name: r.item.name })); cl.flashNow(); }
+    // 只是因为食谱在清单上、这次写了数量：记成自己加的（行在原地，数量变了），说一句加了什么
+    else if (r.outcome === 'own') ctx.toast(t('item.own', { name: r.item.name, qty: qtyLabel(r.item.qty, r.item.unit) }));
   }
   function updateSugs() {
     const l = list();
-    sugs = l && input.value.trim() ? suggestions(ctx.state, listId, parseQuickAdd(input.value, { kind: l.kind }).name, { limit: 8 }) : [];
+    const name = l && input.value.trim() ? parseQuickAdd(input.value, { kind: l.kind }).name : '';
+    const items = name ? suggestions(ctx.state, listId, name, { limit: 8 }) : [];
+    // 食谱只给食材清单联想（一般清单上的「螺丝」不该冒出菜来）
+    const rs = name && l.kind === 'grocery' ? recipesUsing(ctx.state, name, collatorFor(ctx.lang())).slice(0, 3).map(r => ({ kind: 'recipe', id: r.id, name: recipeName(r, t) })) : [];
+    sugs = [...items, ...rs];
     active = -1;
     paintSugs();
   }
@@ -119,11 +129,18 @@ export function render(main, params, ctx, deps = {}) {
     sugBox.hidden = !open;
     input.setAttribute('aria-expanded', String(open));
     if (active >= 0) input.setAttribute('aria-activedescendant', 'lp-sug-' + active); else input.removeAttribute('aria-activedescendant');
-    sugBox.replaceChildren(...sugs.map((sg, i) => h('li.sug' + (i === active ? '.on' : ''), { id: 'lp-sug-' + i, role: 'option', 'aria-selected': String(i === active),
-      onclick: () => pick(sg) },
-    h('span.sug-name', null, sg.name),
-    sg.storeId && storeName(sg.storeId) ? h('span.sug-store', null, storeName(sg.storeId)) : null,
-    sg.inList ? h('span.sug-in', null, t('list.sugInList')) : null)));
+    const firstRecipe = sugs.findIndex(sg => sg.kind === 'recipe');
+    sugBox.replaceChildren(...sugs.flatMap((sg, i) => {
+      const opt = h('li.sug' + (sg.kind === 'recipe' ? '.sug-recipe' : '') + (i === active ? '.on' : ''), { id: 'lp-sug-' + i, role: 'option', 'aria-selected': String(i === active),
+        onclick: () => pick(sg) },
+      sg.kind === 'recipe' ? icon('recipe', { cls: 'sug-ic' }) : null,
+      h('span.sug-name', null, sg.name),
+      sg.storeId && storeName(sg.storeId) ? h('span.sug-store', null, storeName(sg.storeId)) : null,
+      sg.inList ? h('span.sug-in', null, t('list.sugInList')) : null,
+      sg.kind === 'recipe' ? h('span.sug-in.sug-rcp', null, t('list.sugRecipe')) : null);
+      // 食谱前面一行小标题（不是选项：方向键跳过它，读屏从每一项的「食谱」标签听得出来）
+      return i === firstRecipe ? [h('li.sug-h', { role: 'presentation', 'aria-hidden': 'true' }, t('list.sugRecipes')), opt] : [opt];
+    }));
     fitSugs();
   }
   // iPhone 弹出键盘时页面（layout viewport）不变矮，变矮的是看得见的部分（visualViewport）：联想最多到键盘上面，多的在里面滚

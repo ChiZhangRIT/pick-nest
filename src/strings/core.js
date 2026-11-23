@@ -9,7 +9,7 @@ export const STRINGS = {
     'common.renderError': '这一页出错了：', 'common.safeMode': '数据还在。可以先导出一份留着。',
     'common.exportRaw': '导出数据（JSON）',
 
-    'nav.label': '主导航', 'nav.lists': '清单', 'nav.stores': '商店', 'nav.settings': '设置', 'nav.search': '搜索',
+    'nav.label': '主导航', 'nav.lists': '清单', 'nav.stores': '商店', 'nav.recipes': '食谱', 'nav.settings': '设置', 'nav.search': '搜索',
   },
 
   'zh-Hant-TW': {
@@ -20,7 +20,7 @@ export const STRINGS = {
     'common.renderError': '這一頁出錯了：', 'common.safeMode': '資料還在。可以先匯出一份留著。',
     'common.exportRaw': '匯出資料（JSON）',
 
-    'nav.label': '主要導覽', 'nav.lists': '清單', 'nav.stores': '商店', 'nav.settings': '設定', 'nav.search': '搜尋',
+    'nav.label': '主要導覽', 'nav.lists': '清單', 'nav.stores': '商店', 'nav.recipes': '食譜', 'nav.settings': '設定', 'nav.search': '搜尋',
   },
 
   en: {
@@ -31,6 +31,6 @@ export const STRINGS = {
     'common.renderError': 'This page hit an error:', 'common.safeMode': 'Your data is still here. You can export a copy first.',
     'common.exportRaw': 'Export data (JSON)',
 
-    'nav.label': 'Main', 'nav.lists': 'Lists', 'nav.stores': 'Stores', 'nav.settings': 'Settings', 'nav.search': 'Search',
+    'nav.label': 'Main', 'nav.lists': 'Lists', 'nav.stores': 'Stores', 'nav.recipes': 'Recipes', 'nav.settings': 'Settings', 'nav.search': 'Search',
   },
 };

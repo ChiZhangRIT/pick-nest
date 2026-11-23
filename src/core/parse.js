@@ -24,6 +24,10 @@ const EN_UNITS = ['lb', 'lbs', 'oz', 'g', 'kg', 'mg', 'ml', 'l', 'gal', 'gallon'
 // 写在名字后面照常（「socks 3 pairs」）
 const OF_UNITS = new Set(['pair', 'pairs', 'set', 'sets', 'sheet', 'sheets']);
 export const UNITS = [...ZH_UNITS, ...EN_UNITS];
+// 食谱里常见、买东西时很少写的单位：只在拆食谱的食材时认（core/recipes.js 的 parseIngredients）。
+// 「两」在这里是单位（「猪肉二两」「二两酒」）：快速添加里它更常是数字（「两盒牛奶」），所以那边不认
+export const RECIPE_UNITS = ['两', '勺', '汤匙', '大勺', '小勺', '茶匙', '碗', '瓣', '撮', '滴', 'cup', 'cups', 'tbsp', 'tsp', 'tablespoon', 'tablespoons',
+  'teaspoon', 'teaspoons', 'clove', 'cloves', 'pinch', 'slice', 'slices', 'stalk', 'stalks', 'sprig', 'sprigs'];
 
 /**
  * 编辑时单位输入框下面的快捷选项（按界面语言；都在 UNITS 里，测试会查）。是填进数据的值，不是界面文案，所以不经过 t()
@@ -49,7 +53,9 @@ function fold(s) {
 }
 /** @param {string} u */
 const foldUnit = u => fold(u.trim());
-const UNIT_KEYS = [...new Set(UNITS.map(foldUnit))].sort((a, b) => b.length - a.length);   // 长的先试：「毫升」不能认成「升」
+const keysOf = (/** @type {string[]} */ units) => [...new Set(units.map(foldUnit))].sort((a, b) => b.length - a.length);   // 长的先试：「毫升」不能认成「升」
+const UNIT_KEYS = keysOf(UNITS);
+const RECIPE_KEYS = keysOf([...UNITS, ...RECIPE_UNITS]);
 const LATIN = /[a-z]/;
 const CJK = /[㐀-鿿豈-﫿]/;
 const SPACE = /\s/;
@@ -57,6 +63,8 @@ const SEP = /[\s,，、:：]/;                       // 数字前面可以是这
 
 /** 认不认得这个单位（不分大小写，简繁都认） @param {unknown} u */
 export const isUnit = u => UNIT_KEYS.includes(foldUnit(str(u)));
+/** 拆食谱时认不认得这个单位（多认 RECIPE_UNITS：勺、两、cup……）：「鸡蛋 3 个」的「个」是左边数量的单位，不是下一样食材 @param {unknown} u */
+export const isRecipeUnit = u => RECIPE_KEYS.includes(foldUnit(str(u)));
 
 const CN_DIGIT = /** @type {Record<string, number>} */ ({ 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 });
 /** 中文数字：一到九、两、十、十二、二十、二十四、半 → 数字；别的 → null @param {string} s */
@@ -74,9 +82,9 @@ function arabic(s) {
 const roundQty = (/** @type {number} */ q) => Math.round(q * 1000) / 1000;
 const okQty = (/** @type {number | null} */ q) => q != null && Number.isFinite(q) && q > 0 && q <= QTY_MAX;
 
-/** f 从 i 开始的单位（最长的那个）；英文单位后面必须是空格或结尾（「2 gala apples」的 gal 不算） @param {string} f @param {number} i */
-function unitAt(f, i) {
-  for (const u of UNIT_KEYS) {
+/** f 从 i 开始的单位（最长的那个）；英文单位后面必须是空格或结尾（「2 gala apples」的 gal 不算） @param {string} f @param {number} i @param {string[]} keys */
+function unitAt(f, i, keys) {
+  for (const u of keys) {
     if (!f.startsWith(u, i)) continue;
     const after = f[i + u.length];
     if (LATIN.test(u) && after !== undefined && !SPACE.test(after)) continue;
@@ -86,9 +94,9 @@ function unitAt(f, i) {
   return null;
 }
 const OF = /^\s+of\s+/;                         // 「2 bags of rice」：名字是 rice，不是「of rice」
-/** f 在 end 结束的单位（最长的那个）；英文单位前面必须是数字或空格（「Small」的 l 不算） @param {string} f @param {number} end */
-function unitBefore(f, end) {
-  for (const u of UNIT_KEYS) {
+/** f 在 end 结束的单位（最长的那个）；英文单位前面必须是数字或空格（「Small」的 l 不算） @param {string} f @param {number} end @param {string[]} keys */
+function unitBefore(f, end, keys) {
+  for (const u of keys) {
     const start = end - u.length;
     if (start < 1 || f.slice(start, end) !== u) continue;
     if (LATIN.test(u) && !/[\d\s.]/.test(f[start - 1])) continue;
@@ -105,16 +113,24 @@ const cleanName = (/** @type {string} */ s) => s.replace(/[\s,，、:：]+$/u, '
  * qty: null = 输入里没写数量（加的时候用默认的 1）；unit: '' = 没写单位。unit 是原文里的写法（「個」「LB」原样保留）
  */
 
-/** 数字在前 @param {string} raw @param {string} f @param {boolean} grocery @returns {Parsed | null} */
-function leading(raw, f, grocery) {
+// 带分数「1 1/2」（食谱里常见：1 1/2 cups）：只在拆食谱时认。快速添加里「2 1/2 gal milk」更可能是 2 桶「半加仑」的牛奶，照旧
+const MIXED = /^(\d+)\s+(\d+)\/(\d+)(?![\d./])/;
+const MIXED_END = /(?:^|[\s,，、:：㐀-鿿豈-﫿])(\d+)\s+$/;
+/** 带分数的值：分子要比分母小（「1 3/2」不是带分数）；不是 → null @param {string} whole @param {string} a @param {string} b */
+const mixedValue = (whole, a, b) => (Number(b) > 0 && Number(a) < Number(b) ? Number(whole) + Number(a) / Number(b) : null);
+
+/** 数字在前 @param {string} raw @param {string} f @param {boolean} grocery @param {string[]} keys @param {boolean} recipe @returns {Parsed | null} */
+function leading(raw, f, grocery, keys, recipe) {
   const out = (/** @type {number | null} */ q, /** @type {number} */ restAt, unit = '') => {
     const name = cleanName(raw.slice(restAt));
     return name && okQty(q) ? { name, qty: roundQty(/** @type {number} */ (q)), unit } : null;
   };
-  const m = /^(\d+\/\d+|\d+(?:\.\d+)?|\.\d+)/.exec(f);
+  const mx = recipe ? MIXED.exec(f) : null;
+  const m = mx ? [mx[0], mx[0]] : /^(\d+\/\d+|\d+(?:\.\d+)?|\.\d+)/.exec(f);
+  if (mx && mixedValue(mx[1], mx[2], mx[3]) == null) return null;               // 「1 3/2」：不猜
   if (m) {
-    const n = arabic(m[1]), i = m[1].length, j = skipFwd(f, i);
-    const u = unitAt(f, j);
+    const n = mx ? mixedValue(mx[1], mx[2], mx[3]) : arabic(m[1]), i = m[1].length, j = skipFwd(f, i);
+    const u = unitAt(f, j, keys);
     // 「2 包子」：包后面连着的「包子」本身是常见的东西，不拆成「2 包 / 子」
     if (u && !(CJK.test(u) && isCatalogName(f.slice(j)))) {
       let k = j + u.length, q = n;
@@ -132,7 +148,7 @@ function leading(raw, f, grocery) {
   for (let len = run[1].length; len > 0; len--) {
     const n = cnNumber(f.slice(0, len));
     if (n == null) continue;
-    const j = skipFwd(f, len), u = unitAt(f, j);
+    const j = skipFwd(f, len), u = unitAt(f, j, keys);
     if (!u || isCatalogName(f.slice(j))) continue;
     let k = j + u.length, q = n;
     if (f[k] === '半' && Number.isInteger(n)) { q = n + 0.5; k++; }
@@ -141,12 +157,12 @@ function leading(raw, f, grocery) {
   return null;
 }
 
-/** 数字在后 @param {string} raw @param {string} f @param {boolean} grocery @returns {Parsed | null} */
-function trailing(raw, f, grocery) {
+/** 数字在后 @param {string} raw @param {string} f @param {boolean} grocery @param {string[]} keys @param {boolean} recipe @returns {Parsed | null} */
+function trailing(raw, f, grocery, keys, recipe) {
   // 结尾可能是「…斤半」：先去掉「半」再找单位
   for (const half of f.endsWith('半') ? [false, true] : [false]) {
     const end = half ? f.length - 1 : f.length;
-    const u = unitBefore(f, end);
+    const u = unitBefore(f, end, keys);
     if (half && !u) continue;
     const unitStart = u ? end - u.length : end;
     const p = skipBack(f, unitStart);
@@ -164,7 +180,18 @@ function trailing(raw, f, grocery) {
       return name && okQty(q) ? { name, qty: roundQty(q), unit } : null;
     };
     const m = /(\d+\/\d+|\d+(?:\.\d+)?|\.\d+)$/.exec(f.slice(0, p));
-    if (m) { const r = finish(p - m[1].length, arabic(m[1]), false); if (r) return r; continue; }
+    if (m) {
+      // 「sugar 1 1/2 cups」：前面还有一个整数是带分数（只在拆食谱时；不然名字会是「sugar 1」）
+      const fr = recipe && /^(\d+)\/(\d+)$/.exec(m[1]);
+      const before = f.slice(0, p - m[1].length), w = fr ? MIXED_END.exec(before) : null;
+      if (fr && w) {
+        const v = mixedValue(w[1], fr[1], fr[2]);
+        const r = v == null ? null : finish(before.trimEnd().length - w[1].length, v, false);
+        if (r) return r;
+        continue;
+      }
+      const r = finish(p - m[1].length, arabic(m[1]), false); if (r) return r; continue;
+    }
     if (!u) continue;                                                                                           // 中文数字后面必须有单位
     if (f[p - 1] === '半') { const r = finish(p - 1, 0.5, true); if (r) return r; continue; }                   // 「肉半斤」
     const run = /[一二两三四五六七八九十]+$/.exec(f.slice(0, p));
@@ -180,16 +207,16 @@ function trailing(raw, f, grocery) {
 }
 
 /**
- * 解析快速添加的一行字。kind：清单的类型（'grocery' 食材 | 'general' 一般）
+ * 解析快速添加的一行字。kind：清单的类型（'grocery' 食材 | 'general' 一般）；recipe：拆食谱的食材，多认 RECIPE_UNITS（勺、两、cup……）
  * @param {unknown} text
- * @param {{ kind?: string }} [opts]
+ * @param {{ kind?: string, recipe?: boolean }} [opts]
  * @returns {Parsed}
  */
-export function parseQuickAdd(text, { kind = 'grocery' } = {}) {
+export function parseQuickAdd(text, { kind = 'grocery', recipe = false } = {}) {
   const raw = str(text).trim();
   if (!raw) return { name: '', qty: null, unit: '' };
-  const f = fold(raw), grocery = kind !== 'general';
-  return leading(raw, f, grocery) || trailing(raw, f, grocery) || { name: raw, qty: null, unit: '' };
+  const f = fold(raw), grocery = kind !== 'general', keys = recipe ? RECIPE_KEYS : UNIT_KEYS;
+  return leading(raw, f, grocery, keys, recipe) || trailing(raw, f, grocery, keys, recipe) || { name: raw, qty: null, unit: '' };
 }
 
 /**

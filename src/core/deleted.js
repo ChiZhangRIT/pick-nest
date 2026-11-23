@@ -1,9 +1,10 @@
 // @ts-check
-// 最近删除（#/deleted）：删掉的清单、东西、商店、分类，各自新删的在前。删除一律是软删除（内容留着，照样同步、进备份），
+// 最近删除（#/deleted）：删掉的清单、东西、食谱、商店、分类，各自新删的在前。删除一律是软删除（内容留着，照样同步、进备份），
 // 所以这里一直列着、随时能恢复；恢复由页面调 ctx.restore（store.js 的 restoredRecord：修改时间晚于删除，别的设备上旧的删除盖不回来）。
 // 东西只列所在的清单还在的：删掉的清单里的东西没有被删，只是跟着清单隐藏，恢复清单时一起回来（列在清单那一行，说一声有几样）。
 // 「清除已买」清掉的也是删掉的东西（status 还是 done），恢复后回到那张清单的「已买」里；以后再加同名的也会恢复同一条（items.js 的 addItem）。
 // 恢复前先看会不会撞名（restoreBlock）：同一张清单上已经有同名的东西（同一张清单里同名的只能有一条）、已经有同名的商店、会一起出现的同名分类。
+// 食谱可以同名（两种做法的红烧肉），随时能恢复；加进清单的东西不跟着删、也不跟着回来（它们是清单上的东西）。
 import { normName } from './store.js';
 import { own, isObj } from './util.js';
 import { liveList } from './items.js';
@@ -14,7 +15,7 @@ import { categoryNameTaken } from './categories.js';
 /** @typedef {import('./store.js').Translate} Translate */
 
 /** 列出来的几种，也是页面上分组的顺序 */
-export const DELETED_KINDS = /** @type {const} */ (['lists', 'items', 'stores', 'categories']);
+export const DELETED_KINDS = /** @type {const} */ (['lists', 'items', 'recipes', 'stores', 'categories']);
 /** @typedef {typeof DELETED_KINDS[number]} DeletedKind */
 
 /** @param {State} state @param {string} c @returns {any[]} */
@@ -23,12 +24,12 @@ const all = (state, c) => Object.values(isObj(own(state && state.data, c)) ? sta
 const newest = (a, b) => (b.deletedAt || b.updatedAt || 0) - (a.deletedAt || a.updatedAt || 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
 /**
- * 最近删除里的：{ lists, items, stores, categories }，各自新删的在前
+ * 最近删除里的：{ lists, items, recipes, stores, categories }，各自新删的在前
  * @param {State} state
  */
 export function recentlyDeleted(state) {
   /** @type {Record<DeletedKind, any[]>} */
-  const out = { lists: [], items: [], stores: [], categories: [] };
+  const out = { lists: [], items: [], recipes: [], stores: [], categories: [] };
   for (const c of DELETED_KINDS) {
     out[c] = all(state, c).filter(r => r.deleted && (c !== 'items' || liveList(state, r.listId))).sort(newest);
   }

@@ -1,11 +1,12 @@
-// 最近删除（#/deleted，从设置首页「数据」那一组进来）：删掉的清单、东西、商店、分类，分组列出，各自新删的在前（core/deleted.js 的 recentlyDeleted）。
-// 每一行：名字（清单带图标，下面说里面的东西会一起回来；东西下面是来自哪张清单，「清除已买」清掉的标「已买」）、什么时候删的、「恢复」。
+// 最近删除（#/deleted，从设置首页「数据」那一组进来）：删掉的清单、东西、食谱、商店、分类，分组列出，各自新删的在前（core/deleted.js 的 recentlyDeleted）。
+// 每一行：名字（清单带图标，下面说里面的东西会一起回来；东西下面是来自哪张清单，「清除已买」清掉的标「已买」；食谱下面是几样食材）、什么时候删的、「恢复」。
 // 恢复前先问 core 会不会撞名（restoreBlock），撞了就说为什么、不恢复；能恢复就 ctx.restore（弹「已恢复」，同步时别的设备也跟着恢复）。
 // 东西可能很多（「清除已买」清掉的也在这里）：先列 50 样，「再显示 50 样」。
 // 没有输入框，数据变了由 app 整页重画；恢复之前焦点先给下一行的「恢复」（没有了给标题），重画后 app 按 data-fid 放回，键盘、读屏不掉回页首。
 import { h, icon, pushFrame } from '../ui/dom.js';
 import { t } from '../i18n.js';
 import { listName, categoryName } from '../core/store.js';
+import { recipeName } from '../core/recipes.js';
 import { listTile } from '../ui/listTile.js';
 import { liveList } from '../core/items.js';
 import { recentlyDeleted, restoreBlock, itemsWithList, DELETED_KINDS } from '../core/deleted.js';
@@ -19,7 +20,7 @@ export function render(main, params, ctx) {
   const lang = ctx.lang();
   const page = pushFrame(main, ctx, t('deleted.title'), { cls: 'deleted' });
   const groups = recentlyDeleted(ctx.state);
-  const nameOf = (c, r) => (c === 'lists' ? listName(r, t) : c === 'categories' ? categoryName(r, t) : r.name);
+  const nameOf = (c, r) => (c === 'lists' ? listName(r, t) : c === 'categories' ? categoryName(r, t) : c === 'recipes' ? recipeName(r, t) : r.name);
   const fid = (c, r) => `del-${c}-${r.id}`;
 
   /** 这一行下面那一小行：来自哪张清单 / 一起回来几样 / 已买，再加删掉的时间 */
@@ -31,6 +32,7 @@ export function render(main, params, ctx) {
       if (r.status === 'done') bits.push(h('span.tag', null, t('deleted.cleared')));
     }
     if (c === 'lists') { const n = itemsWithList(ctx.state, r.id); if (n) bits.push(h('span', null, t('deleted.withItems', { n }))); }
+    if (c === 'recipes') bits.push(h('span', null, t('rcp.ingN', { n: (r.ings || []).filter(g => g && String(g.name || '').trim()).length })));
     bits.push(h('span.del-at', null, fmtWhen(r.deletedAt || r.updatedAt, lang)));
     return h('span.item-sub.del-sub', null, bits);
   }

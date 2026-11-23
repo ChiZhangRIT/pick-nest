@@ -1,5 +1,5 @@
 // @ts-check
-// 数据层：state.data 下每个集合都是「id → 记录」——lists 清单、items 清单里的东西、stores 商店、categories 分类、memory 买过的东西。
+// 数据层：state.data 下每个集合都是「id → 记录」——lists 清单、items 清单里的东西、stores 商店、categories 分类、memory 买过的东西、recipes 食谱（第二版）。
 // 每条记录有 updatedAt（毫秒）；删除只打 deleted 标记、内容保留（「最近删除」里能恢复，也照样同步）。
 // 多台设备合并时逐条比较 updatedAt 取较新的一整条；时间相同内容不同时按 canon() 排序取一份，保证每台设备结果一样。
 // 例外：items、memory 的 id 是算出来的，两台设备各自从头建的同一条（createdAt 不一样）要补上空着的字段（mergeRecord）。
@@ -28,7 +28,8 @@ import { toSimplified } from './hanzi.js';
  * @typedef {Base & { listId: string, name: string, qty: number | null, unit: string, note: string,
  *   categoryId: string | null, storeId: string | null, status: ItemStatus, doneAt: number | null,
  *   url: string, price: number | null, needs: Record<string, any>, fromLater?: true }} Item
- * 清单里的一样东西。needs 是给以后的食谱 / 计划预留的（来源 → { qty, unit, label }），V1 不用但原样保留。
+ * 清单里的一样东西。qty / unit 是自己加的；needs 是食谱（以后还有计划）加进来的用量：来源 → { qty, unit, label, recipeId }（core/items.js 的 addNeeds），
+ * 显示的数量是两样加起来（qtyParts）。不认识的来源和字段原样保留。
  * fromLater：从「以后再说」勾成已买的（取消勾选时回以后再说）；只在已买时有
  */
 /** @typedef {Base & { name: string, order: number, archived: boolean }} Store 商店 */
@@ -37,20 +38,29 @@ import { toSimplified } from './hanzi.js';
  * @typedef {Base & { name: string, kind: ListKind, categoryId: string | null, categorySet?: true, unit: string, qty: number | null,
  *   stores: Record<string, { n: number, at: number }>, uses: number, lastAt: number }} Memory
  * 买过的东西（跨清单的习惯），每个 normName 一条，id = 'm_' + hash64(normName)。
- * categorySet：用户在编辑面板里选过分类（包括「未分类」）；没选过的记录上没有这个键
+ * categorySet：用户在编辑面板里选过分类（包括「未分类」）；没选过的记录上没有这个键。
+ * staple：常备品（盐、油、生抽……，加食谱的食材时默认不勾）；不是的记录上没有这个键
+ */
+/**
+ * @typedef {{ key: string, name: string, qty: number | null, unit: string, note: string, optional: boolean }} Ingredient
+ * 食谱里的一样食材。key 在这道食谱里不重复（排顺序、改名都不变）；qty 是 null 时是「适量」「少许」这种（原话在 note 里）
+ */
+/**
+ * @typedef {Base & { name: string, servings: number | null, steps: string, source: string, note: string, ings: Ingredient[] }} Recipe
+ * 食谱（第二版）。servings：几人份，null = 没写（加到清单时不能按人数换算）；steps 做法、source 来源（链接或一句话）、note 备注
  */
 /**
  * @typedef {object} State
  * @property {'picknest'} app
  * @property {1} v
  * @property {{ lists: Record<string, List>, items: Record<string, Item>, stores: Record<string, Store>,
- *   categories: Record<string, Category>, memory: Record<string, Memory>, [collection: string]: Record<string, any> }} data
+ *   categories: Record<string, Category>, memory: Record<string, Memory>, recipes: Record<string, Recipe>, [collection: string]: Record<string, any> }} data
  * @property {Record<string, any>} settings     同步的设置（按键合并）
  * @property {Record<string, number>} settingsAt 各设置键的修改时间
  */
 /** @typedef {(key: string, vars?: Record<string, any>) => string} Translate */
 
-export const COLLECTIONS = ['lists', 'items', 'stores', 'categories', 'memory'];
+export const COLLECTIONS = ['lists', 'items', 'stores', 'categories', 'memory', 'recipes'];
 // kind、status 认不出的取值按默认值读（下面的整理函数），改过以后会照默认值写回去。
 // 以后要加新的取值（比如「项目」清单）：用新字段表达，或者同时升 v（旧版会拒绝读、不会改坏），不要直接往这几个字段里塞新值
 /** @type {ListKind[]} */
@@ -65,7 +75,7 @@ const collectionsOf = (...states) => [...new Set([...COLLECTIONS, ...states.flat
 
 /** @returns {State} */
 export function blankState() {
-  return { app: 'picknest', v: 1, data: { lists: {}, items: {}, stores: {}, categories: {}, memory: {} }, settings: { ...DEFAULT_SETTINGS }, settingsAt: {} };
+  return { app: 'picknest', v: 1, data: { lists: {}, items: {}, stores: {}, categories: {}, memory: {}, recipes: {} }, settings: { ...DEFAULT_SETTINGS }, settingsAt: {} };
 }
 
 /** 和键的顺序无关的序列化：判断两份数据是否一样，以及打平时决定取哪一份 @param {any} v @returns {string} */
@@ -148,7 +158,7 @@ export function normalizeItem(rec, id = rec && rec.id) {
   r.doneAt = numOrNull(r.doneAt);
   r.url = str(r.url);
   r.price = numOrNull(r.price);
-  r.needs = isObj(r.needs) ? copySafe(r.needs) : {};     // 预留给食谱 / 计划：里面是什么都原样留着
+  r.needs = isObj(r.needs) ? copySafe(r.needs) : {};     // 食谱 / 计划加进来的用量（core/items.js 的 addNeeds）：里面是什么都原样留着，新版的来源、字段旧版也不丢
   if (r.fromLater !== true || r.status !== 'done') delete r.fromLater;   // 从「以后再说」勾掉的已买（items.js 的 untickStatus）：只在已买时有
   return /** @type {Item} */ (r);
 }
@@ -179,6 +189,7 @@ export function normalizeMemory(rec, id = rec && rec.id) {
   r.kind = LIST_KINDS.includes(r.kind) ? r.kind : 'grocery';
   r.categoryId = idOrNull(r.categoryId);
   if (r.categorySet !== true) delete r.categorySet;     // 只在选过时才有：没选过的记录不用每条都多一个 false
+  if (r.staple !== true) delete r.staple;               // 常备品也一样：只有标过的才有
   r.unit = str(r.unit);
   r.qty = numOrNull(r.qty);
   /** @type {Record<string, any>} */
@@ -190,8 +201,38 @@ export function normalizeMemory(rec, id = rec && rec.id) {
   return /** @type {Memory} */ (r);
 }
 
+/**
+ * 食谱。食材的 key 缺了、坏了、重了时按位置补一个（'g_' + 第几样，被占了再加后缀）：整理要每台设备算得一样，不能用随机的，
+ * 不然同一份数据在两台设备上整理出来不一样，同步时来回改。食材里不认识的字段原样留着；不是对象的食材扔掉
+ * @param {Record<string, any>} rec @param {string} [id] @returns {Recipe}
+ */
+export function normalizeRecipe(rec, id = rec && rec.id) {
+  const r = base(rec, /** @type {string} */ (id));
+  r.name = str(r.name);
+  const sv = numOrNull(r.servings);
+  r.servings = sv != null && sv > 0 ? sv : null;
+  r.steps = str(r.steps);
+  r.source = str(r.source);
+  r.note = str(r.note);
+  const src = (Array.isArray(r.ings) ? r.ings : []).filter(isObj);
+  const seen = new Set();
+  const taken = new Set(src.map(g => g.key).filter(k => safeKey(k)));
+  r.ings = src.map((g, i) => {
+    const x = copySafe(g);
+    let key = safeKey(x.key) && !seen.has(x.key) ? x.key : null;
+    if (!key) {
+      key = 'g_' + i;
+      for (let n = 1; seen.has(key) || taken.has(key); n++) key = 'g_' + i + '_' + n;
+    }
+    seen.add(key);
+    const q = numOrNull(x.qty);
+    return { ...x, key, name: str(x.name), qty: q != null && q > 0 ? q : null, unit: str(x.unit), note: str(x.note), optional: x.optional === true };
+  });
+  return /** @type {Recipe} */ (r);
+}
+
 /** @type {Record<string, (rec: Record<string, any>, id?: string) => any>} */
-const NORMALIZERS = { lists: normalizeList, items: normalizeItem, stores: normalizeStore, categories: normalizeCategory, memory: normalizeMemory };
+const NORMALIZERS = { lists: normalizeList, items: normalizeItem, stores: normalizeStore, categories: normalizeCategory, memory: normalizeMemory, recipes: normalizeRecipe };
 
 /**
  * 按集合整理一条记录。不认识的集合（新版才有的）只修 id 和 updatedAt，别的原样保留
@@ -266,7 +307,9 @@ export function pick(a, b) {
 // （memory 的次数、常去的商店取两边大的，选过的分类以较新的为准）；createdAt 取早的，以后两边就是同一条。
 // 补到了东西的结果比较新的那条晚 1 毫秒：还拿着较新那条的设备合并时它赢；没补到东西就是较新的那条（再合并几次结果都一样）
 const blank = (/** @type {unknown} */ v) => v == null || v === '' || (isObj(v) && !Object.keys(v).length);
-const ITEM_CARRY = ['note', 'url', 'price', 'unit', 'storeId', 'categoryId', 'needs'];
+const ITEM_CARRY = ['note', 'url', 'price', 'unit', 'storeId', 'categoryId'];
+/** 还没买的（要买、以后再说，没删除）：只有这种上面的 needs 是还要买的用量 @param {any} r */
+const openItem = (r) => !r.deleted && (r.status === 'need' || r.status === 'later');
 /** @param {string} c @param {any} w 较新的 @param {any} o 另一条 @returns {any} */
 function blend(c, w, o) {
   if (c === 'items') {
@@ -274,6 +317,9 @@ function blend(c, w, o) {
     if (w.listId !== o.listId || normName(w.name) !== normName(o.name)) return null;
     const out = { ...w };
     for (const k of ITEM_CARRY) if (blank(out[k]) && !blank(o[k])) out[k] = o[k];
+    // 各道菜的那几份（needs）只在两条都还没买时补：另一条已买、已清除，那是买过的一轮，补过来就又成了要买的；
+    // 较新的已买、已清除，补了也没用（再加回来时会清空），只是白白多改一次
+    if (blank(out.needs) && !blank(o.needs) && openItem(w) && openItem(o)) out.needs = o.needs;
     return out;
   }
   const ws = isObj(w.stores) ? w.stores : {}, os = isObj(o.stores) ? o.stores : {};
@@ -286,6 +332,8 @@ function blend(c, w, o) {
   }
   const out = { ...w, stores, uses: Math.max(w.uses || 0, o.uses || 0), lastAt: Math.max(w.lastAt || 0, o.lastAt || 0) };
   if (w.categorySet !== true && o.categorySet === true) { out.categoryId = o.categoryId; out.categorySet = true; }
+  // 常备品和选过的分类一样：较新的那条是从头建的（没标过），另一条标过就留着
+  if (w.staple !== true && o.staple === true) out.staple = true;
   if (blank(out.unit) && !blank(o.unit)) out.unit = o.unit;
   if (out.qty == null && o.qty != null) out.qty = o.qty;
   return out;

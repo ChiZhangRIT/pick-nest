@@ -1,4 +1,4 @@
-/* PickNest 的全部样式，一个文件：变量、基础、外壳、通用组件、深色 → 首页清单 → 清单页 → 商店 → 购物模式 → 搜索 → 面板里的表单 → 设置 → 同步、数据、最近删除 → 恢复页。
+/* PickNest 的全部样式，一个文件：变量、基础、外壳、通用组件、深色 → 首页清单 → 清单页 → 商店 → 购物模式 → 搜索 → 面板里的表单 → 设置 → 同步、数据、最近删除 → 食谱 → 恢复页。
    页面样式请只用下面的变量，深色模式就自动对了：
      --bg 底色  --card 卡片 / 分组底  --ink 正文  --ink-2 次要正文  --muted 说明文字  --faint 占位 / 最淡
      --line 分隔线  --fill 浅填充（分段控件底、输入框底）  --seg-on 分段控件选中的那段  --side-bg 侧栏底  --tile 购物模式里商店图标的底
@@ -181,6 +181,10 @@ body[data-layout="phone"] .page-head { padding-left: max(20px, env(safe-area-ins
 .btn.block { display: flex; width: 100%; }
 :root[data-theme="dark"] .btn.danger-fill { color: #2a0d0a; }
 .btn:disabled { opacity: .5; cursor: default; pointer-events: none; }
+/* 点了也不做的按钮用 aria-disabled（不用 disabled：焦点不丢，读屏照样念得到），看上去也要是灰的：「加到清单（0 样）」不能是一个大绿按钮 */
+.btn[aria-disabled="true"] { opacity: .5; cursor: default; }
+.btn[aria-disabled="true"]:hover { border-color: var(--line); filter: none; }
+.btn.primary[aria-disabled="true"]:hover { border-color: transparent; }
 .icon-btn { display: inline-grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 10px; background: none; color: var(--accent-text); }
 .icon-btn:hover { background: var(--fill); }
 .icon-btn[aria-disabled="true"] { opacity: .3; cursor: default; }
@@ -389,6 +393,9 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
 .item-qty { flex: none; max-width: 38%; color: var(--muted); font-size: 15px; text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: break-word; }
 /* 窄屏（iPad 分屏窄的一边 320、iPhone 放大显示）：数量窄一点（「12 bottles」折成两行），名字留得下整个单词 */
 @media (max-width: 420px) { .item-qty { max-width: 26%; } }
+/* 自己加的和食谱的单位不一样（「3 个 + 200 g」）：宽一点，每份不拆开，只在「+」那儿折行 */
+.item-qty.multi { max-width: 44%; }
+.qty-part { white-space: nowrap; }
 /* ›：只是告诉你点这一行是编辑（在这一行的按钮里）；margin 抵掉 gap，和数量的间距和以前单独的 › 按钮一样 */
 .item-chev { flex: none; display: grid; place-items: center; width: 44px; margin-left: -10px; align-self: stretch; color: var(--muted); }
 .item-chev .ic { width: 18px; height: 18px; }
@@ -672,6 +679,106 @@ select.f-in { width: 100%; }
 /* 什么都没删过：淡淡的垃圾桶 + 一句话（和 Babble 一样） */
 .del-empty .ic { width: 40px; height: 40px; margin: 0 auto 12px; color: var(--faint); stroke-width: 1.5; }
 .del-empty p + p { max-width: 22em; margin: 8px auto 0; line-height: 1.6; }
+
+/* ================= 食谱（第二版）：「食谱」页、一道食谱、编辑食谱、粘贴食材、加到清单；清单页联想里的食谱、编辑面板里来自食谱的那几份 ================= */
+/* 「食谱」页：大标题下面的搜索框（和快速添加一个样子；不吸顶：一页卡片不多） */
+.rcp-search-wrap { margin: 12px -4px 2px; }
+.rcp-search-wrap .add-input { min-height: 44px; font-size: 16px; }
+.rcp-list > li + li > .rcp-row::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: .5px; background: var(--line); }
+.rcp-row { min-height: 62px; }
+.rcp-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.rcp-name { font-size: 17px; font-weight: 550; line-height: 1.35; overflow-wrap: anywhere; }
+.rcp-meta { font-size: 13px; line-height: 1.35; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rcp-empty .ic { width: 44px; height: 44px; margin: 0 auto 12px; color: var(--faint); stroke-width: 1.5; }
+.rcp-empty p + p { max-width: 22em; margin: 8px auto 0; line-height: 1.6; }
+/* 一道食谱 */
+.rcp-head .lp-name { padding: 0 4px; }
+.rcp-sub { margin: 6px 4px 0; color: var(--muted); font-size: 14px; }
+.rcp-source { display: flex; align-items: center; gap: 6px; max-width: 100%; margin: 8px 4px 0; color: var(--accent-text); font-size: 14px; }
+p.rcp-source { color: var(--ink-2); overflow-wrap: anywhere; }
+.rcp-source span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rcp-source .ic { flex: none; width: 16px; height: 16px; }
+.rcp-add { margin-top: 18px; }
+.rcp-add .ic { width: 20px; height: 20px; }
+.rcp-ing { align-items: flex-start; min-height: 48px; }
+.rcp-ing-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.rcp-ing-name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 16px; line-height: 1.45; overflow-wrap: anywhere; }
+.rcp-ing-note { font-size: 13px; line-height: 1.35; color: var(--muted); }
+.rcp-ing-qty { flex: none; max-width: 42%; color: var(--ink-2); font-size: 15px; line-height: 1.55; text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.rcp-staple { background: var(--accent-soft); color: var(--accent-text); }
+.rcp-prose { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; }
+.rcp-foot { margin-top: 32px; }
+/* 编辑食谱：顶栏「取消 · 标题 · 保存」（照 Babble 的编辑页）。双栏右栏的返回是藏起来的，「取消」不藏：上一页是这道食谱，不是左栏 */
+.back.text { padding-left: 10px; }
+.pane-detail .navbar .back.text { visibility: visible; }
+.re-save { font-weight: 600; }
+.re-form { padding-top: 6px; }
+.re-draft { margin: 0 0 16px; }
+.re-ings > .group-h { margin: 0 2px 8px; }
+.re-empty { margin: 0 2px 4px; }
+.re-rows { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.re-row { padding: 10px; border-radius: var(--radius); background: var(--card); box-shadow: var(--shadow-card); }
+.re-main { display: grid; grid-template-columns: minmax(0, 1fr) 76px 72px; gap: 6px; }
+.re-sub { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.re-sub .re-note { flex: 1; min-width: 0; }
+.re-row .f-in { min-height: 40px; padding: 8px 10px; }
+.re-opt, .re-acts { flex: none; }
+/* ↑↓ 和删除 44px（和别处的 ↑↓ 一样）；删除和 ↓ 中间空开一截：厨房里手湿，点 ↓ 偏一点不该删掉一行 */
+.re-acts { display: flex; }
+.re-acts .icon-btn { width: 44px; height: 44px; }
+.re-acts .re-del { margin-left: 10px; }
+/* 窄的时候备注一整行，「可选」和 ↑↓ 删除在下面一行（不然备注框只剩两个字宽） */
+@media (max-width: 379px) {
+  .re-sub { flex-wrap: wrap; }
+  .re-sub .re-note { flex-basis: 100%; }
+  .re-sub .re-acts { margin-left: auto; }
+}
+.re-del { color: var(--danger); }
+.re-row .f-err { margin: 6px 2px 0; }
+.re-ing-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.re-ing-acts .btn { flex: 1 1 140px; }
+.re-ing-acts .ic { width: 20px; height: 20px; }
+.re-steps { min-height: 140px; }
+/* 粘贴食材：先贴字，再看拆成的每一样（能改、能去掉） */
+.paste-in { min-height: 170px; font-size: 15px; }
+.paste-help { margin: 0 2px 10px; }
+.paste-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.paste-row { padding: 8px; border: 1px solid var(--line); border-radius: var(--radius); }
+.paste-main { display: grid; grid-template-columns: minmax(0, 1fr) 64px 64px 44px; gap: 6px; align-items: center; }
+.paste-sub { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.paste-row .f-in { min-height: 40px; padding: 8px 10px; font-size: 15px; }
+.paste-x { width: 44px; height: 44px; color: var(--muted); }
+/* 窄手机（< 360）：名字一整行（不然「郫县豆瓣酱」只露出三个字），数量、单位、× 在下一行 */
+@media (max-width: 359px) {
+  .paste-main { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 44px; }
+  .paste-main .paste-name { grid-column: 1 / -1; }
+}
+/* 加到清单：每样食材一个勾（整行都能点），右边「常备品」；没勾的字淡一点 */
+.atl .f-row + .f-row, .atl .f-row + .f-help, .atl .f-help + .f-row { margin-top: 16px; }
+.atl-row { position: relative; display: flex; align-items: center; gap: 8px; padding-right: 10px; }
+.atl-row + .atl-row::before { content: ""; position: absolute; top: 0; left: 50px; right: 0; height: .5px; background: var(--line); }
+.atl-check { flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; min-height: 56px; padding: 8px 0 8px 14px; cursor: pointer; }
+.atl-box { flex: none; width: 22px; height: 22px; margin: 0; accent-color: var(--accent); }
+.atl-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.atl-name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 16px; line-height: 1.35; overflow-wrap: anywhere; }
+.atl-sub { display: flex; flex-wrap: wrap; gap: 2px 8px; font-size: 13px; line-height: 1.35; color: var(--muted); }
+.atl-qty { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.atl-have { color: var(--accent-text); }
+.atl-staple { flex: none; }
+.atl-row:has(.atl-box:not(:checked)) .atl-name, .atl-row:has(.atl-box:not(:checked)) .atl-qty { color: var(--muted); }
+/* 清单页的联想：「用到它的食谱」小标题和食谱那几项 */
+.sug-h { padding: 8px 16px 4px; border-top: .5px solid var(--line); color: var(--muted); font-size: 12px; font-weight: 600; }
+.sug-h:first-child { border-top: 0; }
+.sug-h + .sug { border-top: 0; }
+.sug-ic { flex: none; width: 18px; height: 18px; color: var(--accent-text); }
+/* 编辑面板：来自食谱的那几份，下面是一共多少 */
+.need-list { margin: 0; padding: 0; list-style: none; border-radius: var(--radius); background: var(--fill); }
+.need-row { position: relative; display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 2px 0 12px; }
+.need-row + .need-row::before { content: ""; position: absolute; top: 0; left: 12px; right: 0; height: .5px; background: var(--line); }
+.need-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.need-qty { flex: none; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.need-x { width: 44px; height: 44px; color: var(--muted); }
+.need-total { color: var(--ink-2); }
 
 /* ================= 本机数据坏了：恢复页盖在整个 App 上；启动失败的提示 ================= */
 .recovery-screen { position: fixed; inset: 0; z-index: 200; overflow: auto; background: var(--bg); color: var(--ink);
