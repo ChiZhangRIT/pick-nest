@@ -113,7 +113,7 @@ test('「商店」：每家店还要买几样（跨清单，只数要买的；�
 });
 
 // ---------- 一家店 ----------
-test('一家店：要买的按分类分组，每行标着来自哪张清单；点一行勾掉 → 移到「已买」，记下这次在这家买的；再点放回来', async () => {
+test('一家店：要买的按分类分组，每行标着来自哪张清单；点圆圈勾掉 → 移到「已买」，记下这次在这家买的；再点放回来', async () => {
   const env = setup({ page: 'store', params: { id: 's_wholefoods' } });
   try {
     assert.equal(byCls(env.main, 'lp-name').textContent, 'Whole Foods');
@@ -127,26 +127,26 @@ test('一家店：要买的按分类分组，每行标着来自哪张清单；�
     assert.equal(byCls(env.row('牛奶'), 'list-chip-ic').attrs['aria-hidden'], 'true');
     assert.equal(byCls(env.row('牛奶'), 'item-qty').textContent, '2');
     assert.equal(byCls(env.sec('done'), 'sec-toggle').textContent, '已买（1）');
-    await byCls(env.row('木胶'), 'item-main').fire('click');
+    await byCls(env.row('木胶'), 'item-tick').fire('click');
     await settle();
     assert.equal(itemNamed('木胶').status, 'done');
     assert.equal(memoryOf(S(), '木胶').stores.s_wholefoods.n, 1, '这次在 Whole Foods 买的');
     assert.deepEqual(env.rows(env.sec('done')), ['木胶', '鸡蛋'], '新的在前');
     assert.equal(byCls(env.main, 'lp-count').textContent, '还要买 2 样');
     assert.deepEqual(allCls(env.main, 'group-h').map(x => x.textContent), ['蔬果', '蛋奶']);
-    await byCls(env.row('木胶'), 'item-main').fire('click');
+    await byCls(env.row('木胶'), 'item-tick').fire('click');
     await settle();
     assert.equal(itemNamed('木胶').status, 'need');
     assert.equal(memoryOf(S(), '木胶').stores.s_wholefoods, undefined, '刚勾上又取消：那次不算');
-    // › 打开的是同一个编辑面板；存了以后（这一行重画了）焦点还在这一行的 › 上
-    byCls(env.row('牛奶'), 'item-more').focus();
-    await byCls(env.row('牛奶'), 'item-more').fire('click');
+    // 点这一行打开的是同一个编辑面板；存了以后（这一行重画了）焦点还在这一行上
+    byCls(env.row('牛奶'), 'item-main').focus();
+    await byCls(env.row('牛奶'), 'item-main').fire('click');
     assert.equal(env.sheet().opts.title, '编辑');
     find(env.sheet().el, el => cls(el, 'qty-in')).value = '3';
     await btn(env.sheet().el, '保存').fire('click');
     await settle();
     assert.equal(itemNamed('牛奶').qty, 3);
-    assert.equal(document.activeElement, byCls(env.row('牛奶'), 'item-more'));
+    assert.equal(document.activeElement, byCls(env.row('牛奶'), 'item-main'));
   } finally { env.done(); }
 });
 

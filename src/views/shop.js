@@ -1,6 +1,6 @@
 // 购物模式（#/l/<listId>?shop=1、#/s/<storeId>?shop=1；app.js 里的页面名是 'shop'，params.sub 'list' | 'store'）：在店里边走边勾。
 // 字和勾更大（行至少 60px），没有底栏、侧栏、⋯，宽屏上也占满整个窗口；最上面一直是名字、「完成购物」、「已买 N · 还剩 M」和一条细的进度条。
-// 已买的收到最下面紧凑的「已买（N）」里，每次进购物模式都是折起来的（点开只管这一次，不用普通页面「已买」折没折的设置；点一下放回去）；
+// 已买的收到最下面紧凑的「已买（N）」里，每次进购物模式都是折起来的（点开只管这一次，不用普通页面「已买」折没折的设置；点圆圈放回去）；
 // 都买齐了换成「都买齐了」，带「完成购物」「清除已买」（能撤销）。「以后再说」的不出现（这次不打算买）。
 // 和普通页面同一套：分组（core/group.js 的 groupNeed、core/stores.js 的 groupStore）、能勾的行和勾选的节奏（ui/checklist.js）、
 // 进度（core/shop.js 的 shopProgress）、清除已买（items.js 的 clearDone、stores.js 的 clearStoreDone）。

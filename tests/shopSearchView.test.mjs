@@ -85,7 +85,7 @@ function setup({ page, params = {}, lang = 'zh-Hans', wakeLock = undefined, prep
     sec: (k) => byCls(env.main, 'sec-' + k),
     prog: () => byCls(env.main, 'shop-prog-text').textContent,
     bar: () => byCls(env.main, 'shop-bar'),
-    tap: async (name) => { await byCls(env.row(name), 'item-main').fire('click'); await settle(); },
+    tap: async (name) => { await byCls(env.row(name), 'item-tick').fire('click'); await settle(); },
     input: () => byCls(env.main, 'search-input'),
     async type(text) { const i = env.input(); i.value = text; await i.fire('input'); await settle(); },
     done() { if (env.handle && env.handle.cleanup) env.handle.cleanup(); off(); dom.restore(); setLang('zh-Hans'); },
@@ -115,7 +115,7 @@ test('购物模式（清单）：上面是名字、完成购物、「已买 N ·
     await settle();
     assert.equal(wake.requests, 1);
     assert.equal(byCls(env.main, 'shop-wake').hidden, true);
-    // 点一行勾掉：收进已买、进度跟着走、记下这次在哪家买的（和清单页同一个 setStatus）
+    // 点圆圈勾掉：收进已买、进度跟着走、记下这次在哪家买的（和清单页同一个 setStatus）
     await env.tap('牛奶');
     assert.equal(itemNamed('牛奶').status, 'done');
     assert.equal(memoryOf(S(), '牛奶').stores.s_wholefoods.n, 1);
@@ -131,7 +131,7 @@ test('购物模式（清单）：上面是名字、完成购物、「已买 N ·
     assert.deepEqual(env.rows(env.sec('done')), ['牛奶', '吐司'], '新的在前');
     assert.deepEqual(state.getLocal().view, {}, '没写本机设置');
     // 在已买里点一下放回去；「已买」照样开着
-    await byCls(find(env.sec('done'), el => cls(el, 'item-row') && byCls(el, 'item-name').textContent === '牛奶'), 'item-main').fire('click');
+    await byCls(find(env.sec('done'), el => cls(el, 'item-row') && byCls(el, 'item-name').textContent === '牛奶'), 'item-tick').fire('click');
     await settle();
     assert.equal(itemNamed('牛奶').status, 'need');
     assert.equal(env.prog(), '已买 1 · 还剩 3');
@@ -273,7 +273,7 @@ test('搜索：还没写搜索词时说明怎么搜、焦点在搜索框；打�
   } finally { env.done(); }
 });
 
-test('搜索：点一行勾掉 / 放回去（和清单页一样），已买的画淡排在后面；› 打开编辑面板；别处改了数据只重画结果；输入法选字时不搜；Esc 清空、回车收起键盘；没找到', async () => {
+test('搜索：点圆圈勾掉 / 放回去（和清单页一样），已买的画淡排在后面；点这一行打开编辑面板；别处改了数据只重画结果；输入法选字时不搜；Esc 清空、回车收起键盘；没找到', async () => {
   const env = setup({ page: 'search', params: { query: { q: '牛奶' } } });
   try {
     assert.equal(env.input().value, '牛奶');
@@ -284,7 +284,7 @@ test('搜索：点一行勾掉 / 放回去（和清单页一样），已买的�
     assert.ok(cls(env.row('牛奶'), 'done'), '已买的画淡（划线）');
     await env.tap('牛奶');
     assert.equal(itemNamed('牛奶').status, 'need');
-    await byCls(env.row('机械键盘'), 'item-more').fire('click');
+    await byCls(env.row('机械键盘'), 'item-main').fire('click');
     assert.equal(env.sheets.at(-1).opts.title, '编辑');
     env.sheets.at(-1).close();
     // 别的设备加了一样：结果跟着变，输入框、焦点不动

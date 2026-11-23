@@ -1,6 +1,6 @@
 // 一行左右滑出按钮（照 ../babble 的 src/ui/swipe.js，手势、参数、安全规则都一样；像「邮件」「提醒事项」）：
-// 手指往左滑，右边露出「编辑」「删除」；往右滑，左边露出「以后再说」（或者「移回要买」）。哪一行给哪几个按钮是 core/items.js 的 swipeActions 定的。
-// 一边可以有几个按钮（babble 每边只有一个）：这一边露出来的宽 = 几个按钮宽加起来，下面所有「一个按钮宽」的规则都换成「这一边的宽」。
+// 手指往右滑，左边露出「编辑」；往左滑，右边露出红色的「删除」（babble 往左也是删除，往右是它的「收藏」）。哪一行给哪几个按钮是 core/items.js 的 swipeActions 定的。
+// 现在每边一个按钮（和 babble 一样）；这里还能一边放几个：这一边露出来的宽 = 几个按钮宽加起来，下面所有「一个按钮宽」的规则都换成「这一边的宽」。
 // 滑只是把按钮露出来：要再点一下露出来的按钮才会做。拖得再远、甩得再快、松手时在哪儿，都只是开着或者关上，从来不直接做。
 //   怎么保证的：按钮的事只在 act() 里做，act() 只有按钮自己的 click 调用（手势的代码里没有一处调它；松手的结果只有开 / 关）；
 //   按钮那一边没露着（关着、正在关上、这一行正被手指拖着或者触控板在扫）的时候点了不算；
@@ -18,7 +18,7 @@
 // 惯性再大这一行也只移开一点多一个这一边宽，开着的往回扫只会关上、不会扫到另一边。
 // 惯性还没停就按下去（手放回触控板，惯性就停了）：这一下扫完，先按位置停好；按在露出来的按钮上，停在按钮这一边这一下点才算；
 // 按在这一行别的地方，和点开着的行一样只关上（不勾掉、不打开面板）。
-// 关着时没有按钮（第一次滑动时才建；之后关着时 hidden）：读屏、Tab 都碰不到，行里的 › 和编辑面板里的「删除」「状态」照旧；
+// 关着时没有按钮（第一次滑动时才建；之后关着时 hidden）：读屏、Tab 都碰不到，点这一行打开的编辑面板里的「删除」「状态」照旧；
 // 开着时能 Tab 到，名字是「删除「牛奶」」这样的，按 Enter / 空格和点一下一样。
 // 系统设了「减少动态效果」：不做动画，直接到位；点了按钮马上做。
 import { h, icon } from './dom.js';
@@ -172,12 +172,12 @@ export function createSwipeModel({ widths = { 1: SWIPE.action, '-1': SWIPE.actio
 
 /**
  * 一页的可滑的行（同一时间只开一行）。点别处、滚动、在别的行上开始滑、按 Esc 都会关上开着的那行；
- * 点开着的行只是关上（不勾掉、不打开 ›）；点到别的行也只是关上开着的那行（不勾掉点到的这一行）；滑过以后松手不算点。
+ * 点开着的行（圆圈、别处都一样）只是关上（不勾掉、不打开编辑面板）；点到别的行也只是关上开着的那行（不勾掉点到的这一行）；滑过以后松手不算点。
  * 按钮的事只在点了露出来的按钮时做（act()，只有按钮的 click 调）；手势（拖、甩、被打断、触控板）只开关。
  * 页面重画行前调 reset()（ui/checklist.js 的 draw 调）；数据变了（onChange）用 whenIdle(重画)：有手指按着行（或者按在按钮上）、触控板在扫、行在动、
  * 删除 / 移动在等动画时，等做完再重画（不然手底下的行换成新的，这一下就丢了）。重画以后：
  *   这一页自己点按钮引起的 → 开着的那行照样开着（接着一行行删）；别的（同步进来、别处改了、勾掉了别的）→ 关上，之后 block 毫秒以内点行不算。
- *   焦点在露出来的按钮上 → 放回新画的那一行的同一个按钮（勾、› 带 data-fid，由 checklist 的 keepFocus 放回去，这里不抢）。
+ *   焦点在露出来的按钮上 → 放回新画的那一行的同一个按钮（圆圈、这一行的编辑按钮带 data-fid，由 checklist 的 keepFocus 放回去，这里不抢）。
  * 离开页面调 destroy()（等动画的删除、移动马上做完，不会丢）；切到后台调 settle()（同上，页面照常）。
  * @param {object} [env]  测试用：{ doc, win, now, setTimeout, clearTimeout, reduceMotion: () => bool, width: (el) => px }
  * @returns {{ wrap(card, opts): HTMLElement, whenIdle(fn): void, close(): void, reset(): void, settle(): void, destroy(): void, readonly current: object|null, readonly busy: boolean }}
@@ -363,7 +363,7 @@ export function createSwipes(env = {}) {
    * 三种做法（按钮给的）：
    *   instant（编辑）：弹回去，同时就打开面板（不改数据，不用等动画）；
    *   out（删除）：这一行滑出去、收起来以后再删（数据一变列表就重画了）；
-   *   别的（以后再说、移回要买）：弹回去以后再改。
+   *   别的（现在没有；以前的「以后再说」）：弹回去以后再改。
    */
   function act(c, s, o) {
     if (!o || c.dead || c.gone || !c.model || c.model.open !== s || isBusy(c)) return;
@@ -411,7 +411,7 @@ export function createSwipes(env = {}) {
     if (c.dead) { if (c.model) c.model.set(0); idle(); return; }   // 拖着的时候列表还是重画了（等太久的保险）：旧的那一行什么都不做
     if (r.kind === 'tap') { if (r.open) { swallow(); close(c, true); } }
     else {
-      if (dragged) swallow();                          // 滑过以后松手不算点（勾、›、按钮都不触发）
+      if (dragged) swallow();                          // 滑过以后松手不算点（圆圈、编辑、按钮都不触发）
       if (r.kind === 'settle') settle(c, r.to);        // 松手只开 / 关：没有别的结果
     }
     idle();
@@ -580,7 +580,7 @@ export function createSwipes(env = {}) {
     rows.push(c);
     box.addEventListener('touchmove', onTouchMove, { passive: false });
     box.addEventListener('wheel', onWheel, { passive: false });
-    /** 给测试、截图用：el.swipe.open(-1) 直接打开右边（编辑、删除），open(1) 左边——只是露出按钮，不做 */
+    /** 给测试、截图用：el.swipe.open(-1) 直接打开右边（删除），open(1) 左边（编辑）——只是露出按钮，不做 */
     box.swipe = { open: (s) => open(c, s), close: () => close(c, false), get side() { return c.model ? c.model.open : 0; },
       get offset() { const s = c.model ? c.model.open : 0; return s * wid(c, s); } };
     const cy = carry;

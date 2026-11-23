@@ -1,7 +1,7 @@
 // 一行左右滑（src/ui/swipe.js 接到 ui/checklist.js 的行上）：清单页、商店页、搜索、购物模式。最小 DOM + 真的 state.js，事件按捕获 → 冒泡派发。
-//   往左滑露出「编辑」「删除」（删除在最外面），往右滑露出「以后再说」（一般清单要买的）/「移回要买」（以后再说的）；食材清单、已买的往右没有按钮。
+//   每一行都是往右滑露出「编辑」、往左滑露出红色的「删除」（哪张清单、什么状态都一样；没有「以后再说」「移回要买」）。
 //   滑只是露出按钮，点了按钮才做：拖得再远、甩得再快、被打断、触控板猛扫都只是开着或者关上；
-//   删除和编辑面板里的一样（进「最近删除」、10 秒「撤销」），编辑打开 › 的那个面板；点开着的行只是关上（不勾掉）；同一时间只开一行；
+//   删除和编辑面板里的一样（进「最近删除」、10 秒「撤销」），编辑打开点这一行的那个面板；点开着的行（圆圈、别处）只是关上（不勾掉、不打开）；同一时间只开一行；
 //   关着时没有按钮（之后关着时 hidden），开着时能用键盘点、名字带东西的名字；拖着的时候数据变了，滑完再重画。
 // 东西都是编的（仓库是公开的）。
 import { test } from 'node:test';
@@ -118,7 +118,8 @@ function setup({ page = 'list', params = { id: 'l_groceries' }, reduce = false }
 }
 
 const inner = (w) => w.children[0];
-const mainOf = (w) => byCls(w, 'item-main');
+const mainOf = (w) => byCls(w, 'item-main');      // 这一行（点了是编辑；拖的时候按在这里）
+const tickOf = (w) => byCls(w, 'item-tick');      // 左边的圆圈（只有点它才勾掉）
 const btnOf = (w, c) => byCls(w, c);
 /** 这一行现在移开多少 px（没移是 0） */
 const offsetOf = (w) => Number((/-?\d+/.exec(inner(w).style.transform || '') || [0])[0]);
@@ -145,32 +146,32 @@ function openRow(env, w, side) {
 /** 所有东西的状态、删除（看手势有没有偷偷改数据） */
 const snapshot = () => Object.fromEntries(Object.entries(S().data.items).map(([id, it]) => [id, [it.status, !!it.deleted]]));
 
-test('往左滑露出「编辑」「删除」（删除在最外面）：关着时没有按钮；拖得再远、甩得再快、松手都只是开着，不删、不打开面板', async () => {
+test('往左滑露出红色的「删除」：关着时没有按钮；拖得再远、甩得再快、松手都只是开着，不删、不打开面板', async () => {
   const env = setup();
   try {
     const before = snapshot();
     const w = env.row('牛奶');
     assert.ok(cls(w, 'swipe'), '行本身（<li>）是可滑的那一层');
     assert.deepEqual(w.children.map(x => x.attrs.class), ['item-in'], '关着：只有内容，没有按钮（读屏、Tab 都碰不到）');
-    drag(env, mainOf(w), line(320, 230), { up: false });
-    assert.equal(inner(w).style.transform, 'translateX(-90px)', '跟手');
-    const side = byCls(w, 'sw-r'), edit = btnOf(w, 'sw-edit'), del = btnOf(w, 'sw-del');
-    assert.deepEqual(side.children, [edit, del], '从左往右：编辑、删除（红的在最外面）');
-    assert.equal(byCls(w, 'sw-l'), undefined, '食材清单往右没有按钮');
-    assert.deepEqual([edit.attrs['aria-label'], del.attrs['aria-label']], ['编辑「牛奶」', '删除「牛奶」']);
-    assert.deepEqual([byCls(edit, 'sw-t').textContent, byCls(del, 'sw-t').textContent], ['编辑', '删除']);
-    assert.equal(side.style.width, '90px');
-    dispatch(mainOf(w), 'pointerup', { pointerId: 1, pointerType: 'touch', clientX: 230, clientY: 300 });
+    drag(env, mainOf(w), line(320, 250), { up: false });
+    assert.equal(inner(w).style.transform, 'translateX(-70px)', '跟手');
+    const side = byCls(w, 'sw-r'), del = btnOf(w, 'sw-del');
+    assert.deepEqual(side.children, [del], '右边只有一个「删除」');
+    assert.equal(byCls(side, 'sw-edit'), undefined);
+    assert.deepEqual([byCls(w, 'sw-l').hidden, btnOf(w, 'sw-edit').hidden], [true, true], '另一边的「编辑」藏着');
+    assert.deepEqual([del.attrs['aria-label'], byCls(del, 'sw-t').textContent], ['删除「牛奶」', '删除']);
+    assert.equal(side.style.width, '70px');
+    dispatch(mainOf(w), 'pointerup', { pointerId: 1, pointerType: 'touch', clientX: 250, clientY: 300 });
     env.clock.t += 5;
-    assert.ok(dispatch(mainOf(w), 'click').defaultPrevented, '滑完松手不算点（不勾掉）');
+    assert.ok(dispatch(mainOf(w), 'click').defaultPrevented, '滑完松手不算点（不打开面板）');
     env.flush();
     assert.equal(w.swipe.side, -1);
-    assert.equal(offsetOf(w), -2 * A, '开着：移开两个按钮宽');
-    assert.equal(side.style.width, 2 * A + 'px');
-    assert.deepEqual([side.hidden, edit.hidden, del.hidden], [false, false, false]);
+    assert.equal(offsetOf(w), -A, '开着：移开一个按钮宽');
+    assert.equal(side.style.width, A + 'px');
+    assert.deepEqual([side.hidden, del.hidden], [false, false]);
     // 一口气往左拖过整行、甩得很快：最多 1.5 倍（橡皮筋），松手照样只是开着
     drag(env, mainOf(w), line(340, -500, 5), { rest: 0, up: false });
-    assert.ok(-offsetOf(w) > 2 * A && -offsetOf(w) < 2 * A * SWIPE.pull, String(offsetOf(w)));
+    assert.ok(-offsetOf(w) > A && -offsetOf(w) <= A * SWIPE.pull, String(offsetOf(w)));
     dispatch(mainOf(w), 'pointerup', { pointerId: 1, pointerType: 'touch', clientX: -500, clientY: 300 });
     env.flush();
     await tick();
@@ -178,15 +179,14 @@ test('往左滑露出「编辑」「删除」（删除在最外面）：关着�
     assert.deepEqual(snapshot(), before, '数据一点没变');
     assert.deepEqual([env.toasts, env.sheets], [[], []]);
     assert.ok(env.row('牛奶') === w, '没有重画');
-    // 两个按钮的一边：过这一边宽（168）的一半才开，不是一个按钮宽的一半
+    // 拖了不到一个按钮宽的一半：弹回去
     const bread = env.row('面包');
     env.clock.t += 1000;
-    drag(env, mainOf(bread), line(320, 250));
+    drag(env, mainOf(bread), line(320, 290));
     env.flush();
-    assert.deepEqual([bread.swipe.side, w.swipe.side], [0, 0], '拖了 70 px：弹回去（开着的牛奶也关上了）');
+    assert.deepEqual([bread.swipe.side, w.swipe.side], [0, 0], '拖了 30 px：弹回去（开着的牛奶也关上了）');
   } finally { env.done(); }
 });
-
 test('点「删除」：这一行滑出去、收起来以后删（进「最近删除」），提示条和编辑面板的删除一样能撤销；减少动态效果时马上删', async () => {
   const env = setup();
   try {
@@ -195,7 +195,6 @@ test('点「删除」：这一行滑出去、收起来以后删（进「最近�
     const ev = tap(env, btnOf(w, 'sw-del'));
     assert.ok(ev.defaultPrevented);
     assert.ok(cls(w, 'sw-out'));
-    assert.equal(btnOf(w, 'sw-edit').style.flexGrow, '0', '滑出去时「删除」占满这一边');
     assert.equal(!!raw('i_milk').deleted, false, '动画做完以前还没删');
     env.flush();
     assert.ok(cls(w, 'sw-gone'));
@@ -214,20 +213,27 @@ test('点「删除」：这一行滑出去、收起来以后删（进「最近�
   try {
     const w = quick.row('面包');
     drag(quick, mainOf(w), line(320, 160));
-    assert.equal(offsetOf(w), -2 * A, '没有动画：直接到位');
+    assert.equal(offsetOf(w), -A, '没有动画：直接到位');
     assert.ok(!cls(w, 'sw-anim'));
     tap(quick, btnOf(w, 'sw-del'));
     assert.equal(!!raw('i_bread').deleted, true, '马上删');
   } finally { quick.done(); }
 });
 
-test('点「编辑」：这一行弹回去，打开和 › 一样的编辑面板（不改数据）', async () => {
+test('往右滑露出「编辑」，点了这一行弹回去，打开和点这一行一样的编辑面板（不改数据）', async () => {
   const env = setup();
   try {
     const before = snapshot();
     const w = env.row('牛奶');
-    openRow(env, w, -1);
-    tap(env, btnOf(w, 'sw-edit'));
+    drag(env, mainOf(w), line(60, 400, 4), { rest: 0 });          // 往右狠甩：也只是露出来
+    env.flush();
+    await tick();
+    const edit = btnOf(w, 'sw-edit');
+    assert.deepEqual([w.swipe.side, offsetOf(w)], [1, A]);
+    assert.deepEqual(byCls(w, 'sw-l').children, [edit], '左边只有一个「编辑」');
+    assert.deepEqual([edit.attrs['aria-label'], byCls(edit, 'sw-t').textContent], ['编辑「牛奶」', '编辑']);
+    assert.deepEqual([snapshot(), env.sheets], [before, []], '松手不打开');
+    tap(env, edit);
     assert.equal(w.swipe.side, 0, '关上');
     assert.equal(env.sheets.length, 1);
     assert.equal(env.sheets[0].opts.title, t('item.editTitle'));
@@ -235,124 +241,101 @@ test('点「编辑」：这一行弹回去，打开和 › 一样的编辑面板
     env.flush();
     await tick();
     assert.deepEqual(snapshot(), before);
-    // 和 › 打开的是同一个面板
+    // 和点这一行打开的是同一个面板
     env.sheets[0].close();
-    await byCls(w, 'item-more').fire('click');
+    await mainOf(w).fire('click');
     assert.equal(env.sheets[0].opts.title, t('item.editTitle'));
   } finally { env.done(); }
 });
-
-test('往右滑：一般清单要买的露出「以后再说」，以后再说的露出「移回要买」，点了才改；食材清单、已买的往右只能拉动一点点、没有按钮', async () => {
+test('每一行都一样：一般清单的要买、以后再说、已买，食材清单的已买，都是往右「编辑」、往左「删除」（没有「以后再说」「移回要买」）', async () => {
   const env = setup({ params: { id: 'l_tobuy' } });
   try {
     const before = snapshot();
-    let w = env.row('台灯');
-    drag(env, mainOf(w), line(40, 400, 4), { rest: 0 });          // 往右狠甩：也只是露出来
-    env.flush();
-    await tick();
-    const later = btnOf(w, 'sw-later');
-    assert.equal(w.swipe.side, 1);
-    assert.equal(offsetOf(w), A);
-    assert.equal(later.attrs['aria-label'], '以后再说「台灯」');
-    assert.equal(byCls(later, 'sw-t').textContent, '以后再说');
-    assert.deepEqual(snapshot(), before, '松手不改');
-    tap(env, later);
-    assert.equal(raw('i_lamp').status, 'need', '弹回去以后再改');
-    env.flush();
-    assert.equal(raw('i_lamp').status, 'later');
-    assert.deepEqual(env.toasts.map(x => [x.msg, x.action && x.action.label]), [['已把「台灯」移到以后再说', '撤销']]);
-    await tick();
-    assert.ok(cls(env.row('台灯').parent.parent, 'sec-later'), '挪到「以后再说」里');
-
-    w = env.row('书桌');
-    openRow(env, w, 1);
-    const back = btnOf(w, 'sw-later');
-    assert.deepEqual([back.attrs['aria-label'], byCls(back, 'sw-t').textContent], ['移回要买「书桌」', '移回要买']);
-    tap(env, back);
-    env.flush();
-    assert.equal(raw('i_desk').status, 'need');
-    assert.equal(env.toasts.length, 1, '移回要买的不弹提示（在要买里闪一下）');
-    await tick();
-    assert.ok(!cls(env.row('书桌').parent.parent, 'sec-later'));
-
-    // 已买的：往右没有按钮
-    w = env.row('雨伞');
-    drag(env, mainOf(w), line(60, 300), { up: false });
-    assert.ok(offsetOf(w) > 0 && offsetOf(w) <= 16, String(offsetOf(w)));
-    assert.equal(byCls(w, 'sw-l'), undefined);
-    dispatch(mainOf(w), 'pointerup', { pointerId: 1, pointerType: 'touch', clientX: 300, clientY: 300 });
-    env.flush();
-    assert.equal(w.swipe.side, 0, '弹回去');
-    w.swipe.open(1);
-    assert.equal(w.swipe.side, 0, '直接开也开不了');
-    openRow(env, w, -1);
-    assert.ok(btnOf(w, 'sw-edit') && btnOf(w, 'sw-del'), '往左照样是编辑、删除');
+    for (const name of ['台灯', '书桌', '雨伞']) {
+      const w = env.row(name);
+      env.clock.t += 1000;
+      openRow(env, w, 1);
+      assert.equal(w.swipe.side, 1, name);
+      assert.deepEqual(byCls(w, 'sw-l').children.map(b => b.attrs['aria-label']), ['编辑「' + name + '」'], name + '：往右是编辑');
+      w.swipe.close();
+      env.clock.t += 1000;
+      openRow(env, w, -1);
+      assert.equal(w.swipe.side, -1, name);
+      assert.deepEqual(byCls(w, 'sw-r').children.map(b => b.attrs['aria-label']), ['删除「' + name + '」'], name + '：往左是删除');
+      assert.equal(btnOf(w, 'sw-later'), undefined);
+      w.swipe.close();
+    }
+    assert.deepEqual(snapshot(), before, '只是露出来，什么都没改');
   } finally { env.done(); }
   const groc = setup();
   try {
-    for (const name of ['牛奶', '鸡蛋']) {
-      const w = groc.row(name);
-      drag(groc, mainOf(w), line(60, 300));
-      groc.flush();
-      assert.equal(w.swipe.side, 0, name + '：食材清单没有「以后再说」');
-      assert.equal(byCls(w, 'sw-l'), undefined);
-    }
+    const w = groc.row('鸡蛋');
+    openRow(groc, w, 1);
+    assert.equal(w.swipe.side, 1, '已买的也能往右滑出「编辑」');
+    assert.ok(btnOf(w, 'sw-edit'));
   } finally { groc.done(); }
 });
-
-test('点开着的行只是关上，不勾掉；开着时点别的行也只是关上，不勾掉那一行；同一时间只开一行', async () => {
+test('点开着的行（圆圈、别处）只是关上，不勾掉、不打开面板；开着时点别的行也只是关上；同一时间只开一行；没有开着的行时只有点圆圈才勾掉', async () => {
   const env = setup();
   try {
     const before = snapshot();
     const milk = env.row('牛奶'), bread = env.row('面包');
-    openRow(env, milk, -1);
-    const ev = tap(env, mainOf(milk), 100);
-    assert.ok(ev.defaultPrevented && ev.stopped, '这一下 click 吞掉了');
-    env.flush();
-    await tick();
-    assert.equal(milk.swipe.side, 0);
-    assert.deepEqual(snapshot(), before, '没有勾掉');
+    for (const [side, part] of [[-1, mainOf], [-1, tickOf], [1, mainOf], [1, tickOf]]) {
+      env.clock.t += 1000;
+      openRow(env, milk, side);
+      env.clock.t += 1000;
+      const ev = tap(env, part(milk), 100);
+      assert.ok(ev.defaultPrevented && ev.stopped, '这一下 click 吞掉了');
+      env.flush();
+      await tick();
+      assert.equal(milk.swipe.side, 0);
+      assert.deepEqual([snapshot(), env.sheets.length], [before, 0], '没有勾掉，也没打开面板');
+    }
 
     openRow(env, milk, -1);
     env.clock.t += 1000;
-    tap(env, mainOf(bread), 100);
+    tap(env, tickOf(bread), 100);
     env.flush();
     await tick();
     assert.equal(milk.swipe.side, 0);
-    assert.deepEqual(snapshot(), before, '点到别的行：只是关上开着的那行');
+    assert.deepEqual(snapshot(), before, '点到别的行的圆圈：只是关上开着的那行');
 
     openRow(env, milk, -1);
     env.clock.t += 1000;
-    openRow(env, bread, -1);
-    assert.deepEqual([milk.swipe.side, bread.swipe.side], [0, -1], '在别的行上开始滑：先开着的那行关上');
-    // 没有开着的行时，点一下照常勾掉
+    openRow(env, bread, 1);
+    assert.deepEqual([milk.swipe.side, bread.swipe.side], [0, 1], '在别的行上开始滑：先开着的那行关上');
     env.row('面包').swipe.close();
+    // 没有开着的行时：点这一行打开编辑面板（不勾）；点圆圈才勾掉
     env.clock.t += 1000;
-    tap(env, mainOf(env.row('牛奶')), 100);
+    tap(env, mainOf(env.row('牛奶')), 200);
+    await tick();
+    assert.deepEqual([raw('i_milk').status, env.sheets.length], ['need', 1], '点名字：打开面板，不勾');
+    env.sheets[0].close();
+    env.clock.t += 1000;
+    tap(env, tickOf(env.row('牛奶')), 30);
     await tick();
     assert.equal(raw('i_milk').status, 'done');
   } finally { env.done(); }
 });
-
-test('关着时按钮 hidden；开着时能用键盘点（Enter / 空格是 detail 0 的 click），删掉以后焦点给下一行；Esc 关上、焦点回到这一行的勾', async () => {
+test('关着时按钮 hidden；开着时能用键盘点（Enter / 空格是 detail 0 的 click），删掉以后焦点给下一行；Esc 关上、焦点回到这一行的圆圈', async () => {
   const env = setup();
   try {
     assert.deepEqual(env.rows(), ['面包', '牛奶', '鸡蛋']);
     let w = env.row('面包');
     w.swipe.open(-1);
     const edit = btnOf(w, 'sw-edit'), del = btnOf(w, 'sw-del');
-    assert.deepEqual([edit.hidden, del.hidden], [false, false], '开着：能 Tab 到');
+    assert.deepEqual([del.hidden, edit.hidden], [false, true], '开着的那边能 Tab 到，另一边的「编辑」藏着');
     del.focus();
     dispatch(globalThis.document, 'keydown', { key: 'Escape' });
     assert.equal(w.swipe.side, 0);
-    assert.equal(globalThis.document.activeElement, mainOf(w), '焦点回到这一行的勾');
+    assert.equal(globalThis.document.activeElement, tickOf(w), '焦点回到这一行的圆圈');
     env.flush();
     assert.deepEqual([edit.hidden, del.hidden, byCls(w, 'sw-r').hidden], [true, true, true], '关上以后藏起来');
 
     w.swipe.open(-1);
     del.focus();
     dispatch(del, 'click', { detail: 0 });         // 键盘
-    assert.equal(globalThis.document.activeElement, mainOf(env.row('牛奶')), '焦点挪到下一行，不掉回页首');
+    assert.equal(globalThis.document.activeElement, tickOf(env.row('牛奶')), '焦点挪到下一行（的圆圈），不掉回页首');
     env.flush();
     assert.equal(!!raw('i_bread').deleted, true);
     await tick();
@@ -433,7 +416,7 @@ test('上下滚动、从屏幕左边缘开始的、鼠标拖都不滑；触控�
     // 触控板：两指往左（deltaX 为正）连惯性一共扫了上千 px
     let t0 = env.clock.t;
     for (let i = 0; i < 40; i++) { env.clock.t = t0 + i * 16; dispatch(mainOf(w), 'wheel', { deltaX: 40, deltaY: 0, deltaMode: 0 }); }
-    assert.ok(-offsetOf(w) < 2 * A * 1.2, String(offsetOf(w)));
+    assert.ok(-offsetOf(w) <= Math.ceil(A * 1.2), String(offsetOf(w)));   // 橡皮筋以后不到 1.2 个按钮宽（取整）
     env.flush();
     assert.equal(w.swipe.side, -1, '开着');
     t0 = env.clock.t + 1000;
@@ -445,7 +428,7 @@ test('上下滚动、从屏幕左边缘开始的、鼠标拖都不滑；触控�
   } finally { env.done(); }
 });
 
-test('触控板扫开、惯性还没停（wheelGap 以内）就点这一行（勾、›；鼠标、手指、笔）：只是停好、关上，不勾掉、不打开面板，也不停在半中间', async () => {
+test('触控板扫开、惯性还没停（wheelGap 以内）就点这一行（圆圈、别处；鼠标、手指、笔）：只是停好、关上，不勾掉、不打开面板，也不停在半中间', async () => {
   const env = setup({ params: { id: 'l_tobuy' } });
   try {
     const before = snapshot();
@@ -455,7 +438,7 @@ test('触控板扫开、惯性还没停（wheelGap 以内）就点这一行（�
       for (let i = 0; i < 20; i++) { env.clock.t = t0 + i * 16; dispatch(mainOf(w), 'wheel', { deltaX: 40, deltaY: 0, deltaMode: 0 }); }
       env.clock.t += 40;                               // 惯性还在：离最后一个 wheel 不到 wheelGap
     };
-    for (const [type, part] of [['mouse', 'item-main'], ['touch', 'item-main'], ['pen', 'item-main'], ['mouse', 'item-more'], ['touch', 'item-more']]) {
+    for (const [type, part] of [['mouse', 'item-tick'], ['touch', 'item-tick'], ['pen', 'item-tick'], ['mouse', 'item-main'], ['touch', 'item-main'], ['pen', 'item-main']]) {
       scan();
       assert.ok(offsetOf(w) < -A, '扫开着（看起来开着，还没停好）');
       const target = byCls(w, part);
@@ -505,19 +488,17 @@ test('拖着的时候数据变了（同步进来）：滑完再重画，手底�
   } finally { env.done(); }
 });
 
-test('商店页、搜索、购物模式的行也一样能滑：删除、以后再说（商店页、购物模式里它就不见了）', async () => {
+test('商店页、搜索、购物模式的行也一样能滑：往右编辑、往左删除', async () => {
   const store = setup({ page: 'store', params: { id: 's_wholefoods' } });
   try {
     const w = store.row('台灯');
     openRow(store, w, 1);
-    tap(store, btnOf(w, 'sw-later'));
-    store.flush();
-    await tick();
-    assert.equal(raw('i_lamp').status, 'later');
-    assert.equal(store.row('台灯'), undefined, '「以后再说」的不在商店页上');
+    tap(store, btnOf(w, 'sw-edit'));
+    assert.equal(store.sheets.length, 1, '打开编辑面板');
+    store.sheets[0].close();
     const milk = store.row('牛奶');
+    store.clock.t += 1000;
     openRow(store, milk, -1);
-    assert.equal(byCls(milk, 'sw-l'), undefined);
     tap(store, btnOf(milk, 'sw-del'));
     store.flush();
     assert.equal(!!raw('i_milk').deleted, true);
@@ -527,27 +508,30 @@ test('商店页、搜索、购物模式的行也一样能滑：删除、以后�
     const w = search.row('书桌');
     assert.ok(w, search.rows().join());
     openRow(search, w, 1);
-    assert.equal(btnOf(w, 'sw-later').attrs['aria-label'], '移回要买「书桌」');
-    tap(search, btnOf(w, 'sw-later'));
+    assert.equal(btnOf(w, 'sw-edit').attrs['aria-label'], '编辑「书桌」', '以后再说的也是编辑');
+    w.swipe.close();
+    search.clock.t += 1000;
+    openRow(search, w, -1);
+    tap(search, btnOf(w, 'sw-del'));
     search.flush();
-    assert.equal(raw('i_desk').status, 'need');
+    assert.equal(!!raw('i_desk').deleted, true);
   } finally { search.done(); }
   const shop = setup({ page: 'shop', params: { sub: 'list', id: 'l_tobuy' } });
   try {
     const w = shop.row('椅子');
-    openRow(shop, w, -1);
+    openRow(shop, w, 1);
     tap(shop, btnOf(w, 'sw-edit'));
     assert.equal(shop.sheets.length, 1, '购物模式里也能打开编辑面板');
     shop.sheets[0].close();
-    openRow(shop, w, 1);
-    tap(shop, btnOf(w, 'sw-later'));
-    // 离开页面时等动画的移动马上做完，不会丢
+    shop.clock.t += 1000;
+    openRow(shop, w, -1);
+    tap(shop, btnOf(w, 'sw-del'));
+    // 离开页面时等动画的删除马上做完，不会丢
     shop.handle.cleanup();
     shop.handle = null;
-    assert.equal(raw('i_chair').status, 'later');
+    assert.equal(!!raw('i_chair').deleted, true);
   } finally { shop.done(); }
 });
-
 test('和勾选的节奏一起：勾了马上滑开，勾在滑的时候就到时间、照常改成已买（重画等滑完）；接着点「删除」删的是已买的那一样，撤销回到已买；在别的行上滑着的时候，勾的那一行等滑完再挪；切到后台时等动画的删除马上做', async () => {
   const env = setup();
   const mm = Object.getOwnPropertyDescriptor(globalThis, 'matchMedia');
@@ -555,7 +539,7 @@ test('和勾选的节奏一起：勾了马上滑开，勾在滑的时候就到�
   try {
     // 真实的先后：滑一下要两三百毫秒，勾的 320 ms 在手指还没抬起时就到了
     let w = env.row('牛奶');
-    tap(env, mainOf(w), 100);
+    tap(env, tickOf(w), 30);
     assert.ok(cls(w, 'ticking'), '先在原地打勾');
     assert.equal(raw('i_milk').status, 'need');
     env.clock.t += 1000;
@@ -576,7 +560,7 @@ test('和勾选的节奏一起：勾了马上滑开，勾在滑的时候就到�
 
     // 勾了面包，马上在牛奶上横着滑（手指没抬起）：面包到时间了也等滑完再挪，牛奶这一行不在手底下换掉
     env.clock.t += 1000;
-    tap(env, mainOf(env.row('面包')), 100);
+    tap(env, tickOf(env.row('面包')), 30);
     w = env.row('牛奶');
     env.clock.t += 1000;
     drag(env, mainOf(w), line(320, 250), { up: false });
@@ -603,7 +587,7 @@ test('和勾选的节奏一起：勾了马上滑开，勾在滑的时候就到�
   }
 });
 
-test('别处改了数据（同步进来）时开着的行：重画以后关上，焦点在按钮上的回到这一行的勾；之后半秒内点行不算（是冲着刚才的按钮去的）', async () => {
+test('别处改了数据（同步进来）时开着的行：重画以后关上，焦点在按钮上的回到这一行的圆圈；之后半秒内点行不算（是冲着刚才的按钮去的）', async () => {
   const env = setup();
   try {
     const w = env.row('牛奶');
@@ -615,24 +599,21 @@ test('别处改了数据（同步进来）时开着的行：重画以后关上�
     assert.notEqual(w2, w, '重画了');
     env.flush();
     assert.equal(w2.swipe.side, 0, '关上');
-    assert.equal(globalThis.document.activeElement, mainOf(w2), '焦点回到新画的这一行的勾，不丢');
-    tap(env, mainOf(w2), 100);
+    assert.equal(globalThis.document.activeElement, tickOf(w2), '焦点回到新画的这一行的圆圈，不丢');
+    tap(env, tickOf(w2), 30);
     await tick();
     assert.equal(raw('i_milk').status, 'need', '刚关上：这一下不勾');
     env.clock.t += SWIPE.block + 100;
-    tap(env, mainOf(env.row('牛奶')), 100);
+    tap(env, tickOf(env.row('牛奶')), 30);
     await tick();
     assert.equal(raw('i_milk').status, 'done', '过了半秒照常勾掉');
   } finally { env.done(); }
 });
 
-test('捏合放大着不滑；页面滚动了关上开着的行；键盘点「以后再说」以后焦点给顶替它的那一行', async () => {
+test('捏合放大着不滑；页面滚动了关上开着的行；键盘点「编辑」：焦点先回到这一行的圆圈，再打开编辑面板', async () => {
   const env = setup({ params: { id: 'l_tobuy' } });
   try {
-    const ids = { 台灯: 'i_lamp', 椅子: 'i_chair' };
-    const [first, second] = env.rows();
-    assert.deepEqual([first, second].sort(), ['台灯', '椅子'].sort(), '要买的两样在最前面');
-    let w = env.row(first);
+    const w = env.row('台灯');
     globalThis.window.visualViewport = { scale: 2 };
     drag(env, mainOf(w), line(320, 160));
     env.flush();
@@ -648,13 +629,12 @@ test('捏合放大着不滑；页面滚动了关上开着的行；键盘点「�
     env.main.scrollTop = 0;
 
     w.swipe.open(1);
-    const later = btnOf(w, 'sw-later');
-    later.focus();
-    dispatch(later, 'click', { detail: 0 });         // 键盘
-    assert.equal(globalThis.document.activeElement, mainOf(w), '先回到这一行的勾（按钮藏起来了）');
-    env.flush();
-    assert.equal(raw(ids[first]).status, 'later');
-    await tick();
-    assert.equal(globalThis.document.activeElement.dataset.fid, 'it-' + ids[second], '挪走以后焦点给顶替它的那一行');
+    const edit = btnOf(w, 'sw-edit');
+    edit.focus();
+    dispatch(edit, 'click', { detail: 0 });          // 键盘
+    assert.equal(w.swipe.side, 0);
+    assert.equal(globalThis.document.activeElement, tickOf(w), '先回到这一行的圆圈（按钮藏起来了），面板关上以后回到这里');
+    assert.equal(env.sheets.length, 1);
+    assert.equal(find(env.sheets[0].el, el => el.tag === 'input').value, '台灯');
   } finally { env.done(); }
 });

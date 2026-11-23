@@ -1,14 +1,16 @@
 // 能勾的一行和勾选的节奏：清单页（views/list.js）、商店页（views/store.js）、购物模式（views/shop.js）、搜索（views/search.js）共用。
-// 一行：大圆勾 + 名字（下面一行是页面给的小标签——清单页标商店、商店页标来自哪张清单——和备注的第一行）+ 数量；点整行勾掉 / 取消，右边的 › 打开编辑面板（ui/itemEditor.js）。
+// 一行：左边的大圆勾 + 名字（下面一行是页面给的小标签——清单页标商店、商店页标来自哪张清单——和备注的第一行）+ 数量 + ›。
+// 只有点左边的圆圈才勾掉 / 取消（以前点整行就勾，推着车、滚着页面很容易误勾）；点这一行别的地方打开编辑面板（ui/itemEditor.js），› 只是提示。
+// 圆圈是单独的按钮，占满左边一栏、整行高（≥ 48 × 48，在店里单手也点得中）。
 // 小标签（storeChip、listChip）、组名（groupTitle）和分好的组（groupSections）也在这里，几个页面画得一样。
 // 网页 App 没有震动，用动画代替：先在原地打勾、划线（或者在「已买」里去掉勾），约 0.3 秒后再挪过去；
 // 连着点几样时等最后一下之后一起挪（挪的时候行会动，手指下面换了一样东西）；减少动态效果时马上挪。
-// 刚挪了位置的行，紧接着的一下不算（连点两下不会改掉两样）；用键盘、读屏勾掉一样以后，焦点给顶替它位置的那一样。
+// 刚挪了位置的行，紧接着点它的圆圈不算（连点两下不会改掉两样）；用键盘、读屏勾掉一样以后，焦点给顶替它位置的那一样的圆圈。
 // 规则在 core/items.js（setStatus：勾成已买时记下这次的商店）。
-// 每一行能左右滑（ui/swipe.js，照 babble）：往左露出「编辑」「删除」，往右露出「以后再说」/「移回要买」（哪一行有哪几个：core/items.js 的 swipeActions）。
-// 滑开只是露出按钮，点了按钮才做；点开着的行只是关上，不勾掉。删除和编辑面板里的「删除」同一条路（进「最近删除」，10 秒内能撤销），
-// 编辑就是行右边的 › 打开的那个面板；以后再说 / 移回要买和勾掉一样：挪走以后焦点给顶替它的那一行，放回「要买」的在新位置闪一下。
-// 一行是 <li.item-row>（可滑的那一层）> <div.item-in>（跟着手指动的：勾 + ›）+ 露出来时才建的按钮。
+// 每一行能左右滑（ui/swipe.js，照 babble）：往右露出「编辑」，往左露出红色的「删除」（core/items.js 的 swipeActions）。
+// 滑开只是露出按钮，点了按钮才做；点开着的行（圆圈也好、别处也好）只是关上，不勾掉、不打开面板。
+// 删除和编辑面板里的「删除」同一条路（进「最近删除」，10 秒内能撤销），编辑就是点这一行打开的那个面板。
+// 一行是 <li.item-row>（可滑的那一层）> <div.item-in>（跟着手指动的：圆圈 + 这一行的编辑按钮）+ 露出来时才建的按钮。
 import { h, icon } from './dom.js';
 import { t } from '../i18n.js';
 import { liveItem, liveList, setStatus, untickStatus, storeExists, swipeActions } from '../core/items.js';
@@ -29,7 +31,7 @@ const firstLine = (s) => String(s || '').split('\n').map(x => x.trim()).find(Boo
  *   draw(fn)        重画列表：fn 里调 row() 把行放进页面；前后比一比哪些行挪了位置，画完闪一下要闪的那一行
  *   keepFocus(fn)   重画以后焦点放回同一个控件（带 data-fid 的）；勾掉的那一行挪走了就给顶替它的那一行，控件没了给页面标题
  *   flash(id)       下次画完闪这一行；flashNow() 现在就闪（数据没变、不会重画的时候）
- *   flush()         点过、还没挪的马上改，滑开以后点了、还在等动画的删除 / 移动也马上做（离开页面、切到后台时）；drop() 勾过的不改了（清单删掉、归档了）
+ *   flush()         点过、还没挪的马上改，滑开以后点了、还在等动画的删除也马上做（离开页面、切到后台时）；drop() 勾过的不改了（清单删掉、归档了）
  *   whenIdle(fn)    数据变了要重画（页面的 onChange）：正在滑、行在动、删除在等动画时等做完再画（最多等几秒），不然手底下的行换成新的
  *   destroy()       离开页面（页面的 cleanup 里，flush / drop 之后）：不再听手势
  */
@@ -50,48 +52,35 @@ export function checklist(ctx, main, swipeEnv) {
     const q = qtyLabel(it.qty, it.unit);
     const nt = note || firstLine(it.note);
     const hasChip = Array.isArray(chip) ? chip.some(Boolean) : !!chip;
-    const check = h('button.item-main', { type: 'button', role: 'checkbox', 'aria-checked': String(checked), dataset: { fid: 'it-' + it.id },
-      onclick: () => tap(it.id) },
-    h('span.check', { 'aria-hidden': 'true' }, icon('check')),
-    h('span.item-text', null,
-      h('span.item-name', null, name || it.name),
-      hasChip || nt ? h('span.item-sub', null, chip, nt ? h('span.item-note', null, nt) : null) : null),
-    q ? h('span.item-qty', null, q) : null);
-    const inner = h('div.item-in', null, check,
-      h('button.item-more', { type: 'button', 'aria-label': t('item.edit', { name: it.name }), title: t('item.edit', { name: it.name }), dataset: { fid: 'more-' + it.id },
-        onclick: () => itemSheet(ctx, it.id) }, icon('chev')));
+    // 圆圈的名字只是东西的名字（读屏：「牛奶，复选框，未勾选」），数量、小标签、备注当说明念（这一行的按钮名字是「编辑「牛奶」」，那里念不到）。
+    // id 一页里不会重：一样东西在一页上只画一次
+    const sub = hasChip || nt ? h('span.item-sub', { id: 'pn-sub-' + it.id }, chip, nt ? h('span.item-note', null, nt) : null) : null;
+    const qty = q ? h('span.item-qty', { id: 'pn-qty-' + it.id }, q) : null;
+    const desc = [qty, sub].filter(Boolean).map(x => x.id).join(' ');
+    const check = h('button.item-tick', { type: 'button', role: 'checkbox', 'aria-checked': String(checked), 'aria-label': it.name,
+      'aria-describedby': desc || null, dataset: { fid: 'it-' + it.id }, onclick: () => tap(it.id) },
+    h('span.check', { 'aria-hidden': 'true' }, icon('check')));
+    const body = h('button.item-main', { type: 'button', 'aria-label': t('item.edit', { name: it.name }), 'aria-haspopup': 'dialog', dataset: { fid: 'ed-' + it.id },
+      onclick: () => itemSheet(ctx, it.id) },
+    h('span.item-text', null, h('span.item-name', null, name || it.name), sub),
+    qty,
+    h('span.item-chev', { 'aria-hidden': 'true' }, icon('chev')));
+    const inner = h('div.item-in', null, check, body);
     const li = h('li.item-row' + (was && checked ? '.done' : '') + (!was && checked ? '.ticking' : ''), { dataset: { id: it.id } });
     swipes.wrap(inner, { el: li, id: it.id, focus: check, ...swipeButtons(it) });
     rowEls.set(it.id, { li, check, sec: it.status });
     return li;
   }
-  /** 左右滑露出的按钮（core/items.js 的 swipeActions 定有哪几个）；按钮上的字短，读屏念的带上名字 */
+  /** 左右滑露出的按钮（core/items.js 的 swipeActions 定）：往右「编辑」，往左「删除」；按钮上的字短，读屏念的带上名字 */
   function swipeButtons(it) {
     const id = it.id, name = it.name;
     const make = {
       edit: () => ({ key: 'edit', cls: 'sw-edit', icon: 'pencil', label: t('item.swEdit'), aria: t('item.edit', { name }), instant: true, run: () => itemSheet(ctx, id) }),
       delete: () => ({ key: 'delete', cls: 'sw-del', icon: 'trash', label: t('common.delete'), aria: t('item.swDelete', { name }), out: true,
         run: () => { pending.delete(id); removeItem(ctx, id); } }),
-      later: () => ({ key: 'later', cls: 'sw-later', icon: 'clock', label: t('item.st.later'), aria: t('item.swLater', { name }), run: () => moveTo(it, 'later') }),
-      need: () => ({ key: 'need', cls: 'sw-later', icon: 'undo', label: t('item.swNeedLabel'), aria: t('item.swNeed', { name }), run: () => moveTo(it, 'need') }),
     };
     const a = swipeActions(ctx.state, it);
     return { left: a.left.map(k => make[k]()), right: a.right.map(k => make[k]()) };
-  }
-  /**
-   * 滑开以后点了「以后再说」/「移回要买」：和勾掉一样挪走（焦点给顶替它的那一行），放回「要买」的在新位置闪一下。
-   * 移到「以后再说」的给「撤销」（在商店页、购物模式里它就不见了，清单页上「以后再说」可能折着）。
-   * 滑开之前看到的状态已经被别处改了（同步进来）就不再改；点过、还没挪的勾不算了（按钮是冲着这一行现在的样子去的）
-   */
-  function moveTo(it, st) {
-    const cur = liveItem(ctx.state, it.id);
-    if (!cur || cur.status !== it.status) return;
-    pending.delete(it.id);
-    if (!pending.size) { clearTimeout(tickTimer); tickTimer = null; }
-    focusTo = nextFocus(new Map([[it.id, st]]));
-    const done = ctx.mutate(s => setStatus(s, it.id, st, Date.now()), st === 'later' ? { undoLabel: t('item.toLater', { name: cur.name }) } : undefined);
-    if (done && st === 'need') flashId = it.id;
-    queueMicrotask(() => { focusTo = null; });
   }
 
   function draw(fn) {
@@ -115,7 +104,7 @@ export function checklist(ctx, main, swipeEnv) {
     movedUntil = Date.now() + SETTLE_MS;
   }
   /**
-   * 重画以后焦点放回同一个控件（带 data-fid 的：同一样东西的勾和 ›、同一个折叠按钮），读屏和键盘不用从头找。
+   * 重画以后焦点放回同一个控件（带 data-fid 的：同一样东西的圆圈和这一行的编辑按钮、同一个折叠按钮），读屏和键盘不用从头找。
    * 例外：勾掉（或放回去）的那一行挪到别的区了，焦点给顶替它位置的那一行（focusTo），键盘、读屏接着往下走；
    * 没有可给的就跟着它走，而且滚过去（不然焦点在看不见的地方）。
    * 那个控件没了（这一样删掉了、移到别的清单了，「取消归档」「清除已买」按完那一块就没了）：给页面标题（data-fid="lp-title"），不掉回页首的 <body>
@@ -145,7 +134,7 @@ export function checklist(ctx, main, swipeEnv) {
     if (el.scrollIntoView) el.scrollIntoView({ block: 'nearest', behavior: reduced() ? 'auto' : 'smooth' });
   }
 
-  // 要买、以后再说 → 已买；已买 → 要买（刚从以后再说勾掉的回以后再说）。先只改这一行的样子，停一下（TICK_MS）再一起改数据、挪位置；还没挪之前再点一下 = 不改了
+  // 点了圆圈：要买、以后再说 → 已买；已买 → 要买（刚从以后再说勾掉的回以后再说）。先只改这一行的样子，停一下（TICK_MS）再一起改数据、挪位置；还没挪之前再点一下 = 不改了
   function tap(id) {
     const it = liveItem(ctx.state, id);
     if (!it) return;

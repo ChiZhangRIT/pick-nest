@@ -340,23 +340,22 @@ test('勾掉 / 取消：要买 → 已买（记 doneAt）→ 要买；以后再�
   assert.equal(s.data.items[lamp].updatedAt, at);
 });
 
-test('左右滑的按钮（swipeActions）：往左每一行都是编辑、删除；往右只有一般清单的要买（以后再说）、以后再说（移回要买），食材清单、已买的没有', () => {
+test('左右滑的按钮（swipeActions）：每一行都是往右「编辑」、往左「删除」（食材、一般清单，要买、以后再说、已买都一样）；不在了的两边都没有', () => {
   const s = seeded();
   const milk = add(s, '牛奶').id, lamp = add(s, '台灯', 'l_tobuy').id, desk = add(s, '书桌', 'l_tobuy').id;
   const of = (id) => swipeActions(s, s.data.items[id]);
-  assert.deepEqual(of(milk), { left: [], right: ['edit', 'delete'] }, '食材清单没有以后再说');
-  assert.deepEqual(of(lamp), { left: ['later'], right: ['edit', 'delete'] });
+  const both = { left: ['edit'], right: ['delete'] };
+  assert.deepEqual([of(milk), of(lamp)], [both, both], '食材、一般清单的要买');
   setStatus(s, lamp, 'later', now());
-  assert.deepEqual(of(lamp), { left: ['need'], right: ['edit', 'delete'] }, '以后再说的：移回要买');
   setStatus(s, desk, 'done', now());
   setStatus(s, milk, 'done', now());
-  assert.deepEqual([of(desk), of(milk)], [{ left: [], right: ['edit', 'delete'] }, { left: [], right: ['edit', 'delete'] }], '已买的点一下就放回去：往右没有按钮');
+  assert.deepEqual([of(lamp), of(desk), of(milk)], [both, both, both], '以后再说、已买的也一样（没有「以后再说」「移回要买」）');
   // 删掉的、清单不在的、没有的：两边都没有
   s.data.items[lamp] = deletedRecord(s.data.items[lamp], now());
   assert.deepEqual(of(lamp), { left: [], right: [] });
   custom(s, 'l_tools');
   const saw = add(s, '锯子', 'l_tools').id;
-  assert.deepEqual(of(saw).left, ['later']);
+  assert.deepEqual(of(saw), both);
   s.data.lists.l_tools = deletedRecord(s.data.lists.l_tools, now());
   assert.deepEqual(of(saw), { left: [], right: [] });
   assert.deepEqual(swipeActions(s, null), { left: [], right: [] });

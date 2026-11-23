@@ -330,7 +330,7 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
 .sug-in { flex: none; padding: 2px 7px; border-radius: 6px; background: var(--accent-soft); color: var(--accent-text); font-size: 12px; font-weight: 600; }
 .sug.on .sug-in, .sug:hover .sug-in { background: var(--pop); box-shadow: inset 0 0 0 1px var(--accent-line); }   /* 选中的那行底色就是 --accent-soft，标签换个底才看得见 */
 
-/* 一行：大圆勾 + 名字（下面一行商店、备注）+ 数量；点整行勾掉，右边单独的 › 是编辑 */
+/* 一行：左边的大圆勾（单独的按钮：只有点它才勾掉，防止误点）+ 名字（下面一行商店、备注）+ 数量 + ›；点圆圈以外的地方都是编辑（› 只是提示） */
 .lp-body { padding-bottom: 8px; }
 .grp .group-h { margin-top: 18px; }
 .grp:first-child .group-h { margin-top: 8px; }
@@ -338,13 +338,16 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
 .item-row { position: relative; display: flex; align-items: stretch;
   /* 闪一下、滚到看得见时：让开上面吸顶的顶栏和快速添加（48 + 68，再留一点），下面让开提示条 */
   scroll-margin-top: calc(128px + env(safe-area-inset-top)); scroll-margin-bottom: 84px; }
-/* 勾 + › 在 .item-in 里（左右滑时跟着手指动的那一层，ui/swipe.js）：分隔线画在它上面，跟着一起动，不划过露出来的按钮 */
+/* 圆圈 + 这一行的编辑按钮在 .item-in 里（左右滑时跟着手指动的那一层，ui/swipe.js）：分隔线画在它上面，跟着一起动，不划过露出来的按钮 */
 .item-in { position: relative; flex: 1; min-width: 0; display: flex; align-items: stretch; background: var(--card); }
 .item-row + .item-row > .item-in::before { content: ""; position: absolute; top: 0; left: 56px; right: 0; height: .5px; background: var(--line); }
-.item-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; min-height: 54px; padding: 10px 2px 10px 14px; border: 0; background: none; color: var(--ink); text-align: left; }
+.item-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; min-height: 54px; padding: 10px 0; border: 0; background: none; color: var(--ink); text-align: left; }
 .item-main:active { background: var(--fill); }
+/* 圆圈的按钮占满左边一栏、整行高（54 × ≥ 54；在店里推着车也点得中），圆在里面的位置和以前一样（离左边 14，文字从 54 开始） */
+.item-tick { flex: none; display: flex; align-items: center; width: 54px; min-height: 54px; padding: 0 0 0 14px; border: 0; background: none; color: inherit; }
+.item-tick:active .check { transform: scale(.86); }   /* 按下去圆圈缩一下：点中了的样子只在圆圈上，不像点了整行 */
 .check { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--muted); color: transparent;
-  transition: background-color .18s, border-color .18s, color .18s; }
+  transition: background-color .18s, border-color .18s, color .18s, transform .12s; }
 .check .ic { width: 17px; height: 17px; stroke-width: 2.8; }
 .item-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .item-name { font-size: 17px; line-height: 1.35; overflow-wrap: break-word; transition: color .18s; }   /* 不用 anywhere：窄屏上会把每个英文单词从中间断开 */
@@ -357,9 +360,12 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
 .item-qty { flex: none; max-width: 38%; color: var(--muted); font-size: 15px; text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: break-word; }
 /* 窄屏（iPad 分屏窄的一边 320、iPhone 放大显示）：数量窄一点（「12 bottles」折成两行），名字留得下整个单词 */
 @media (max-width: 420px) { .item-qty { max-width: 26%; } }
-.item-more { flex: none; display: grid; place-items: center; width: 44px; padding: 0; border: 0; background: none; color: var(--muted); }
-.item-more .ic { width: 18px; height: 18px; }
-.item-more:hover { color: var(--accent-text); }
+/* ›：只是告诉你点这一行是编辑（在这一行的按钮里）；margin 抵掉 gap，和数量的间距和以前单独的 › 按钮一样 */
+.item-chev { flex: none; display: grid; place-items: center; width: 44px; margin-left: -10px; align-self: stretch; color: var(--muted); }
+.item-chev .ic { width: 18px; height: 18px; }
+.item-main:hover .item-chev { color: var(--accent-text); }
+/* 圆圈、这一行两个按钮挨着，焦点框画在里面：外面会被分组的圆角裁掉，也分得清框的是哪一个 */
+.item-in > button:focus-visible { outline-offset: -3px; }
 /* 已买 / 正在勾：勾填满、名字划线变淡 */
 .item-row.done .check, .item-row.ticking .check { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .item-row.ticking .check { animation: tick-pop .28s ease-out; }
@@ -369,17 +375,18 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
 .item-row.flash > .item-in { animation: row-flash 1.4s ease-out; }
 @keyframes row-flash { 0%, 25% { background: var(--accent-soft); } 100% { background: var(--card); } }   /* .item-in 平时是 --card（盖住下面的按钮） */
 
-/* 一行左右滑（ui/swipe.js，照 babble 的 .swipe / .sw-*；checklist.js 的行都是）：<li.item-row.swipe> 里跟着手指动的是 .item-in（勾 + ›），按钮垫在它下面。
-   往左滑右边露出「编辑」（中性的灰）「删除」（红，最外面），往右滑左边露出「以后再说」/「移回要买」（琥珀色）。
+/* 一行左右滑（ui/swipe.js，照 babble 的 .swipe / .sw-*；checklist.js 的行都是）：<li.item-row.swipe> 里跟着手指动的是 .item-in（圆圈 + 这一行），按钮垫在它下面。
+   往右滑左边露出「编辑」（中性的灰），往左滑右边露出「删除」（红）；每一行都一样。
    babble 的卡片是一张张分开的，按钮也是单独的圆角块；这里的行在一整块分组（.group）里，按钮和 iOS 的列表一样贴着行、铺满一行高（SWIPE.gap 0），
    分组的圆角和 overflow: hidden 把按钮的角、滑出去的部分裁掉（页面不会横着滚）。
-   一个按钮宽 84（SWIPE.action），一边几个就是几个加起来（.sw-side 的宽由 JS 给，按钮按 flex-grow 分）；字和图标贴着行那一边，拉得更开时跟着走（最多拉开这一边的 1.5 倍）。
+   一个按钮宽 84（SWIPE.action；swipe.js 一边可以放几个，宽就是几个加起来，.sw-side 的宽由 JS 给，按钮按 flex-grow 分）；字和图标贴着行那一边，拉得更开时跟着走（最多拉开这一边的 1.5 倍）。
    按钮第一次滑开时才建，之后关着时 hidden。滑开只是露出按钮：点了按钮才做（没有「滑到底直接做」）。减少动态效果时上面的全局规则去掉了所有过渡 */
 .swipe { touch-action: pan-y pinch-zoom; }
 :root.sw-zoomed .swipe { touch-action: auto; }      /* 捏合放大着：单指横着拖是在移动放大的页面，不滑行 */
 .swipe > .item-in { z-index: 1; }
 .swipe.sw-drag > .item-in { will-change: transform; -webkit-user-select: none; user-select: none; }
 .swipe.sw-drag .item-main:active { background: none; }   /* 横着拖的时候不像按下去了 */
+.swipe.sw-drag .item-tick:active .check { transform: none; }
 .swipe.sw-anim > .item-in { transition: transform .24s cubic-bezier(.2, .8, .2, 1); }
 .swipe.sw-out { pointer-events: none; }
 .swipe.sw-gone { overflow: hidden; opacity: 0; transition: height .2s ease, opacity .2s ease; }
@@ -391,17 +398,15 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
   font-size: 13px; font-weight: 600; letter-spacing: .02em; -webkit-touch-callout: none; }
 .sw-l .sw-btn { justify-content: flex-end; }        /* 字和图标贴着行那一边 */
 .sw-r .sw-btn { justify-content: flex-start; }
-.swipe.sw-anim .sw-btn { transition: flex-grow .24s cubic-bezier(.2, .8, .2, 1); }   /* 删除滑出去时「编辑」收起来，「删除」占满 */
+.swipe.sw-anim .sw-btn { transition: flex-grow .24s cubic-bezier(.2, .8, .2, 1); }   /* 一边有几个按钮时：删除滑出去，别的收起来，「删除」占满 */
 .swipe.sw-anim .sw-in { transition: opacity .24s; }
 .sw-in { flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: 84px; padding: 0 4px; line-height: 1.2; text-align: center; }
 .sw-in .ic { width: 22px; height: 22px; stroke-width: 2; }
 .sw-del { background: var(--danger); color: #fff; }
 .sw-edit { background: #6b726b; color: #fff; }       /* 编辑：中性的灰（白字对比度够 4.5:1） */
-.sw-later { background: #e6a84f; color: #2b1d08; }   /* 以后再说 / 移回要买：琥珀色、深色字（和 babble 的「收藏」同一个颜色） */
 :root[data-theme="dark"] .sw-del { color: #2a0d0a; }
 :root[data-theme="dark"] .sw-edit { background: #4a514a; color: #eef1ec; }
-:root[data-theme="dark"] .sw-later { background: #e0b06a; }
-.sw-btn:focus-visible { outline: 2px solid currentColor; outline-offset: -4px; }   /* 画在里面：外面被分组裁掉；跟字一个颜色，红、灰、琥珀上都看得见 */
+.sw-btn:focus-visible { outline: 2px solid currentColor; outline-offset: -4px; }   /* 画在里面：外面被分组裁掉；跟字一个颜色，红、灰上都看得见 */
 
 .lp-sec { margin-top: 16px; }
 .sec-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 4px; padding-left: 4px; }
@@ -440,23 +445,25 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
 .shop-bar-fill { display: block; height: 100%; width: 0; border-radius: inherit; background: var(--accent); transition: width .3s ease-out; }
 .view-shop .lp-body { padding-top: 6px; }
 .view-shop .item-row { scroll-margin-top: calc(120px + env(safe-area-inset-top)); }
-.view-shop .item-main { min-height: 64px; gap: 14px; padding: 12px 4px 12px 16px; }
+.view-shop .item-main { min-height: 64px; gap: 14px; padding: 12px 0; }
+.view-shop .item-tick { width: 64px; min-height: 64px; padding-left: 16px; }
 .view-shop .check { width: 34px; height: 34px; border-width: 2.5px; }
 .view-shop .check .ic { width: 21px; height: 21px; }
 .view-shop .item-name { font-size: 20px; line-height: 1.3; }
 .view-shop .item-sub { font-size: 14px; }
 .view-shop .item-qty { font-size: 18px; }
-.view-shop .item-more { width: 52px; }
+.view-shop .item-chev { width: 52px; margin-left: -10px; }
 .view-shop .item-row + .item-row > .item-in::before { left: 64px; }
 .view-shop .group-h { font-size: 14px; }
 /* 已买：收在最下面，紧凑一点（一行、小一号，点一下照样放回去） */
 .view-shop .sec-done .item-main { min-height: 48px; gap: 12px; padding-top: 6px; padding-bottom: 6px; }
+.view-shop .sec-done .item-tick { width: 54px; min-height: 48px; }   /* 紧凑了圆圈照样有 54 × 48 可以点 */
 .view-shop .sec-done .check { width: 26px; height: 26px; border-width: 2px; }
 .view-shop .sec-done .check .ic { width: 16px; height: 16px; }
 .view-shop .sec-done .item-name { font-size: 16px; }
 .view-shop .sec-done .item-sub { display: none; }
 .view-shop .sec-done .item-qty { font-size: 15px; }
-.view-shop .sec-done .item-more { width: 44px; }
+.view-shop .sec-done .item-chev { width: 44px; margin-left: -8px; }
 .view-shop .sec-done .item-row + .item-row > .item-in::before { left: 54px; }
 /* 都买齐了 */
 .shop-end { margin-top: 12px; padding: 28px 20px 22px; text-align: center; }

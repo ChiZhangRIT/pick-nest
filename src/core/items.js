@@ -152,11 +152,12 @@ export function toggleDone(state, id, now = Date.now()) {
 }
 
 /**
- * @typedef {'edit' | 'delete' | 'later' | 'need'} SwipeAction
+ * @typedef {'edit' | 'delete'} SwipeAction
  * 一行左右滑露出哪些按钮（ui/checklist.js 照这个画，清单页、商店页、搜索、购物模式一样；按钮都要点一下才做，见 ui/swipe.js）：
- *   往左滑（右边，从左往右）：「编辑」「删除」——每一行都有，和行右边的 ›、编辑面板里的「删除」是同一件事；
- *   往右滑（左边）：一般清单「要买」的 → 'later'（以后再说），「以后再说」的 → 'need'（移回要买）。
- *   食材清单没有「以后再说」，已买的点一下就放回去：这两种往右滑没有按钮（只能拉动一点点）。
+ *   往右滑（左边）：「编辑」——和点这一行打开的是同一个面板；
+ *   往左滑（右边）：红色的「删除」——和编辑面板里的「删除」是同一件事（进最近删除、能撤销）。
+ * 每一行都一样（哪张清单、什么状态都是）：以前往右是「以后再说」/「移回要买」、往左是「编辑」「删除」两个，
+ * 一边一个好记，也和 babble 一样（往左删除，往右是它的「收藏」）；「以后再说」在编辑面板的「状态」里改。
  * 不在了（删掉了、清单不在）→ 两边都没有
  * @param {State} state @param {Item | null} it
  * @returns {{ left: SwipeAction[], right: SwipeAction[] }}
@@ -164,8 +165,7 @@ export function toggleDone(state, id, now = Date.now()) {
 export function swipeActions(state, it) {
   const list = it && !it.deleted ? liveList(state, it.listId) : null;
   if (!it || !list) return { left: [], right: [] };
-  const left = list.kind !== 'general' ? [] : it.status === 'need' ? ['later'] : it.status === 'later' ? ['need'] : [];
-  return { left: /** @type {SwipeAction[]} */ (left), right: ['edit', 'delete'] };
+  return { left: ['edit'], right: ['delete'] };
 }
 
 /**

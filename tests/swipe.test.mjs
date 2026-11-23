@@ -1,9 +1,9 @@
 // 一行左右滑的手势状态机（src/ui/swipe.js 的 createSwipeModel，照 ../babble 的同名测试）：只算数，时间由测试给。
 //   定方向（超过 10 px、横向要 |dx| > 1.5·|dy|，竖着的整下不管）、屏幕左边缘开始的不管、按钮宽以内跟手、再往外橡皮筋（最多接近 1.5 个按钮宽）、
 //   松手按距离 / 速度开关、点一下、触控板（wheel）只开关；拖得再远、甩得再快、斜着甩、被打断都只是开着或者关上——
-//   没有「直接做」这种结果（编辑、删除、以后再说只在点了露出来的按钮时做，见 swipeView.test.mjs）；
+//   没有「直接做」这种结果（编辑、删除只在点了露出来的按钮时做，见 swipeView.test.mjs）；
 //   从开着的一边拉过中间不算甩；触控板的惯性不会扫到另一边、不会拉得像要删。
-//   PickNest 一边可以有两个按钮（往左滑露出「编辑」「删除」）：所有「一个按钮宽」都换成这一边的宽（最后几个测试）
+//   现在每边一个按钮（往右「编辑」、往左「删除」）；状态机还能一边放几个：所有「一个按钮宽」都换成这一边的宽（最后几个测试）
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createSwipeModel, SWIPE } from '../src/ui/swipe.js';
@@ -101,7 +101,7 @@ test('拖得再远、甩得再快：松手都只是开着（露出按钮），�
   ({ t } = drag(m, line(340, -500, 6), { dt: 8 }));               // 一口气拖过一行宽一倍多、很快（105 px/8 ms）
   assert.deepEqual(m.up(t), { kind: 'settle', to: -1 });
   m.set(0);
-  ({ t } = drag(m, line(100, 300), { dt: 12 }));                   // 往右 200 px：以后再说那边
+  ({ t } = drag(m, line(100, 300), { dt: 12 }));                   // 往右 200 px：编辑那边
   assert.deepEqual(m.up(t), { kind: 'settle', to: 1 });
   m.set(0);
   ({ t } = drag(m, line(25, 900, 4), { dt: 10 }));                 // 往右狠甩 875 px
@@ -180,9 +180,9 @@ test('斜着的：先横着滑出 10 多 px、再往上下甩，或者手指划�
   let o = run([[300, 500], [288, 497], [240, 430], [190, 350], [140, 270]]);
   assert.equal(o.r.axis, 'h', '头 10 px 是横着的：定成横着');
   assert.deepEqual([o.up, o.open], [{ kind: 'settle', to: -1 }, -1], '只是开着（不会误删）');
-  // 往右下（以后再说那边）也一样
+  // 往右下（编辑那边）也一样
   o = run([[120, 200], [132, 203], [180, 270], [230, 350], [280, 430]]);
-  assert.deepEqual([o.up, o.open], [{ kind: 'settle', to: 1 }, 1], '只是开着（不会误挪到以后再说）');
+  assert.deepEqual([o.up, o.open], [{ kind: 'settle', to: 1 }, 1], '只是开着（不会直接打开编辑）');
   // 手指自然划个弧（横 220、竖 60）：开着
   o = run(line(320, 100, 8).map(([x], i) => [x, 300 - i * 7.5]));
   assert.deepEqual(o.up, { kind: 'settle', to: -1 });
@@ -251,7 +251,7 @@ test('随便怎么乱拖、乱甩、乱扫（几万步）：结果只有 tap / s
   const pick = (xs) => xs[Math.floor(R() * xs.length)];
   for (let run = 0; run < 400; run++) {
     const sides = pick([[1, -1], [1], [-1]]);
-    const n = pick([1, 1, 2]);                   // 右边有时是两个按钮（编辑、删除）
+    const n = pick([1, 1, 2]);                   // 有时一边两个按钮（状态机支持的）
     const widths = { 1: sides.includes(1) ? A : 0, '-1': sides.includes(-1) ? A * n : 0 };
     const m = createSwipeModel({ widths });
     const cap = (o) => Math.max(16, (o < 0 ? widths['-1'] : widths[1]) * SWIPE.pull);   // 没有按钮的一边只能拉动 16 px
@@ -280,7 +280,7 @@ test('随便怎么乱拖、乱甩、乱扫（几万步）：结果只有 tap / s
   }
 });
 
-// ---------- 一边两个按钮（往左滑露出「编辑」「删除」：这一边宽 168） ----------
+// ---------- 一边两个按钮（现在没用到，状态机支持：这一边宽 168） ----------
 const A2 = A * 2;
 test('一边两个按钮：宽是两个按钮加起来——宽以内跟手、过半个宽（84）才开、开着时移开 168、再往外橡皮筋到不了 252', () => {
   const m = createSwipeModel({ widths: { '-1': A2 } });
@@ -307,17 +307,17 @@ test('一边两个按钮：宽是两个按钮加起来——宽以内跟手、�
 
 test('一边两个按钮、另一边一个：从开着的一边拉过中间要够另一边的整个宽才开另一边；甩只关上', () => {
   const m = createSwipeModel({ widths: { 1: A, '-1': A2 } });
-  m.set(-1);                                                       // 编辑、删除露着（-168），往右拉 168 + 60：到左边 60，不够 84 → 关上
+  m.set(-1);                                                       // 右边两个按钮露着（-168），往右拉 168 + 60：到左边 60，不够 84 → 关上
   let { t } = drag(m, line(40, 268, 8));
   assert.deepEqual(m.up(t + 200), { kind: 'settle', to: 0 });
-  m.set(-1);                                                       // 往右拉 168 + 90：够一个按钮宽 → 露出左边的「以后再说」（还是只露出来）
+  m.set(-1);                                                       // 往右拉 168 + 90：够一个按钮宽 → 露出左边的按钮（还是只露出来）
   ({ t } = drag(m, line(40, 298, 8)));
   assert.deepEqual(m.up(t + 200), { kind: 'settle', to: 1 });
-  m.set(1);                                                        // 以后再说露着（+84），往左拉 84 + 100：到右边 100，不够 168 → 关上
+  m.set(1);                                                        // 左边的露着（+84），往左拉 84 + 100：到右边 100，不够 168 → 关上
   ({ t } = drag(m, line(300, 116, 8)));
   assert.deepEqual(m.up(t + 200), { kind: 'settle', to: 0 }, '拉过中间不到这一边整个宽：关上');
   m.set(1);
-  ({ t } = drag(m, line(300, 30, 8)));                             // 84 + 186：够 168 → 露出编辑、删除
+  ({ t } = drag(m, line(300, 30, 8)));                             // 84 + 186：够 168 → 露出右边两个
   assert.deepEqual(m.up(t + 200), { kind: 'settle', to: -1 });
   m.set(-1);                                                       // 开着往回快速甩：关上，不露出另一边
   ({ t } = drag(m, line(100, 300, 4), { dt: 16 }));

@@ -109,7 +109,7 @@ test('快速添加：已经在清单上的 → 提示，不重复，那一行闪
     assert.deepEqual(env.rows(), before);
     assert.ok(cls(env.row('牛奶'), 'flash'));
     assert.equal(env.input().value, '', '提示过了，输入框清空');
-    await byCls(env.row('鸡蛋'), 'item-main').fire('click');
+    await byCls(env.row('鸡蛋'), 'item-tick').fire('click');
     await settle();
     assert.equal(itemNamed('鸡蛋').status, 'done');
     await env.enter('鸡蛋');
@@ -158,11 +158,24 @@ test('输入联想：以前买过的东西（常去的商店、已在清单上�
 });
 
 // ---------- 勾掉、已买、清除已买 ----------
-test('点一行就勾掉：移到「已买（N）」，再点放回来；焦点给顶替它位置的那一行；已买可以折起来（记在本机）', async () => {
+test('只有点左边的圆圈才勾掉：移到「已买（N）」，再点放回来；点这一行别的地方打开编辑面板、不勾；焦点给顶替它位置的那一行；已买可以折起来（记在本机）', async () => {
   const env = setup();
   try {
     for (const x of ['牛奶', '鸡蛋', '面包']) await env.enter(x);
-    const main = byCls(env.row('牛奶'), 'item-main');
+    await env.enter('苹果 3');
+    // 圆圈是单独的 checkbox（名字就是东西的名字，数量当说明念）；这一行别的地方是「编辑「牛奶」」按钮，› 只是提示
+    const apple = env.row('苹果'), tick = byCls(apple, 'item-tick'), body = byCls(apple, 'item-main');
+    assert.deepEqual([tick.attrs.role, tick.attrs['aria-label'], tick.attrs['aria-describedby']], ['checkbox', '苹果', byCls(apple, 'item-qty').id]);
+    assert.deepEqual([body.tag, body.attrs.role, body.attrs['aria-label'], body.attrs['aria-haspopup']], ['button', undefined, '编辑「苹果」', 'dialog']);
+    assert.ok(byCls(body, 'item-name') && byCls(body, 'item-qty') && byCls(body, 'item-chev'), '名字、数量、› 都在这一行的按钮里');
+    assert.equal(byCls(apple, 'item-more'), undefined, '没有单独的 › 按钮');
+    await body.fire('click');
+    await settle();
+    assert.equal(itemNamed('苹果').status, 'need', '点名字不勾掉');
+    assert.equal(env.sheet().opts.title, '编辑', '打开编辑面板');
+    env.sheet().close();
+    await settle();
+    const main = byCls(env.row('牛奶'), 'item-tick');
     assert.deepEqual([main.attrs.role, main.attrs['aria-checked']], ['checkbox', 'false']);
     main.focus();
     await main.fire('click');
@@ -171,16 +184,16 @@ test('点一行就勾掉：移到「已买（N）」，再点放回来；焦点�
     assert.deepEqual(env.rows(env.sec('done')), [['牛奶', '1']]);
     const doneRow = env.row('牛奶');
     assert.ok(cls(doneRow, 'done'));
-    assert.equal(byCls(doneRow, 'item-main').attrs['aria-checked'], 'true');
-    assert.equal(document.activeElement, byCls(env.row('面包'), 'item-main'), '焦点给挪走的那一行下面的一行，键盘、读屏接着往下走');
-    assert.equal(byCls(env.main, 'lp-count').textContent, '还要买 2 样');
+    assert.equal(byCls(doneRow, 'item-tick').attrs['aria-checked'], 'true');
+    assert.equal(document.activeElement, byCls(env.row('面包'), 'item-tick'), '焦点给挪走的那一行下面的一行，键盘、读屏接着往下走');
+    assert.equal(byCls(env.main, 'lp-count').textContent, '还要买 3 样');
     // 折起来：只画标题
     await byCls(env.sec('done'), 'sec-toggle').fire('click');
     assert.equal(byCls(env.sec('done'), 'sec-toggle').attrs['aria-expanded'], 'false');
     assert.equal(env.rows(env.sec('done')).length, 0);
     assert.equal(state.getLocal().view.l_groceries.showDone, false);
     await byCls(env.sec('done'), 'sec-toggle').fire('click');
-    await byCls(env.row('牛奶'), 'item-main').fire('click');
+    await byCls(env.row('牛奶'), 'item-tick').fire('click');
     await settle();
     assert.equal(itemNamed('牛奶').status, 'need');
     assert.equal(env.sec('done'), undefined);
@@ -192,14 +205,14 @@ test('勾的时候先在原地打勾、划线，约 0.3 秒后再挪；动画中
   try {
     await env.enter('牛奶');
     await env.enter('鸡蛋');
-    await byCls(env.row('牛奶'), 'item-main').fire('click');
+    await byCls(env.row('牛奶'), 'item-tick').fire('click');
     assert.ok(cls(env.row('牛奶'), 'ticking'));
     assert.equal(itemNamed('牛奶').status, 'need', '还没改数据');
     await new Promise(r => setTimeout(r, 400));
     await settle();
     assert.equal(itemNamed('牛奶').status, 'done');
-    await byCls(env.row('鸡蛋'), 'item-main').fire('click');
-    await byCls(env.row('鸡蛋'), 'item-main').fire('click');
+    await byCls(env.row('鸡蛋'), 'item-tick').fire('click');
+    await byCls(env.row('鸡蛋'), 'item-tick').fire('click');
     await new Promise(r => setTimeout(r, 400));
     assert.equal(itemNamed('鸡蛋').status, 'need');
     assert.ok(!cls(env.row('鸡蛋'), 'ticking'));
@@ -213,18 +226,18 @@ test('「已买」里点一下：先在原地去掉勾，约 0.3 秒后再放回
     state.mutate(s => { for (const x of ['牛奶', '鸡蛋']) setStatus(s, itemId(s, 'l_groceries', x), 'done', Date.now()); });
     await settle();
     // 去掉勾：还在「已买」里，样子先变
-    await byCls(env.row('牛奶'), 'item-main').fire('click');
+    await byCls(env.row('牛奶'), 'item-tick').fire('click');
     assert.ok(byCls(env.sec('done'), 'item-row') && env.rows(env.sec('done')).some(r => r[0] === '牛奶'), '还没挪');
     assert.ok(!cls(env.row('牛奶'), 'done'));
-    assert.equal(byCls(env.row('牛奶'), 'item-main').attrs['aria-checked'], 'false');
+    assert.equal(byCls(env.row('牛奶'), 'item-tick').attrs['aria-checked'], 'false');
     assert.equal(itemNamed('牛奶').status, 'done', '还没改数据');
     await new Promise(r => setTimeout(r, 400));
     await settle();
     assert.equal(itemNamed('牛奶').status, 'need');
     assert.deepEqual(env.rows(env.sec('done')), [['鸡蛋', '1']]);
     // 双击（两下点在同一行上）：等于没点，不会顺带改掉挪上来的另一行
-    await byCls(env.row('鸡蛋'), 'item-main').fire('click');
-    await byCls(env.row('鸡蛋'), 'item-main').fire('click');
+    await byCls(env.row('鸡蛋'), 'item-tick').fire('click');
+    await byCls(env.row('鸡蛋'), 'item-tick').fire('click');
     await new Promise(r => setTimeout(r, 400));
     await settle();
     assert.equal(itemNamed('鸡蛋').status, 'done');
@@ -232,9 +245,9 @@ test('「已买」里点一下：先在原地去掉勾，约 0.3 秒后再放回
     // 连着勾两样：每点一下重新等，最后一下之后一起挪、只重画一次
     let changes = 0;
     const off = state.subscribe(() => changes++);
-    await byCls(env.row('面包'), 'item-main').fire('click');
+    await byCls(env.row('面包'), 'item-tick').fire('click');
     await new Promise(r => setTimeout(r, 200));
-    await byCls(env.row('苹果'), 'item-main').fire('click');
+    await byCls(env.row('苹果'), 'item-tick').fire('click');
     await new Promise(r => setTimeout(r, 200));
     assert.deepEqual([itemNamed('面包').status, itemNamed('苹果').status], ['need', 'need'], '第二下以后重新等');
     assert.ok(cls(env.row('面包'), 'ticking') && cls(env.row('苹果'), 'ticking'));
@@ -251,19 +264,19 @@ test('键盘 / 读屏：勾掉的那一行挪走了，焦点给顶替它的那�
   try {
     for (const x of ['苹果', '香蕉', '牛奶']) await env.enter(x);
     assert.deepEqual(env.rows().map(r => r[0]), ['苹果', '香蕉', '牛奶']);
-    const tick = async (x) => { const b = byCls(env.row(x), 'item-main'); b.focus(); await b.fire('click'); await settle(); };
+    const tick = async (x) => { const b = byCls(env.row(x), 'item-tick'); b.focus(); await b.fire('click'); await settle(); };
     await tick('苹果');
-    assert.equal(document.activeElement, byCls(env.row('香蕉'), 'item-main'));
+    assert.equal(document.activeElement, byCls(env.row('香蕉'), 'item-tick'));
     await tick('牛奶');
-    assert.equal(document.activeElement, byCls(env.row('香蕉'), 'item-main'), '最后一行：给上一行');
+    assert.equal(document.activeElement, byCls(env.row('香蕉'), 'item-tick'), '最后一行：给上一行');
     await tick('香蕉');
     assert.equal(itemNamed('香蕉').status, 'done');
-    assert.equal(document.activeElement, byCls(env.row('香蕉'), 'item-main'), '要买的都勾完了：跟着去「已买」');
+    assert.equal(document.activeElement, byCls(env.row('香蕉'), 'item-tick'), '要买的都勾完了：跟着去「已买」');
     assert.ok(env.sec('done').contains(document.activeElement));
     // 「已买」里放回去也一样：焦点给「已买」里顶替它的那一行
     const order = env.rows(env.sec('done')).map(r => r[0]);
     await tick(order[0]);
-    assert.equal(document.activeElement, byCls(env.row(order[1]), 'item-main'));
+    assert.equal(document.activeElement, byCls(env.row(order[1]), 'item-tick'));
   } finally { env.done(); }
 });
 
@@ -284,7 +297,7 @@ test('刚挪到手指下面的那一行，这一下不算（减少动态效果�
     await new Promise(r => setTimeout(r, 400));                 // 刚挪进「已买」的两行也要等一会儿
     const names = () => env.rows().map(r => r[0]);
     assert.deepEqual(names(), ['牛奶', '苹果', '面包'], '要买：牛奶；已买：苹果、面包');
-    const at = (i) => byCls(allCls(env.main, 'item-row')[i], 'item-main');
+    const at = (i) => byCls(allCls(env.main, 'item-row')[i], 'item-tick');
     await at(1).fire('click');                                   // 放回去：苹果（蔬果）排到最前，牛奶挪到第二行
     await settle();
     assert.equal(itemNamed('苹果').status, 'need');
@@ -296,7 +309,7 @@ test('刚挪到手指下面的那一行，这一下不算（减少动态效果�
     await settle();
     assert.equal(itemNamed('面包').status, 'need', '没挪的行照常能点');
     await new Promise(r => setTimeout(r, 400));
-    await byCls(env.row('牛奶'), 'item-main').fire('click');
+    await byCls(env.row('牛奶'), 'item-tick').fire('click');
     await settle();
     assert.equal(itemNamed('牛奶').status, 'done', '过一会儿就照常');
   } finally { env.done(); delete proto.getBoundingClientRect; }
@@ -310,7 +323,7 @@ test('清除已买：已买的都清掉，10 秒内撤销能回来；⋯ 菜单�
     await more().fire('click');
     assert.deepEqual(all(env.sheet().el, el => cls(el, 'menu-row')).map(b => b.textContent), ['编辑清单']);
     env.sheet().close();
-    for (const x of ['牛奶', '面包']) { await byCls(env.row(x), 'item-main').fire('click'); await settle(); }
+    for (const x of ['牛奶', '面包']) { await byCls(env.row(x), 'item-tick').fire('click'); await settle(); }
     await btn(env.sec('done'), '清除已买').fire('click');
     await settle();
     assert.equal(env.sec('done'), undefined);
@@ -345,7 +358,7 @@ test('按商店分组：组名是商店（未指定在最后），每张清单�
     assert.equal(state.getLocal().view.l_groceries.groupBy, 'store');
     assert.equal(find(env.main, el => el.tag === 'button' && el.textContent === '按商店').attrs['aria-pressed'], 'true');
     // 「已买」不按商店分：没有组名写着商店，照样标（只标不在清单默认商店的）
-    for (const x of ['豆腐', '牛奶']) { await byCls(env.row(x), 'item-main').fire('click'); await settle(); }
+    for (const x of ['豆腐', '牛奶']) { await byCls(env.row(x), 'item-tick').fire('click'); await settle(); }
     assert.deepEqual(env.rows(env.sec('done')).map(r => r[0]).sort(), ['牛奶', '豆腐'].sort());
     assert.equal(byCls(env.row('豆腐'), 'store-chip').textContent, 'H Mart');
     assert.equal(byCls(env.row('牛奶'), 'store-chip'), undefined);
@@ -369,7 +382,7 @@ test('一般清单：「以后再说（N）」单独一组；空的时候提示�
     state.mutate(s => { s.data.items[itemId(s, 'l_tobuy', 'iPhone 15')].status = 'later'; });
     await settle();
     assert.equal(byCls(env.main, 'lp-empty').textContent, '还没有要买的东西');
-    await byCls(env.row('袜子'), 'item-main').fire('click');
+    await byCls(env.row('袜子'), 'item-tick').fire('click');
     await settle();
     assert.equal(byCls(env.main, 'lp-empty').textContent, '要买的都买齐了');
   } finally { env.done(); }
@@ -387,7 +400,7 @@ test('清单不在了（地址错了、删掉了）→ 回首页并提示', asyn
 });
 
 // ---------- 改一样东西 ----------
-const open = async (env, name) => { await byCls(env.row(name), 'item-more').fire('click'); return env.sheet(); };
+const open = async (env, name) => { await byCls(env.row(name), 'item-main').fire('click'); return env.sheet(); };
 const fieldOf = (sh, label) => allCls(sh.el, 'f-row').find(r => byCls(r, 'f-label').textContent === label);
 const control = (sh, label) => fieldOf(sh, label).control;
 
@@ -395,7 +408,7 @@ test('编辑：数量 −/+、单位快捷选项、分类、备注；「完成�
   const env = setup();
   try {
     await env.enter('牛奶');
-    const more = byCls(env.row('牛奶'), 'item-more');
+    const more = byCls(env.row('牛奶'), 'item-main');
     assert.equal(more.attrs['aria-label'], '编辑「牛奶」');
     const sh = await open(env, '牛奶');
     assert.equal(sh.opts.title, '编辑');
@@ -656,7 +669,7 @@ test('点了一行、还没挪就归档了这张清单（离开这一页）：�
   const seed = s => { s.data.items.i_m = normalizeRecord('items', { id: 'i_m', listId: 'l_groceries', name: '牛奶', updatedAt: 1 }); };
   const env = setup({ seed, extraDom: { matchMedia: () => ({ matches: false }) } });
   try {
-    await byCls(env.row('牛奶'), 'item-main').fire('click');           // 0.3 秒后才改数据
+    await byCls(env.row('牛奶'), 'item-tick').fire('click');           // 0.3 秒后才改数据
     const more = find(env.main, el => el.tag === 'button' && el.attrs['aria-label'] === t('common.more'));
     await more.fire('click');
     await btn(env.sheet().el, '编辑清单').fire('click');
@@ -668,7 +681,7 @@ test('点了一行、还没挪就归档了这张清单（离开这一页）：�
   assert.equal(S().data.items.i_m.status, 'need', '归档了的清单上点过的不改');
   const env2 = setup({ seed, extraDom: { matchMedia: () => ({ matches: false }) } });
   try {
-    await byCls(env2.row('牛奶'), 'item-main').fire('click');
+    await byCls(env2.row('牛奶'), 'item-tick').fire('click');
     env2.handle.cleanup();
     assert.equal(S().data.items.i_m.status, 'done', '换页离开：点过的马上写进去');
     await settle();
