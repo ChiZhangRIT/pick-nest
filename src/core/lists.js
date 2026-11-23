@@ -19,7 +19,7 @@ const storeOrNull = (state, id) => { const s = typeof id === 'string' ? own(isOb
 
 /**
  * 新建清单：排在最后（order = 现有的最大值 + 1），类型只在这时候选。名字不能空；图标、颜色按 listIcons.js 的 lookFields 整理（和默认一样的存成空的）
- * @param {State} state @param {{ name?: unknown, kind?: unknown, icon?: unknown, color?: unknown, defaultStoreId?: unknown }} f @param {number} [now]
+ * @param {State} state @param {{ name?: unknown, kind?: unknown, icon?: unknown, glyph?: unknown, color?: unknown, defaultStoreId?: unknown }} f @param {number} [now]
  * @returns {{ ok: true, id: string } | { ok: false, errors: Record<string, string> }}
  */
 export function createList(state, f, now = Date.now()) {
@@ -29,7 +29,7 @@ export function createList(state, f, now = Date.now()) {
   const order = lists.length ? Math.max(...lists.map(l => l.order)) + 1 : 0;
   const id = newId('l_');
   const kind = LIST_KINDS.includes(/** @type {any} */ (f.kind)) ? f.kind : 'grocery';
-  writeRecord(state, 'lists', { id, sys: null, name, kind, ...lookFields(kind, f.icon, f.color),
+  writeRecord(state, 'lists', { id, sys: null, name, kind, ...lookFields(kind, f),
     order, defaultStoreId: storeOrNull(state, f.defaultStoreId), archived: false, createdAt: now }, now);
   return { ok: true, id };
 }
@@ -37,8 +37,9 @@ export function createList(state, f, now = Date.now()) {
 /**
  * 改清单：名字、图标、颜色、默认商店（类型不能改：里面的东西的分类、「以后再说」都跟着类型）。
  * 预置清单名字可以空着（显示界面语言的名字）；自建的不能空。默认商店不存在或归档了的不改。
- * 图标、颜色只改交进来的那一样（面板只交改了的：新版才有的图标、色调，没动就原样留着）
- * @param {State} state @param {string} id @param {{ name?: unknown, icon?: unknown, color?: unknown, defaultStoreId?: unknown }} f @param {number} [now]
+ * 图标、颜色只改交进来的（面板只交改了的：新版才有的图标、色调，没动就原样留着）。图标是一个选择：交了 icon 或 glyph 就是换了图标，
+ * 两样一起按交进来的存（没交的那样清空：自己写的显示在前，留着旧的会盖住新选的）
+ * @param {State} state @param {string} id @param {{ name?: unknown, icon?: unknown, glyph?: unknown, color?: unknown, defaultStoreId?: unknown }} f @param {number} [now]
  * @returns {{ ok: true, list: List } | { ok: false, errors: Record<string, string> }}
  */
 export function editList(state, id, f, now = Date.now()) {
@@ -50,8 +51,8 @@ export function editList(state, id, f, now = Date.now()) {
     if (!name && !l.sys) return { ok: false, errors: { name: 'list.err.name' } };
     next.name = name;
   }
-  if ('icon' in f) next.icon = lookFields(l.kind, f.icon, null).icon;
-  if ('color' in f) next.color = lookFields(l.kind, null, f.color).color;
+  if ('icon' in f || 'glyph' in f) { const lf = lookFields(l.kind, { icon: f.icon, glyph: f.glyph }); next.icon = lf.icon; next.glyph = lf.glyph; }
+  if ('color' in f) next.color = lookFields(l.kind, { color: f.color }).color;
   if ('defaultStoreId' in f && (!f.defaultStoreId || storeOrNull(state, f.defaultStoreId) || f.defaultStoreId === l.defaultStoreId)) next.defaultStoreId = /** @type {string | null} */ (f.defaultStoreId || null);
   return { ok: true, list: /** @type {List} */ (writeRecord(state, 'lists', next, now)) };
 }

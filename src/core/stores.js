@@ -84,14 +84,24 @@ export const archivedStores = state => live(state, 'stores').filter(s => s.archi
 
 /**
  * 「商店」页的行：没归档的商店按顺序，0 样的也列出来（页面画淡一点）；归档的商店只在还有要买的时候列出来（排在后面，页面标「已归档」），
- * 不然归档以后，指定给它的东西就在哪儿都看不到了；最后是「未指定」（id null，有要买的才列）。只看一张清单时数的、「有没有要买的」都只算这张
+ * 不然归档以后，指定给它的东西就在哪儿都看不到了；最后是「未指定」（id null，有要买的才列）。
+ * 只看一张清单时数的、「有没有要买的」都只算这张，而且 0 样的店不列：选一张清单是要看「这张清单要去哪几家」，
+ * 一排 0 只会把有东西的那一两家埋在中间（列不出来的有几家用 emptyStoresIn，页面说一句）
  * @param {State} state @param {ListFilter} [f] @returns {{ id: string | null, store: Store | null, n: number }[]}
  */
 export function storeRows(state, f = {}) {
   const counts = storeCounts(state, f);
-  const rows = [...activeStores(state), ...archivedStores(state).filter(s => counts.get(s.id))].map(s => ({ id: s.id, store: s, n: counts.get(s.id) || 0 }));
+  const rows = [...activeStores(state).filter(s => !f.listId || counts.get(s.id)), ...archivedStores(state).filter(s => counts.get(s.id))]
+    .map(s => ({ id: s.id, store: s, n: counts.get(s.id) || 0 }));
   if (counts.get(null)) rows.push({ id: null, store: null, n: /** @type {number} */ (counts.get(null)) });
   return rows;
+}
+
+/** 只看一张清单时「商店」页上没列出来的店有几家（没归档、在这张清单里没有要买的）；所有清单时是 0（都列着） @param {State} state @param {ListFilter} [f] */
+export function emptyStoresIn(state, f = {}) {
+  if (!f.listId) return 0;
+  const counts = storeCounts(state, f);
+  return activeStores(state).filter(s => !counts.get(s.id)).length;
 }
 
 /** 在这家店（null = 未指定）的页面上的东西（什么状态都算） @param {State} state @param {string | null} storeId @param {ListFilter} [f] */

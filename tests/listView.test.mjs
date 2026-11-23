@@ -644,7 +644,7 @@ test('⋯ → 编辑清单：改名、换图标和颜色；自建清单能删除
     await btn(sh.el, '保存').fire('click');
     await settle();
     assert.equal(byCls(env.main, 'lp-name').textContent, '木工活');
-    assert.deepEqual([S().data.lists.l_wood.icon, S().data.lists.l_wood.color], ['i:saw', 'clay']);
+    assert.deepEqual([S().data.lists.l_wood.icon, S().data.lists.l_wood.glyph, S().data.lists.l_wood.color], ['', 'saw', 'clay'], '画好的存在 glyph（旧版只认 icon，见 core/listIcons.js）');
     assert.equal(byCls(env.main, 'lp-icon').attrs.class, 'list-tile tint-clay lp-icon', '清单页的标题用同一个方块');
     // 再打开：选中的是存着的；只改名字时图标、颜色不交（新版才有的不会被冲掉）
     await more.fire('click');
@@ -653,7 +653,7 @@ test('⋯ → 编辑清单：改名、换图标和颜色；自建清单能删除
     assert.deepEqual([pressed('glyph-'), pressed('tint-')], [['glyph-saw'], ['tint-clay']]);
     sh.tryClose();
     assert.equal(sh.open, false, '没改：直接关');
-    S().data.lists.l_wood = { ...S().data.lists.l_wood, icon: 'i:future-glyph', color: 'future-tint' };
+    S().data.lists.l_wood = { ...S().data.lists.l_wood, glyph: 'future-glyph', color: 'future-tint' };
     await more.fire('click');
     await btn(env.sheet().el, '编辑清单').fire('click');
     sh = env.sheet();
@@ -661,7 +661,7 @@ test('⋯ → 编辑清单：改名、换图标和颜色；自建清单能删除
     find(sh.el, el => el.tag === 'input' && el.attrs.maxlength === '80').value = '木工';
     await btn(sh.el, '保存').fire('click');
     await settle();
-    assert.deepEqual([S().data.lists.l_wood.name, S().data.lists.l_wood.icon, S().data.lists.l_wood.color], ['木工', 'i:future-glyph', 'future-tint']);
+    assert.deepEqual([S().data.lists.l_wood.name, S().data.lists.l_wood.glyph, S().data.lists.l_wood.color], ['木工', 'future-glyph', 'future-tint']);
     S().data.lists.l_wood.name = '木工活';
     // 删除
     await more.fire('click');
@@ -879,7 +879,7 @@ test('首页：新建清单（名字、类型、颜色、图标、默认商店�
     await settle();
     assert.equal(sh.open, false);
     const l = Object.values(S().data.lists).find(x => x.name === '木工');
-    assert.deepEqual([l.kind, l.icon, l.color, l.defaultStoreId, l.order], ['general', '🪚', 'teal', 's_homedepot', 2]);
+    assert.deepEqual([l.kind, l.icon, l.glyph, l.color, l.defaultStoreId, l.order], ['general', '🪚', '', 'teal', 's_homedepot', 2], '写了自定义：之前点过的锤子不存');
     assert.deepEqual(env.navs, ['/l/' + l.id]);
   } finally { env.done(); }
 });

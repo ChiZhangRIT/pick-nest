@@ -89,19 +89,19 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 
 ```js
 { id, sys: 'groceries' | 'tobuy' | null, name: '', kind: 'grocery' | 'general',
-  icon: '' | 'i:basket' | '🪵' | '木工', color: '' | 'green' | …, order: 0, defaultStoreId: 's_wholefoods' | null, archived: false }
+  icon: '' | '🪵' | '木工', glyph: '' | 'basket' | 'saw' | …, color: '' | 'green' | …, order: 0, defaultStoreId: 's_wholefoods' | null, archived: false }
 ```
 
 - `kind`：`grocery` 是食材清单（以后接食谱、计划）；`general` 是一般物品（衣服、书、木工……），东西多一个「以后再说」状态
 - 预置：`l_groceries`（`kind: 'grocery'`，默认商店 Whole Foods）、`l_tobuy`（`kind: 'general'`，没有默认商店）
 - 显示名：`name.trim()`，空的话 `sys` 有就用文案，没有就是「未命名清单」
-- `icon`：清单的图标（规则在 `core/listIcons.js`，显示用 `ui/listTile.js` 的 `listTile`：圆角方块，底是色调的浅色、图标是深色，深色模式两样都换）
-  - `'i:<名字>'`：画好的线条图标，名字是 `LIST_GLYPHS` 里的（`basket` 菜篮、`bag` 购物袋、`saw` 木工……共 30 个，只能加、不能改名）
-  - 别的字：自己写的，一个 emoji 或者一两个字（「木」「木工」）；存之前用 `customIcon` 截（emoji 只留一个；字最多两个，遇到空格、emoji 截断；不会以 `i:` 开头）。旧版存的 emoji（🪵）照样是自己写的图标
-  - 空的：按 `kind` 的默认（`LIST_DEFAULTS`：食材 → 菜篮、一般 → 购物袋）。预置的两张清单一直是空的，换了默认样子不用改数据
-  - 认不出的 `i:` 名字（新版才有的）按默认显示，记录里原样留着；旧版 App 读到 `i:basket` 会把这几个字母当成自己写的显示出来——能用，只是难看，所以只在新版里选
+- 图标（规则在 `core/listIcons.js`，显示用 `ui/listTile.js` 的 `listTile`：圆角方块，底是色调的浅色、图标是深色，深色模式两样都换）是 `icon` 和 `glyph` 两个字段一起决定的，显示时（`listLook`）先看 `icon`、再看 `glyph`、都没有按类型的默认：
+  - `icon`：自己写的，一个 emoji 或者一两个字（「木」「木工」）；存之前用 `customIcon` 截（emoji 只留一个；字最多两个，遇到空格、emoji 截断）。旧版存的 emoji（🪵）照样是自己写的图标
+  - `glyph`：画好的线条图标的名字，`LIST_GLYPHS` 里的（`basket` 菜篮、`bag` 购物袋、`saw` 木工……共 30 个，只能加、不能改名）。旧记录没有这个字段，读进来是空的。认不出的名字（新版才有的）按默认显示，记录里原样留着
+  - 都空的：按 `kind` 的默认（`LIST_DEFAULTS`：食材 → 菜篮、一般 → 购物袋）。预置的两张清单一直是空的，换了默认样子不用改数据
+  - 为什么画好的不放在 `icon` 里：旧版（v15 和更早的）保存编辑面板时总会交回 `icon`、再截成第一个字，`i:saw` 这样的写法在旧设备上改个名字就变成字母「i」。旧版不认识 `glyph`，原样留着（`{ ...旧的 }`），只是显示成它自己的默认 emoji；旧版在面板里选个 emoji 写进 `icon`，那就是这张清单最后一次换的图标，所以 `icon` 显示在前
 - `color`：色调名，`LIST_COLORS` 里的（`green` App 的绿、`teal`、`blue`、`indigo`、`rose`、`amber`、`clay` 陶土、`graphite`；只能加、不能改名），空的按 `kind` 的默认（食材 → 绿、一般 → 琥珀）。旧记录没有这个字段，读进来是空的。认不出的（新版才有的）按默认显示，记录里原样留着（旧版改名字不会冲掉）
-- 新建、编辑时 `icon`、`color` 经过 `lookFields(kind, icon, color)`：画好的只收认得的名字、自己写的照上面截、认不出的颜色存空的；**和这一类的默认一样的存成空的**（没改过的预置清单还是空的、`updatedAt` 还是 0）。编辑面板只交改了的那一样（认不出的图标、色调显示成默认，没动就不交）。还不能用照片当图标：要等图片能同步（ROADMAP「图片」）
+- 新建、编辑时经过 `lookFields(kind, { icon, glyph, color })`：图标是一个选择，`icon`、`glyph` 只留一样（自己写的优先），画好的只收认得的名字、自己写的照上面截、认不出的颜色存空的；**和这一类的默认一样的存成空的**（没改过的预置清单还是空的、`updatedAt` 还是 0）。编辑面板只交改了的：换了图标 `icon`、`glyph` 一起交（`editList` 两样一起存），只换颜色只交 `color`（认不出的图标、色调显示成默认，没动就不交）。还不能用照片当图标：要等图片能同步（ROADMAP「图片」）
 - 系统清单能改名、换图标和颜色、归档，不能删除；自建清单能删除（软删除，里面的东西不动、跟着隐藏，恢复清单时一起回来）
 - 新建的 `order` = 现有清单（没删除的）里最大的 + 1；`kind` 只在新建时选，以后不改（东西的分类、「以后再说」都跟着它）
 - `defaultStoreId` 只收没删除、没归档的商店；归档了的照样留着，只是新加东西时不再当默认
@@ -192,7 +192,7 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 线上商家也是商店。归档的商店不出现在选择列表里，但已经指定给它的东西照常显示。规则在 `core/stores.js`：
 
 - **这家店的东西**：没删除、所在的清单没删除**也没归档**的东西里，`storeId` 是这家店的。`storeId` 是 `null`、指向删掉的或者不存在的商店：算「未指定」
-- **还要买几样** `storeCounts`：只数 `status: 'need'`（以后再说、已买不算）。「商店」页的行 `storeRows`：没归档的商店按顺序（0 样的也列）；归档的商店只在还有要买的时候列，排在后面；最后「未指定」（有要买的才列）
+- **还要买几样** `storeCounts`：只数 `status: 'need'`（以后再说、已买不算）。「商店」页的行 `storeRows`：没归档的商店按顺序（0 样的也列；只看一张清单时 0 样的不列，没列的有几家用 `emptyStoresIn`）；归档的商店只在还有要买的时候列，排在后面；最后「未指定」（有要买的才列）
 - **一家店的页面** `groupStore`：要买的按分类分组（和清单页同一个 `group.js` 的 `groupItems`），已买的 `doneAt` 新的在前；「清除已买」`clearStoreDone` 只软删除这一页上的已买
 - **只看一张清单**：`shoppingItems`、`storeCounts`、`storeRows`、`groupStore`、`clearStoreDone`（还有 `shop.js` 的 `shopProgress`）最后都收一个 `{ listId }`，`null` / 不给 = 所有清单。给了就只算这张清单上的：数、「商店」页哪家归档的店 / 「未指定」要列出来、要买的、已买的、清除已买（只清看得到的，别的清单在这家买到的不动）都一样。`listId` 原样用（删掉、归档的清单上本来什么也看不到）；页面先用 `storeFilter(state, local)` 取本机记着的（见下面「本机设置」），那张清单不在了它返回 `null`
 - **选清单的面板** `storeFilterOptions(state, { storeId })` → `[{ id: null, list: null, n }, { id, list, n }…]`：「所有清单」在最前（`n` 是各张加起来），然后首页上的清单（`homeLists`：没删除、没归档，首页的顺序），`n` = 还要买几样；给了 `storeId`（`null` = 未指定）只数在这家店的，不给是所有店加起来
@@ -254,7 +254,7 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
   storeFilter: null | listId }                                                                 // 按商店看时只看哪张清单（core/stores.js 的 storeFilter）
 ```
 
-- `storeFilter`：「商店」页、每家店的页面、从商店进的购物模式共用一个（换一家店还是同一张）；`null` 是所有清单。读的时候一律经过 `stores.js` 的 `storeFilter(state, local)`：不是字符串、没有这张清单、删掉了、归档了 → 按所有清单显示（`null`），不提示，也不改记着的值（撤销删除、取消归档以后又按它筛）。改的时候用 `storeFilterPatch(listId)`
+- `storeFilter`：「商店」页、每家店的页面、从商店进的购物模式共用一个（换一家店还是同一张）；`null` 是所有清单。读的时候一律经过 `stores.js` 的 `storeFilter(state, local)`：不是字符串、没有这张清单、删掉了、归档了 → 按所有清单显示（`null`），不提示，也不改记着的值（撤销删除、取消归档以后又按它筛）。改的时候用 `storeFilterPatch(listId)`；选清单的面板拿点的和**记着的**比（不是现在生效的）：记着的清单归档了、面板上勾着「所有清单」，再点「所有清单」也要记下来
 
 - `device`：写进同步文件和提交说明的设备名；没设就用平台名（iPhone / iPad / Mac，`core/sync.js` 的 `platformDevice`）
 - `tabNoteOff`：在浏览器标签页里打开时（`navigator.standalone` 不是 true、也不是 `display-mode: standalone`；iPhone / iPad 和 Mac 的 Safari 说法不同，见 `views/lists.js` 的 `tabNoteKind`）首页那句「和主屏幕 / 程序坞上的不是同一份数据」点过「知道了」

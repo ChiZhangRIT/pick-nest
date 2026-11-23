@@ -19,10 +19,10 @@ import { toSimplified } from './hanzi.js';
 /** @typedef {'grocery' | 'general'} ListKind */
 /** @typedef {'need' | 'done' | 'later'} ItemStatus */
 /**
- * @typedef {Base & { sys: string | null, name: string, kind: ListKind, icon: string, color: string, order: number,
+ * @typedef {Base & { sys: string | null, name: string, kind: ListKind, icon: string, glyph: string, color: string, order: number,
  *   defaultStoreId: string | null, archived: boolean }} List
  * 清单。sys：预置清单的标记（'groceries' | 'tobuy'），name 为空时显示界面语言的文案。
- * icon：'i:<名字>' 画好的图标、别的是自己写的（一个 emoji 或一两个字）、空的按类型默认；color：色调名，空的按类型默认（core/listIcons.js）
+ * icon：自己写的图标（一个 emoji 或一两个字）；glyph：画好的图标名；都空的按类型默认；color：色调名，空的按类型默认（core/listIcons.js）
  */
 /**
  * @typedef {Base & { listId: string, name: string, qty: number | null, unit: string, note: string,
@@ -124,6 +124,8 @@ export function normalizeList(rec, id = rec && rec.id) {
   r.name = str(r.name);
   r.kind = LIST_KINDS.includes(r.kind) ? r.kind : r.sys === 'groceries' ? 'grocery' : 'general';
   r.icon = str(r.icon);
+  // 画好的图标单独一个字段（旧版只认 icon，见 core/listIcons.js 开头）；认不出的名字也原样留着
+  r.glyph = str(r.glyph);
   // 色调认不出的（新版才有的）也原样留着，显示时按默认（core/listIcons.js 的 listLook）：旧版改名字时不会把它冲掉
   r.color = str(r.color);
   r.order = numOrNull(r.order) ?? 0;
@@ -413,8 +415,8 @@ export function seedRecords() {
   const at = { createdAt: 0, updatedAt: 0 };
   return {
     lists: [
-      { id: 'l_groceries', sys: 'groceries', name: '', kind: 'grocery', icon: '', color: '', order: 0, defaultStoreId: 's_wholefoods', archived: false, ...at },
-      { id: 'l_tobuy', sys: 'tobuy', name: '', kind: 'general', icon: '', color: '', order: 1, defaultStoreId: null, archived: false, ...at },
+      { id: 'l_groceries', sys: 'groceries', name: '', kind: 'grocery', icon: '', glyph: '', color: '', order: 0, defaultStoreId: 's_wholefoods', archived: false, ...at },
+      { id: 'l_tobuy', sys: 'tobuy', name: '', kind: 'general', icon: '', glyph: '', color: '', order: 1, defaultStoreId: null, archived: false, ...at },
     ],
     stores: SEED_STORES.map(([id, name], i) => ({ id, name, order: i, archived: false, ...at })),
     categories: SYS_CATEGORIES.map((sys, i) => ({ id: 'c_' + sys, sys, name: '', kind: GROCERY_CATEGORIES.includes(sys) ? 'grocery' : 'general', order: i, ...at })),

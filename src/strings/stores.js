@@ -28,6 +28,8 @@ export const STRINGS = {
     'store.filterHelpHere': '数字是在这家店还要买几样。选了的清单换一家店也照样用，这台设备会记住。',
     'store.nothingIn': '这家店在「{name}」里没有要买的东西', 'store.allDoneIn': '「{name}」里在这家要买的都买齐了',
     'store.filterHint': '现在只看「{name}」，可以在上面换成「所有清单」。',
+    // 只看一张清单时「商店」页不列 0 样的店：下面说一句还有几家没列；一家都没有时说这张清单没有要买的
+    'store.hiddenN': '另外 {n} 家店在「{name}」里没有要买的。', 'store.emptyIn': '「{name}」里没有要买的东西。',
   },
   'zh-Hant-TW': {
     'store.manage': '管理商店', 'store.none': '未指定', 'store.archivedTag': '已封存', 'store.empty': '沒有要顯示的商店。',
@@ -49,6 +51,7 @@ export const STRINGS = {
     'store.filterHelpHere': '數字是在這家店還要買幾樣。選好的清單換一家店也照樣適用，這台裝置會記住。',
     'store.nothingIn': '這家店在「{name}」裡沒有要買的東西', 'store.allDoneIn': '「{name}」裡在這家要買的都買齊了',
     'store.filterHint': '目前只顯示「{name}」，可以在上方切換成「所有清單」。',
+    'store.hiddenN': '另外 {n} 家店在「{name}」裡沒有要買的。', 'store.emptyIn': '「{name}」裡沒有要買的東西。',
   },
   en: {
     'store.manage': 'Manage', 'store.none': 'No Store', 'store.archivedTag': 'Archived', 'store.empty': 'No stores to show.',
@@ -70,5 +73,7 @@ export const STRINGS = {
     'store.filterHelpHere': 'Numbers are what’s left to buy at this store. Your choice stays when you switch stores, and this device remembers it.',
     'store.nothingIn': 'Nothing from “{name}” to buy here', 'store.allDoneIn': 'Everything from “{name}” here is bought',
     'store.filterHint': 'Showing only “{name}”. You can switch to All Lists above.',
+    'store.hiddenN': v => en('1 other store has nothing from “{name}” to buy.', '{n} other stores have nothing from “{name}” to buy.')(v).replace('{name}', v.name),
+    'store.emptyIn': 'Nothing left to buy from “{name}”.',
   },
 };

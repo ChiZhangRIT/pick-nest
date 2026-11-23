@@ -8,7 +8,7 @@ import * as lists from '../src/views/lists.js';
 import * as settings from '../src/views/settings.js';
 
 const text = el => el ? el.textContent : null;
-// 图标方块写成「图标 色调」：画好的是 'i:名字'，自己写的是那个字
+// 图标方块写成「图标 色调」：画好的写成 'i:名字'（只是这里的写法，数据里存在 glyph），自己写的是那个字
 const tileOf = el => { const g = el.querySelector('.lt-glyph'); const cls = el.attrs.class; return (g ? 'i:' + /g-(\w+)/.exec(g.attrs.class)[1] : text(el)) + ' ' + /tint-(\w+)/.exec(cls)[1]; };
 const rowsOf = main => main.querySelectorAll('.list-row').map(r => [text(r.querySelector('.list-name')), tileOf(r.querySelector('.list-icon')), text(r.querySelector('.list-count'))]);
 function seededWithItems() {
@@ -40,7 +40,7 @@ test('首页：改过名的显示用户写的名字（不做简繁转换），�
   try {
     const s = seededWithItems();
     s.data.lists.l_tobuy = stamp({ ...s.data.lists.l_tobuy, name: '想買的東西', icon: '🎁' }, s.data.lists.l_tobuy, 2000);
-    s.data.lists.l_wood = normalizeRecord('lists', { id: 'l_wood', name: '木工', icon: 'i:saw', color: 'clay', order: 5, createdAt: 3000, updatedAt: 3000 });
+    s.data.lists.l_wood = normalizeRecord('lists', { id: 'l_wood', name: '木工', glyph: 'saw', color: 'clay', order: 5, createdAt: 3000, updatedAt: 3000 });
     s.data.lists.l_cloth = normalizeRecord('lists', { id: 'l_cloth', name: '衣服', icon: '衣', color: 'future-tint', order: 6, createdAt: 3000, updatedAt: 3000 });
     s.data.lists.l_old = normalizeRecord('lists', { id: 'l_old', name: '归档的', archived: true, updatedAt: 3000 });
     s.data.lists.l_gone = deletedRecord(normalizeRecord('lists', { id: 'l_gone', name: '删掉的', updatedAt: 3000 }), 4000);

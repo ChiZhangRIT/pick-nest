@@ -36,7 +36,9 @@ export function filterButton(ctx, { fid, storeId, onPicked }) {
 
 /**
  * 选清单的面板：「所有清单」+ 首页上的每张清单（没删除、没归档，首页的顺序），各带还要买几样（0 的淡一点）；现在选的那一行打勾（aria-current）。
- * 点一行就关上；换了才记下、让页面重画（点的还是原来那一行只关上）
+ * 点一行就关上；和记着的不一样就记下，看到的变了才让页面重画（点的还是原来那一行只关上）。
+ * 比的是记着的值、不是现在生效的：记着的「木工」归档了，面板上勾的是「所有清单」，点「所有清单」也要记下来，
+ * 不然取消归档以后又悄悄只看「木工」了
  * @param {object} ctx @param {{ storeId?: string | null, onPicked: () => void, from?: HTMLElement }} o
  */
 export function openPicker(ctx, { storeId, onPicked, from }) {
@@ -47,9 +49,9 @@ export function openPicker(ctx, { storeId, onPicked, from }) {
     s.close();
     // 面板关上时焦点回到按钮上（app 重画以后照 data-fid 放回新的那个按钮）
     if (from && from.isConnected) from.focus();
-    if (id === cur) return;
-    ctx.setLocal(storeFilterPatch(id));
-    onPicked();
+    const patch = storeFilterPatch(id);
+    if (patch.storeFilter !== storeFilterPatch(ctx.local && ctx.local.storeFilter).storeFilter) ctx.setLocal(patch);
+    if (id !== cur) onPicked();
   }
   const rows = opts.map(({ id, list, n }) => h('li', null, h('button.group-row.sf-opt', {
     type: 'button', 'aria-current': id === cur ? 'true' : null, dataset: { fid: 'sf-opt-' + (id || 'all') }, onclick: () => pick(id),

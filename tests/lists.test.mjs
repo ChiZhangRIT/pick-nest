@@ -151,31 +151,36 @@ test('新建清单：排在最后，名字不能空，类型认不出按食材�
   const r2 = createList(s, { name: '别的', kind: 'project', defaultStoreId: 's_target' }, now());
   assert.deepEqual([s.data.lists[r2.id].kind, s.data.lists[r2.id].defaultStoreId, s.data.lists[r2.id].order], ['grocery', null, 3]);
   assert.deepEqual([s.data.lists[r2.id].icon, s.data.lists[r2.id].color], ['', ''], '没选：按类型默认（存空的）');
-  const r3 = createList(s, { name: '工具', kind: 'general', icon: 'i:hammer', color: 'nope' }, now());
-  assert.deepEqual([s.data.lists[r3.id].icon, s.data.lists[r3.id].color], ['i:hammer', ''], '认不出的颜色存空的');
-  const r4 = createList(s, { name: '菜', kind: 'grocery', icon: 'i:basket', color: 'green' }, now());
-  assert.deepEqual([s.data.lists[r4.id].icon, s.data.lists[r4.id].color], ['', ''], '选的就是这一类的默认：存空的');
-  const r5 = createList(s, { name: '书', kind: 'general', icon: 'i:no-such', color: 'blue' }, now());
-  assert.deepEqual([s.data.lists[r5.id].icon, s.data.lists[r5.id].color], ['', 'blue'], '认不出的图标名不存');
+  const look = (id) => ['icon', 'glyph', 'color'].map(k => s.data.lists[id][k]);
+  assert.deepEqual(look(r.id), ['🪵', '', 'clay']);
+  const r3 = createList(s, { name: '工具', kind: 'general', glyph: 'hammer', color: 'nope' }, now());
+  assert.deepEqual(look(r3.id), ['', 'hammer', ''], '画好的存在 glyph，icon 空着（旧版只认 icon）；认不出的颜色存空的');
+  const r4 = createList(s, { name: '菜', kind: 'grocery', glyph: 'basket', color: 'green' }, now());
+  assert.deepEqual(look(r4.id), ['', '', ''], '选的就是这一类的默认：存空的');
+  const r5 = createList(s, { name: '书', kind: 'general', glyph: 'no-such', color: 'blue' }, now());
+  assert.deepEqual(look(r5.id), ['', '', 'blue'], '认不出的图标名不存');
 });
 
 test('改清单：名字、图标、颜色、默认商店；预置清单名字可以清空（显示界面语言的名字），自建的不行；类型不改', () => {
   const s = seeded();
   const r = editList(s, 'l_groceries', { name: '  ', icon: '🛒', color: 'teal', defaultStoreId: 's_costco', kind: 'general' }, now());
   assert.deepEqual([r.list.name, r.list.icon, r.list.color, r.list.defaultStoreId, r.list.kind], ['', '🛒', 'teal', 's_costco', 'grocery']);
-  assert.deepEqual(['icon', 'color'].map(k => editList(s, 'l_groceries', { icon: 'i:basket', color: 'green' }, now()).list[k]), ['', ''], '改回默认的样子：存空的');
+  assert.deepEqual(['icon', 'glyph', 'color'].map(k => editList(s, 'l_groceries', { icon: '', glyph: 'basket', color: 'green' }, now()).list[k]), ['', '', ''], '改回默认的样子：存空的');
   // 只交了一样：另一样原样留着（新版才有的色调、图标，面板没动就不交）
-  s.data.lists.l_tobuy = { ...s.data.lists.l_tobuy, icon: 'i:future-glyph', color: 'future-tint' };
+  s.data.lists.l_tobuy = { ...s.data.lists.l_tobuy, glyph: 'future-glyph', color: 'future-tint' };
   const kept = editList(s, 'l_tobuy', { name: '想要的', color: 'rose' }, now()).list;
-  assert.deepEqual([kept.icon, kept.color], ['i:future-glyph', 'rose']);
-  assert.deepEqual([editList(s, 'l_tobuy', { icon: '木工活' }, now()).list.icon, s.data.lists.l_tobuy.color], ['木工', 'rose'], '自己写的最多两个字');
-  s.data.lists.l_tobuy = { ...s.data.lists.l_tobuy, name: '', icon: '', color: '', updatedAt: 0 };
+  assert.deepEqual([kept.icon, kept.glyph, kept.color], ['', 'future-glyph', 'rose']);
+  const l2 = editList(s, 'l_tobuy', { icon: '木工活' }, now()).list;
+  assert.deepEqual([l2.icon, l2.glyph, l2.color], ['木工', '', 'rose'], '自己写的最多两个字；换了图标就是换了，画好的那个清空');
+  const l3 = editList(s, 'l_tobuy', { glyph: 'saw' }, now()).list;
+  assert.deepEqual([l3.icon, l3.glyph], ['', 'saw'], '换成画好的：自己写的清空（不然它显示在前，盖住新选的）');
+  s.data.lists.l_tobuy = { ...s.data.lists.l_tobuy, name: '', icon: '', glyph: '', color: '', updatedAt: 0 };
   const { id } = createList(s, { name: '木工', kind: 'general' }, now());
   assert.deepEqual(editList(s, id, { name: '' }, now()), { ok: false, errors: { name: 'list.err.name' } });
   assert.equal(editList(s, id, { defaultStoreId: 's_nope' }, now()).list.defaultStoreId, null, '不存在的商店不改');
   assert.equal(editList(s, 'l_nope', { name: 'x' }, now()).ok, false);
   // 没改的不盖新时间（预置清单还是 updatedAt 0）
-  assert.equal(editList(s, 'l_tobuy', { name: '', icon: '' }, now()).list.updatedAt, 0);
+  assert.equal(editList(s, 'l_tobuy', { name: '', icon: '', glyph: '' }, now()).list.updatedAt, 0);
 });
 
 test('归档：首页不显示、收进「已归档」，取消归档回来；预置清单也能归档', () => {

@@ -370,7 +370,8 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
 .item-in { position: relative; flex: 1; min-width: 0; display: flex; align-items: stretch; background: var(--card); }
 .item-row + .item-row > .item-in::before { content: ""; position: absolute; top: 0; left: 56px; right: 0; height: .5px; background: var(--line); }
 .item-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; min-height: 54px; padding: 10px 0; border: 0; background: none; color: var(--ink); text-align: left; }
-.item-main:active { background: var(--fill); }
+.item-in:has(> .item-main:active) { background: var(--fill); }   /* 按下去整行变灰（圆圈那一栏也算）：只灰 .item-main 的话左边空一块、灰块贴着字 */
+.item-in:has(> .item-main:active) .store-chip { background: var(--card); }   /* 小标签平时也是 --fill，按下去时换个底，不然和行融在一起看不出 */
 /* 圆圈的按钮占满左边一栏、整行高（54 × ≥ 54；在店里推着车也点得中），圆在里面的位置和以前一样（离左边 14，文字从 54 开始） */
 .item-tick { flex: none; display: flex; align-items: center; width: 54px; min-height: 54px; padding: 0 0 0 14px; border: 0; background: none; color: inherit; }
 .item-tick:active .check { transform: scale(.86); }   /* 按下去圆圈缩一下：点中了的样子只在圆圈上，不像点了整行 */
@@ -413,7 +414,8 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
 :root.sw-zoomed .swipe { touch-action: auto; }      /* 捏合放大着：单指横着拖是在移动放大的页面，不滑行 */
 .swipe > .item-in { z-index: 1; }
 .swipe.sw-drag > .item-in { will-change: transform; -webkit-user-select: none; user-select: none; }
-.swipe.sw-drag .item-main:active { background: none; }   /* 横着拖的时候不像按下去了 */
+.swipe.sw-drag > .item-in:has(> .item-main:active) { background: var(--card); }   /* 横着拖的时候不像按下去了 */
+.swipe.sw-drag > .item-in:has(> .item-main:active) .store-chip { background: var(--fill); }
 .swipe.sw-drag .item-tick:active .check { transform: none; }
 .swipe.sw-anim > .item-in { transition: transform .24s cubic-bezier(.2, .8, .2, 1); }
 .swipe.sw-out { pointer-events: none; }
@@ -466,7 +468,11 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
 .sf-ic { width: 26px; height: 26px; border-radius: 7px; font-size: 15px; }
 .sf-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sf-chev { flex: none; width: 16px; height: 16px; stroke-width: 2.2; }
-.sf-all-tile { background: var(--tile); color: var(--accent-text); }   /* 「所有清单」不是一张清单，不给色调 */
+/* 「所有清单」不是一张清单：中性的灰底灰图标，不像一张绿色的清单（--tile 的淡绿和「食材」的默认几乎一样）；按钮本身是 --fill，里面的方块换成 --card 才看得出 */
+.sf-all-tile { background: var(--fill); color: var(--ink-2); }
+.sf-btn .sf-all-tile { background: var(--card); }
+/* 双栏时左栏「商店」页已经有这个按钮（管的是同一个设置）：右栏的店里不再放一个，不然像两个各管各的 */
+.pane-detail .lp-sub .sf-btn { display: none; }
 .list-tile.sf-all-tile .ic { width: 66.667%; height: 66.667%; }
 /* 选清单的面板：一行一张，铺满面板的宽（不再套一层卡片），现在选的那一张右边打勾 */
 .sf-help { margin: 0 0 8px; font-size: 13.5px; }
@@ -561,18 +567,19 @@ select.f-in { width: 100%; }
 .kind-opt input { flex: none; width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--accent); }
 .kind-text b { display: block; font-weight: 600; }
 .kind-text small { display: block; margin-top: 2px; font-size: 13px; line-height: 1.45; color: var(--muted); }
-/* 编辑清单：最上面的预览方块；颜色一排圆点（选中的套一圈）；图标 6 列（选中的那格用选的颜色，再描一圈：不只靠颜色分辨）；「自定义」一行 */
+/* 编辑清单：最上面的预览方块；颜色一排圆点（选中的套一圈）；图标 6 列（选中的那格用选的颜色，再描一圈：不只靠颜色分辨）；「自定义」一行。
+   都铺满面板的宽（和上面的名字输入框一样宽）：宽屏的对话框里不留右边一大块空、预览方块正对着下面的选项 */
 .le-head { display: flex; justify-content: center; margin: 2px 0 18px; }
 .le-preview { width: 68px; height: 68px; border-radius: 17px; font-size: 38px; }
-.swatches { display: grid; grid-template-columns: repeat(8, 1fr); max-width: 400px; }
+.swatches { display: grid; grid-template-columns: repeat(8, 1fr); }
 .swatch { display: grid; place-items: center; height: 44px; padding: 0; border: 0; background: none; }
 .swatch-dot { width: 28px; height: 28px; border-radius: 50%; background: var(--t-fg); }
 .swatch.on .swatch-dot { box-shadow: 0 0 0 2.5px var(--card), 0 0 0 4.5px var(--t-fg); }
-.glyph-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; max-width: 400px; }
+.glyph-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
 .glyph-opt { display: grid; place-items: center; height: 46px; padding: 0; border: 0; border-radius: 12px; background: var(--fill); color: var(--ink-2); }
 .glyph-opt .lt-glyph { width: 26px; height: 26px; }
 .glyph-opt.on { background: var(--t-bg); color: var(--t-fg); box-shadow: inset 0 0 0 2px var(--t-fg); }
-.icon-custom-row { display: flex; align-items: center; gap: 12px; margin-top: 10px; max-width: 400px; }
+.icon-custom-row { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
 .icon-custom-label { flex: none; font-size: 15px; color: var(--ink-2); }
 .icon-custom { flex: 1; min-width: 0; }
 .icon-custom.on { border-color: var(--t-fg); box-shadow: inset 0 0 0 1px var(--t-fg); }
