@@ -12,7 +12,8 @@
    通用组件：.navbar .back .push-nav .nb-title（推入的页面：返回 · 标题 · 操作）| .page-head .toolbar .tb-btn .lt | .page .row | .btn(.primary .ghost .danger .danger-fill .small .block) .icon-btn .link-btn
              .card .group .group-row(.go .sel) .group-h .group-foot | .seg | .chips .chip | .tag（「已归档」这种小标记）| .sec-toggle .sec-chev（折叠的一组）| .empty .detail-empty
              .sync-badge(.ok .wait .warn .err .off)（同步状态的小标签，ui/syncBadge.js）
-             .list-tile .tint-<色调>（清单的图标方块，ui/listTile.js；色调的深浅两套在 --tint-*，大小由各处的类给：.list-icon .lp-icon .sr-list-ic .list-chip-ic .shop-icon .le-preview）
+             .list-tile .tint-<色调>（清单的图标方块，ui/listTile.js；色调的深浅两套在 --tint-*，大小由各处的类给：.list-icon .lp-icon .sr-list-ic .list-chip-ic .shop-icon .le-preview .sf-ic .sf-opt-ic）
+             .sf-btn(.on) .sf-opt（按商店看时只看一张清单的按钮和面板，ui/storeFilter.js）
              dialog.sheet .sheet-actions | .form .f-row .f-label .f-help .f-err（ui/form.js）| #toast | .ic（图标，见 ui/dom.js 的 icon()） */
 
 :root {
@@ -447,7 +448,7 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
 .store-row { min-height: 52px; }
 .store-name { flex: 1; min-width: 0; font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .store-row.zero .store-name { color: var(--muted); }   /* 0 样的淡一级（和首页的 0 一样用 --muted：店里亮处也看得清） */
-.sp-icon { color: var(--accent-text); }
+.sp-icon { flex: none; display: grid; place-items: center; background: var(--tile); color: var(--accent-text); }   /* 商店的图标不是 .list-tile（那个才带底色和居中），和购物模式的商店图标一样自己给 */
 .sp-icon .ic { width: 26px; height: 26px; }
 .sp-hint { margin-top: 8px; padding: 0 4px; color: var(--muted); font-size: 14px; line-height: 1.5; }
 /* 来自哪张清单：小标签（.store-chip，长了截断）里一个小图标方块 + 清单名（方块太小，线条加粗一点才看得出是什么） */
@@ -455,6 +456,29 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
 .list-chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .list-chip-ic { width: 15px; height: 15px; margin-right: 4px; border-radius: 4px; font-size: 10px; }
 .list-chip-ic .lt-glyph { width: 12px; height: 12px; stroke-width: 2.3; }
+/* 只看一张清单（ui/storeFilter.js）：「商店」页大标题下面、一家店「还要买 N 样」右边、购物模式进度右边的「所有清单 ▾」。
+   只看一张时换成选中的底色和强调色的字（.on），一眼看得出这一页少了别的清单的东西；名字长了省略，不把按钮挤出一行 */
+.sf-row { margin-top: 8px; }
+.sf-btn { position: relative; display: inline-flex; align-items: center; gap: 7px; max-width: 100%; min-height: 36px; padding: 4px 9px 4px 5px; border: 0; border-radius: var(--radius-btn);
+  background: var(--fill); color: var(--ink-2); font-size: 15px; font-weight: 600; }
+.sf-btn::after { content: ""; position: absolute; inset: -4px 0; }   /* 能点的地方 ≥ 44 高，样子还是小的 */
+.sf-btn.on { background: var(--sel); color: var(--accent-text); }
+.sf-ic { width: 26px; height: 26px; border-radius: 7px; font-size: 15px; }
+.sf-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sf-chev { flex: none; width: 16px; height: 16px; stroke-width: 2.2; }
+.sf-all-tile { background: var(--tile); color: var(--accent-text); }   /* 「所有清单」不是一张清单，不给色调 */
+.list-tile.sf-all-tile .ic { width: 66.667%; height: 66.667%; }
+/* 选清单的面板：一行一张，铺满面板的宽（不再套一层卡片），现在选的那一张右边打勾 */
+.sf-help { margin: 0 0 8px; font-size: 13.5px; }
+.sf-list { margin: 0 -20px; border-radius: 0; background: none; box-shadow: none; }
+.sf-list > li { position: relative; }
+.sf-list > li + li > .sf-opt::before { content: ""; position: absolute; top: 0; left: 62px; right: 0; height: .5px; background: var(--line); }
+.sf-opt { min-height: 54px; padding: 10px 20px; font-size: 17px; }
+.sf-opt-ic { width: 30px; height: 30px; border-radius: 8px; font-size: 18px; }
+.sf-opt-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.sf-opt[aria-current="true"] .sf-opt-name { font-weight: 600; }
+.sf-mark { flex: none; display: grid; place-items: center; width: 22px; color: var(--accent-text); }
+.sf-mark .ic { width: 20px; height: 20px; stroke-width: 2.4; }
 
 /* 清单页、商店页顶栏右边的「开始购物」 */
 .shop-btn .ic { width: 21px; height: 21px; }
@@ -471,7 +495,9 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
 .shop-icon.list-tile { background: var(--t-bg); color: var(--t-fg); }   /* 购物模式的商店图标用 --tile，清单的用自己的色调 */
 .shop-name { min-width: 0; overflow: hidden; overflow-wrap: break-word; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }   /* 长名字折成两行，窄屏上不只剩「Woo…」 */
 .shop-finish { flex: none; }
-.shop-prog { margin-top: 8px; color: var(--ink-2); font-size: 16px; font-weight: 550; font-variant-numeric: tabular-nums; }
+.shop-prog { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; margin-top: 8px; color: var(--ink-2); font-size: 16px; font-weight: 550; font-variant-numeric: tabular-nums; }
+.shop-sf { min-width: 0; max-width: 100%; }
+.shop-sf .sf-btn { font-size: 14px; }
 .shop-bar { height: 5px; margin-top: 7px; border-radius: 3px; background: var(--fill); overflow: hidden; }
 .shop-bar-fill { display: block; height: 100%; width: 0; border-radius: inherit; background: var(--accent); transition: width .3s ease-out; }
 .view-shop .lp-body { padding-top: 6px; }

@@ -2,9 +2,10 @@
 // 商店：「商店」页每家店还要买几样（storeCounts、storeRows）、一家店的页面（groupStore、clearStoreDone），设置里管商店（新增、改名、归档、删除、排顺序）。
 // 「这家店的东西」：没删除、所在的清单没删除也没归档的东西里，storeId 是这家店的。商店删掉了（或者根本没有这家）的东西算「未指定」（key null）：
 // storeId 不改，商店恢复了就回到原来那家（和清单页按商店分组、编辑面板显示「未指定」是同一个规则）。归档的商店照常算，只是不再出现在选择里。
+// 「商店」页、一家店、从商店进的购物模式可以只看一张清单（本机记住的 storeFilter，见 storeFilter）：下面这些都收一个 { listId }，null / 不给 = 所有清单。
 // 写法和 items.js 一样：直接改传进来的 state（在 ctx.mutate 里调用），记录经过 writeRecord（没变的不盖新时间）或 deletedRecord。
 // （store.js 是数据层：整理、合并、预置记录；这里是商店这件事本身。）
-import { newId, byOrder, writeRecord, deletedRecord, live, normName, moveInOrder } from './store.js';
+import { newId, byOrder, writeRecord, deletedRecord, live, normName, moveInOrder, homeLists } from './store.js';
 import { own, isObj, str } from './util.js';
 import { liveList, storeKeyOf, clearDoneWhere } from './items.js';
 import { visibleItems } from './lists.js';
@@ -22,18 +23,58 @@ export function liveStore(state, id) {
 }
 // 东西算在哪家店（删掉的、不存在的商店算「未指定」）：规则在 items.js，勾掉时记在哪家也用它
 export { storeKeyOf };
-/** 商店页看得到的东西：没删除，所在的清单没删除、没归档（归档的清单收起来了，里面的东西也不催着买） @param {State} state @returns {Item[]} */
-export const shoppingItems = state => visibleItems(state).filter(it => !(/** @type {any} */ (liveList(state, it.listId)).archived));
+/** @typedef {{ listId?: string | null }} ListFilter  只看哪张清单的东西；null / 不给 = 所有清单 */
 
 /**
- * 每家店还要买几样（跨所有清单）：只数「要买」的，不算以后再说、已买。storeId → 数量；未指定的数在 null 下
- * @param {State} state @returns {Map<string | null, number>}
+ * 商店页看得到的东西：没删除，所在的清单没删除、没归档（归档的清单收起来了，里面的东西也不催着买）；给了 listId 只要这张清单上的。
+ * listId 不再替调用的地方检查（删掉、归档的清单上本来就什么都看不到）：记着的清单不在了按所有清单显示，是 storeFilter 的事
+ * @param {State} state @param {ListFilter} [f] @returns {Item[]}
  */
-export function storeCounts(state) {
+export function shoppingItems(state, { listId = null } = {}) {
+  return visibleItems(state).filter(it => (listId == null || it.listId === listId) && !(/** @type {any} */ (liveList(state, it.listId)).archived));
+}
+
+/**
+ * 每家店还要买几样（跨所有清单，或者只数 listId 这张）：只数「要买」的，不算以后再说、已买。storeId → 数量；未指定的数在 null 下
+ * @param {State} state @param {ListFilter} [f] @returns {Map<string | null, number>}
+ */
+export function storeCounts(state, f = {}) {
   /** @type {Map<string | null, number>} */
   const m = new Map();
-  for (const it of shoppingItems(state)) if (it.status === 'need') { const k = storeKeyOf(state, it); m.set(k, (m.get(k) || 0) + 1); }
+  for (const it of shoppingItems(state, f)) if (it.status === 'need') { const k = storeKeyOf(state, it); m.set(k, (m.get(k) || 0) + 1); }
   return m;
+}
+
+// ---------- 只看一张清单（picknest.local 的 storeFilter，不同步） ----------
+/**
+ * 现在按哪张清单筛：「商店」页、每家店、从商店进的购物模式共用本机记住的一个（换了一家店还是看同一张清单，不用每家各选一次）。
+ * 记着的清单还在、没归档 → 它的 id；没记、认不出、删掉了、归档了 → null（所有清单），不提示：那张清单在店里本来就什么也看不到，
+ * 留着「木工」只会让每家店都显示成空的。记着的值不在这里改（读的时候不写）：撤销删除、取消归档以后又按它筛
+ * @param {State} state @param {{ storeFilter?: unknown } | null | undefined} local @returns {string | null}
+ */
+export function storeFilter(state, local) {
+  const l = liveList(state, isObj(local) ? local.storeFilter : null);
+  return l && !(/** @type {any} */ (l).archived) ? l.id : null;
+}
+/** 换筛哪张清单：给 ctx.setLocal 的 { storeFilter }（null = 所有清单） @param {unknown} listId */
+export const storeFilterPatch = (listId) => ({ storeFilter: typeof listId === 'string' ? listId : null });
+
+/**
+ * 选清单的面板里的几行：最前面「所有清单」（id null），然后首页上的清单（没删除、没归档，首页的顺序），各带还要买几样。
+ * 给了 storeId（null = 未指定）就只数在这家店要买的（一家店的页面上选，看得出哪张清单在这儿有东西）；不给是所有店加起来（「商店」页）。
+ * 「所有清单」那一行就是各张加起来（归档的清单本来就不算）
+ * @param {State} state @param {{ storeId?: string | null }} [at]
+ * @returns {{ id: string | null, list: import('./store.js').List | null, n: number }[]}
+ */
+export function storeFilterOptions(state, at = {}) {
+  const here = at.storeId !== undefined;
+  /** @type {Map<string, number>} */
+  const per = new Map();
+  for (const it of shoppingItems(state)) {
+    if (it.status === 'need' && (!here || storeKeyOf(state, it) === at.storeId)) per.set(it.listId, (per.get(it.listId) || 0) + 1);
+  }
+  const lists = homeLists(state).map(l => ({ id: l.id, list: l, n: per.get(l.id) || 0 }));
+  return [{ id: null, list: null, n: lists.reduce((n, x) => n + x.n, 0) }, ...lists];
 }
 
 /** 没归档的商店，按顺序（商店页、设置、各个选择列表的顺序） @param {State} state @returns {Store[]} */
@@ -43,35 +84,39 @@ export const archivedStores = state => live(state, 'stores').filter(s => s.archi
 
 /**
  * 「商店」页的行：没归档的商店按顺序，0 样的也列出来（页面画淡一点）；归档的商店只在还有要买的时候列出来（排在后面，页面标「已归档」），
- * 不然归档以后，指定给它的东西就在哪儿都看不到了；最后是「未指定」（id null，有要买的才列）
- * @param {State} state @returns {{ id: string | null, store: Store | null, n: number }[]}
+ * 不然归档以后，指定给它的东西就在哪儿都看不到了；最后是「未指定」（id null，有要买的才列）。只看一张清单时数的、「有没有要买的」都只算这张
+ * @param {State} state @param {ListFilter} [f] @returns {{ id: string | null, store: Store | null, n: number }[]}
  */
-export function storeRows(state) {
-  const counts = storeCounts(state);
+export function storeRows(state, f = {}) {
+  const counts = storeCounts(state, f);
   const rows = [...activeStores(state), ...archivedStores(state).filter(s => counts.get(s.id))].map(s => ({ id: s.id, store: s, n: counts.get(s.id) || 0 }));
   if (counts.get(null)) rows.push({ id: null, store: null, n: /** @type {number} */ (counts.get(null)) });
   return rows;
 }
 
-/** 在这家店（null = 未指定）的页面上的东西（什么状态都算） @param {State} state @param {string | null} storeId */
-const itemsAt = (state, storeId) => shoppingItems(state).filter(it => storeKeyOf(state, it) === storeId);
+/** 在这家店（null = 未指定）的页面上的东西（什么状态都算） @param {State} state @param {string | null} storeId @param {ListFilter} [f] */
+const itemsAt = (state, storeId, f) => shoppingItems(state, f).filter(it => storeKeyOf(state, it) === storeId);
 
 /**
  * 一家店（null = 未指定）的页面：要买的按分类分组（规则和清单页一样：组按分类的 order，未分类在最后，组内按名字）；
- * 已买的新的在前。以后再说的不在这里（还不打算买）
- * @param {State} state @param {string | null} storeId @param {Intl.Collator} [collator]
+ * 已买的新的在前。以后再说的不在这里（还不打算买）。只看一张清单时只有这张上的（已买的也是）
+ * @param {State} state @param {string | null} storeId @param {Intl.Collator} [collator] @param {ListFilter} [f]
  * @returns {{ groups: Group[], done: Item[] }}
  */
-export function groupStore(state, storeId, collator = collatorFor('zh-Hans')) {
+export function groupStore(state, storeId, collator = collatorFor('zh-Hans'), f = {}) {
   /** @type {Item[]} */
   const need = [], done = [];
-  for (const it of itemsAt(state, storeId)) { if (it.status === 'need') need.push(it); else if (it.status === 'done') done.push(it); }
+  for (const it of itemsAt(state, storeId, f)) { if (it.status === 'need') need.push(it); else if (it.status === 'done') done.push(it); }
   return { groups: groupItems(state, need, 'category', collator), done: done.sort(byDoneAt(collator)) };
 }
 
-/** 商店页的「清除已买」：在这家店的页面上的已买都清掉（各自清单的「已买」里也就没了），返回几样 @param {State} state @param {string | null} storeId @param {number} [now] */
-export function clearStoreDone(state, storeId, now = Date.now()) {
-  const here = new Set(itemsAt(state, storeId).map(it => it.id));
+/**
+ * 商店页的「清除已买」：在这家店的页面上的已买都清掉（各自清单的「已买」里也就没了），返回几样。
+ * 只看一张清单时只清看得到的这些（别的清单上在这家买到的不动：没看见的不该跟着清掉）
+ * @param {State} state @param {string | null} storeId @param {number} [now] @param {ListFilter} [f]
+ */
+export function clearStoreDone(state, storeId, now = Date.now(), f = {}) {
+  const here = new Set(itemsAt(state, storeId, f).map(it => it.id));
   return clearDoneWhere(state, it => here.has(it.id), now);
 }
 

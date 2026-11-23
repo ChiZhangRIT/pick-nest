@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ensureSeeds, blankState, normalizeRecord, deletedRecord, restoredRecord, mergeStates, SEED_STORES, GROCERY_CATEGORIES, GENERAL_CATEGORIES } from '../src/core/store.js';
-import { storeCounts, storeRows, groupStore, clearStoreDone, storeKeyOf, activeStores, archivedStores, createStore, renameStore, setStoreArchived, deleteStore, moveStore } from '../src/core/stores.js';
+import { storeCounts, storeRows, groupStore, clearStoreDone, storeFilter, storeFilterPatch, storeFilterOptions, shoppingItems, storeKeyOf, activeStores, archivedStores, createStore, renameStore, setStoreArchived, deleteStore, moveStore } from '../src/core/stores.js';
 import { categorySections, categoriesFor, createCategory, renameCategory, deleteCategory, moveCategory } from '../src/core/categories.js';
 import { groupNeed, collatorFor, storeView, storeViewPatch } from '../src/core/group.js';
 import { createList, setArchived, deleteList } from '../src/core/lists.js';
@@ -109,6 +109,74 @@ test('商店页勾掉：记下这次在这家买的（memory），算进已买�
   assert.equal(item(S(), '电池').deleted, undefined, '别家的已买不动');
   state.undo();
   assert.deepEqual(names(groupStore(S(), 's_wholefoods', zh).done), ['面包', '鸡蛋']);
+});
+
+// ---------- 只看一张清单（本机的 storeFilter） ----------
+test('只看一张清单：storeCounts / storeRows 只数这张；归档的店只在这张清单在那儿有东西时列；不给 / null 是所有清单', () => {
+  const { s, wood } = shopState();
+  assert.deepEqual(Object.fromEntries(storeCounts(s, { listId: wood })), { s_homedepot: 1, s_wholefoods: 1 }, '砂纸、木胶');
+  assert.deepEqual(Object.fromEntries(storeCounts(s, { listId: 'l_tobuy' })), { s_costco: 1, null: 1 }, '雨伞是以后再说');
+  assert.deepEqual(storeCounts(s, { listId: null }), storeCounts(s));
+  assert.deepEqual(storeCounts(s, {}), storeCounts(s));
+  setStoreArchived(s, 's_hmart', true, now());          // 只有食材清单上的豆腐在那儿
+  const rows = (f) => storeRows(s, f).map(r => [r.id, r.n]);
+  const woodRows = rows({ listId: wood });
+  assert.deepEqual(woodRows, activeStores(s).map(st => [st.id, { s_homedepot: 1, s_wholefoods: 1 }[st.id] || 0]), '没归档的店都列（0 样的也列）；H Mart、未指定在木工里没有，不列');
+  assert.deepEqual(rows({ listId: 'l_groceries' }).slice(-1), [['s_hmart', 1]], '食材清单在 H Mart 有豆腐：归档的店照样列');
+  assert.deepEqual(rows({ listId: 'l_tobuy' }).at(-1), [null, 1], '想买：台灯没指定商店');
+  // 删掉的、归档的清单：直接给它的 id 什么都数不到（页面先过 storeFilter，不会这样给）
+  assert.equal(storeCounts(s, { listId: 'l_nope' }).size, 0);
+  const { old } = shopState();
+  assert.equal(shoppingItems(s, { listId: old }).length, 0);
+});
+
+test('只看一张清单：groupStore 的要买、已买都只有这张上的；清除已买只清看得到的，别的清单在这家买到的不动', () => {
+  const { s, wood } = shopState();
+  s.data.items[ID.木胶] = { ...item(s, '木胶'), status: 'done', doneAt: T0 + 20 };
+  const g = groupStore(s, 's_wholefoods', zh, { listId: wood });
+  assert.deepEqual([g.groups, names(g.done)], [[], ['木胶']]);
+  const gg = groupStore(s, 's_wholefoods', zh, { listId: 'l_groceries' });
+  assert.deepEqual([gg.groups.flatMap(x => names(x.items)), names(gg.done)], [['苹果', '牛奶', '没听说过的'], ['面包', '鸡蛋']]);
+  assert.deepEqual(groupStore(s, 's_wholefoods', zh, {}), groupStore(s, 's_wholefoods', zh), '不给就是所有清单');
+  assert.equal(clearStoreDone(s, 's_wholefoods', now(), { listId: wood }), 1);
+  assert.equal(item(s, '木胶').deleted, true);
+  assert.deepEqual([item(s, '鸡蛋').deleted, item(s, '面包').deleted], [undefined, undefined], '食材清单上在 Whole Foods 买到的没看见，不清');
+  assert.equal(clearStoreDone(s, 's_wholefoods', now()), 2, '所有清单：剩下的都清');
+});
+
+test('storeFilter：记着的清单还在、没归档才用它；没记、认不出、删掉了、归档了 → 所有清单（null），记着的值不动，撤销删除 / 取消归档后又按它筛', () => {
+  const { s, wood, old } = shopState();
+  assert.equal(storeFilter(s, {}), null);
+  assert.equal(storeFilter(s, null), null);
+  assert.equal(storeFilter(s, undefined), null);
+  assert.equal(storeFilter(s, { storeFilter: wood }), wood);
+  assert.equal(storeFilter(s, { storeFilter: 'l_groceries' }), 'l_groceries');
+  for (const junk of ['l_nope', 42, ['l_groceries'], { id: wood }, '__proto__', 'toString', '']) assert.equal(storeFilter(s, { storeFilter: junk }), null, String(junk));
+  assert.equal(storeFilter(s, { storeFilter: old }), null, '归档的清单');
+  const local = { storeFilter: wood };
+  deleteList(s, wood, now());
+  assert.equal(storeFilter(s, local), null, '删掉的清单');
+  assert.deepEqual(local, { storeFilter: wood }, '只读，不改记着的');
+  s.data.lists[wood] = restoredRecord(s.data.lists[wood], now());
+  assert.equal(storeFilter(s, local), wood, '恢复了又按它筛');
+  setArchived(s, 'l_groceries', true, now());
+  assert.equal(storeFilter(s, { storeFilter: 'l_groceries' }), null, '自带的清单归档了也一样');
+  assert.deepEqual(storeFilterPatch(wood), { storeFilter: wood });
+  assert.deepEqual(storeFilterPatch(null), { storeFilter: null });
+  assert.deepEqual(storeFilterPatch(undefined), { storeFilter: null });
+});
+
+test('storeFilterOptions：「所有清单」在最前（各张加起来），然后首页上的清单（首页的顺序，归档、删掉的不列）；给了店只数这家的（null = 未指定）', () => {
+  const { s, wood } = shopState();
+  const rows = (at) => storeFilterOptions(s, at).map(o => [o.id, o.n]);
+  assert.deepEqual(rows(), [[null, 8], ['l_groceries', 4], ['l_tobuy', 2], [wood, 2]], '月饼在归档的清单上，不算也不列');
+  assert.deepEqual(rows({ storeId: 's_wholefoods' }), [[null, 4], ['l_groceries', 3], ['l_tobuy', 0], [wood, 1]]);
+  assert.deepEqual(rows({ storeId: null }), [[null, 1], ['l_groceries', 0], ['l_tobuy', 1], [wood, 0]], '未指定：台灯');
+  assert.equal(storeFilterOptions(s)[0].list, null);
+  assert.equal(storeFilterOptions(s)[3].list.name, '木工');
+  deleteList(s, wood, now());
+  setArchived(s, 'l_tobuy', true, now());
+  assert.deepEqual(rows(), [[null, 4], ['l_groceries', 4]]);
 });
 
 test('一家店的显示方式（本机）：「已买」默认展开；「未指定」的键是 none；认不出的值按默认', () => {

@@ -28,7 +28,7 @@
 // ===== ctx =====
 // 数据（src/core/state.js 的包装；改数据一律走这些，app 会保存、重画）
 //   ctx.state                  当前数据（只读）：{ app, v, data: { lists, items, stores, categories, memory }, settings, settingsAt }
-//   ctx.local                  本机设置 picknest.local（只读）：{ lang, theme, device, sync, lastBackupAt, view, storeView }
+//   ctx.local                  本机设置 picknest.local（只读）：{ lang, theme, device, sync, lastBackupAt, view, storeView, storeFilter }
 //   ctx.mutate(fn, { undoLabel })  fn(state) 直接改（同步函数），返回 fn 的返回值；修改时间自动补；给 undoLabel 会弹 10 秒「撤销」提示
 //   ctx.put(collection, rec, { undoLabel })   新建（没有 id 就生成）或整条替换：整理字段、盖修改时间，返回存好的记录。
 //                              内容和原来一样就什么也不做（不盖新时间、不进撤销）；id 不符合 safeKey 直接抛错

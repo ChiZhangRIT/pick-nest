@@ -44,12 +44,13 @@ function fakeWakeLock() {
 }
 
 /** 假 ctx。page：'shop' | 'search'；面板：记下内容和按钮，不开真的 <dialog> */
-function setup({ page, params = {}, lang = 'zh-Hans', wakeLock = undefined, prep = null }) {
+function setup({ page, params = {}, lang = 'zh-Hans', wakeLock = undefined, prep = null, local = null }) {
   const dom = installDom({ navigator: { wakeLock } });
   setLang(lang);
   state.load({ storage: null });
   state.mutate(seed);
   if (prep) state.mutate(prep);
+  if (local) state.setLocal(local);
   const views = { shop: shopView, search: searchView };
   const env = { ...dom, toasts: [], navs: [], hashes: [], sheets: [], confirms: [], answer: true, handle: null };
   const ctx = env.ctx = {
@@ -198,6 +199,51 @@ test('购物模式（商店）：所有清单里在这家买的，标来自哪�
     await btn(byCls(none.main, 'shop-none'), '完成购物').fire('click');
     assert.deepEqual(none.navs, ['back:/s/none']);
   } finally { none.done(); }
+});
+
+test('购物模式（商店，只看一张清单）：商店页选的那张这里也只有它（进度、行，不标清单）；进度旁边能换，换了只重画这一页（「已买」点开的还开着）；清单的购物模式没有这个按钮', async () => {
+  const env = setup({ page: 'shop', params: { sub: 'store', id: 's_wholefoods' }, local: { storeFilter: 'l_tobuy' } });
+  try {
+    const handle = env.handle;
+    const sf = () => byCls(byCls(env.main, 'shop-prog'), 'sf-btn');
+    assert.equal(env.prog(), '已买 0 · 还剩 1');
+    assert.deepEqual(env.rows(), ['台灯'], '食材清单的牛奶、鸡蛋不在；雨伞以后再说');
+    assert.equal(byCls(env.row('台灯'), 'list-chip'), undefined);
+    assert.equal(byCls(sf(), 'sf-name').textContent, '想买');
+    assert.ok(cls(sf(), 'on'));
+    assert.equal(sf().dataset.fid, 'sf-shop');
+    sf().focus();
+    await sf().fire('click');
+    const sheet = env.sheets.at(-1);
+    assert.deepEqual(allCls(sheet.el, 'sf-opt').map(o => byCls(o, 'sf-opt-name').textContent + ' ' + byCls(o, 'list-count').textContent), ['所有清单 3', '食材 2', '想买 1'], '在这家要买的；归档的清单不列');
+    await allCls(sheet.el, 'sf-opt')[1].fire('click');
+    assert.equal(env.handle, handle, '没有重新挂载');
+    assert.equal(state.getLocal().storeFilter, 'l_groceries', '回到商店页也是这张');
+    assert.equal(env.prog(), '已买 1 · 还剩 2');
+    assert.deepEqual(env.rows(), ['鸡蛋', '牛奶']);
+    assert.equal(document.activeElement, sf(), '焦点回到按钮上');
+    await byCls(env.sec('done'), 'sec-toggle').fire('click');
+    assert.deepEqual(env.rows(env.sec('done')), ['吐司']);
+    await sf().fire('click');
+    await allCls(env.sheets.at(-1).el, 'sf-opt')[0].fire('click');
+    assert.equal(env.prog(), '已买 1 · 还剩 3');
+    assert.deepEqual(env.rows(env.sec('done')), ['吐司'], '「已买」点开的还开着');
+    assert.equal(byCls(env.row('台灯'), 'list-chip').textContent, '想买', '所有清单：又标来自哪张清单');
+    // 这张清单在这家买齐、清掉以后：空的时候说清只看的是哪张
+    state.setLocal({ storeFilter: 'l_tobuy' });
+    await env.tap('台灯');
+    assert.equal(byCls(env.main, 'shop-end-t').textContent, '都买齐了');
+    await btn(byCls(env.main, 'shop-end'), '清除已买').fire('click');
+    await settle();
+    assert.equal(itemNamed('吐司').status, 'done', '食材清单的已买没看见，不清');
+    assert.equal(byCls(env.main, 'shop-none').textContent.startsWith('这家店在「想买」里没有要买的东西现在只看「想买」'), true);
+  } finally { env.done(); }
+  const list = setup({ page: 'shop', params: { sub: 'list', id: 'l_groceries' }, local: { storeFilter: 'l_tobuy' } });
+  try {
+    assert.equal(byCls(list.main, 'sf-btn'), undefined);
+    assert.ok(list.rows().includes('豆腐'), '清单的购物模式不筛');
+    assert.equal(list.prog(), '已买 1 · 还剩 3');
+  } finally { list.done(); }
 });
 
 test('购物模式：按商店分组的清单组名是店名（要买的不再标店名）；清单删掉了 → 回首页并提示，点过的不改；商店不在了 → 回「商店」', async () => {

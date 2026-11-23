@@ -10,7 +10,7 @@
 }
 ```
 
-本机设置 `picknest.local`（语言、主题、设备名、同步令牌、各清单的显示方式……）不进数据、不同步、不进备份。
+本机设置 `picknest.local`（语言、主题、设备名、同步令牌、各清单的显示方式、按商店看时只看哪张清单……）不进数据、不同步、不进备份。
 
 所有数据文件（同步仓库里的 `picknest.json`、备份、出错时下载的原始数据）外面都是 `{ app: 'picknest', v: 1, …, state }`，读之前由 `store.js` 的 `fileProblem` 检查：不是这个 App 的 → 不读；`v`（或 `state.v`）比 1 大 → 是新版写的，旧版不读、不合并、不上传（免得改坏）；缺了 `state` → 不读。
 
@@ -194,6 +194,8 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 - **这家店的东西**：没删除、所在的清单没删除**也没归档**的东西里，`storeId` 是这家店的。`storeId` 是 `null`、指向删掉的或者不存在的商店：算「未指定」
 - **还要买几样** `storeCounts`：只数 `status: 'need'`（以后再说、已买不算）。「商店」页的行 `storeRows`：没归档的商店按顺序（0 样的也列）；归档的商店只在还有要买的时候列，排在后面；最后「未指定」（有要买的才列）
 - **一家店的页面** `groupStore`：要买的按分类分组（和清单页同一个 `group.js` 的 `groupItems`），已买的 `doneAt` 新的在前；「清除已买」`clearStoreDone` 只软删除这一页上的已买
+- **只看一张清单**：`shoppingItems`、`storeCounts`、`storeRows`、`groupStore`、`clearStoreDone`（还有 `shop.js` 的 `shopProgress`）最后都收一个 `{ listId }`，`null` / 不给 = 所有清单。给了就只算这张清单上的：数、「商店」页哪家归档的店 / 「未指定」要列出来、要买的、已买的、清除已买（只清看得到的，别的清单在这家买到的不动）都一样。`listId` 原样用（删掉、归档的清单上本来什么也看不到）；页面先用 `storeFilter(state, local)` 取本机记着的（见下面「本机设置」），那张清单不在了它返回 `null`
+- **选清单的面板** `storeFilterOptions(state, { storeId })` → `[{ id: null, list: null, n }, { id, list, n }…]`：「所有清单」在最前（`n` 是各张加起来），然后首页上的清单（`homeLists`：没删除、没归档，首页的顺序），`n` = 还要买几样；给了 `storeId`（`null` = 未指定）只数在这家店的，不给是所有店加起来
 - **名字**：不能空，不能和别的没删除的商店 `normName` 一样（删掉的不算）。预置商店也能改名、删除
 - **新增**：`order` = 现有的（没删除的，归档的也算）最大的 + 1，id `newId('s_')`
 - **排顺序**（设置里的 ↑↓）：挪到相邻的（没归档的）另一边，和清单一样只改这一家的 `order`（归档的也算在前后两条里）
@@ -227,7 +229,7 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 
 不存任何东西：是清单页 / 商店页的地址带上 `?shop=1`（`#/l/<id>?shop=1`、`#/s/<id>?shop=1`、`#/s/none?shop=1`），重新载入还在。显示的东西和普通页面一样分组（清单用 `groupNeed`、按这张清单的 `groupBy`；一家店用 `groupStore`），只是不显示「以后再说」。
 
-- **进度** `shopProgress(state, 'list' | 'store', id)` → `{ done, left, total, finished }`：清单 = 这张清单上没删除的 `need`（还剩）和 `done`（已买），用 `items.js` 的 `countItems`；一家店 = `groupStore` 里的（归档的清单不算，删掉的商店算「未指定」）。`以后再说` 不算。`finished` = 没有还剩的、而且有已买的（空的一页不算「买齐了」）。已买包括以前勾掉还没清除的（它们也在「已买」里），「清除已买」以后从 0 算
+- **进度** `shopProgress(state, 'list' | 'store', id, { listId })` → `{ done, left, total, finished }`：清单 = 这张清单上没删除的 `need`（还剩）和 `done`（已买），用 `items.js` 的 `countItems`；一家店 = `groupStore` 里的（归档的清单不算，删掉的商店算「未指定」；商店页只看一张清单时给 `listId`，只数这张，清单的购物模式不用）。`以后再说` 不算。`finished` = 没有还剩的、而且有已买的（空的一页不算「买齐了」）。已买包括以前勾掉还没清除的（它们也在「已买」里），「清除已买」以后从 0 算
 - 勾掉、放回去、清除已买用的就是 `setStatus`、`clearDone`、`clearStoreDone`（勾掉时照样记 memory）
 - 「已买」每次进购物模式都是折起来的，点开只管这一次（页面里记着，不存）：不读不写普通页面的 `view[listId].showDone`、`storeView`，本机设置只读 `view[listId].groupBy`（分组和清单页一样）
 - 屏幕常亮（`core/wake.js` 的 `screenWake`，`navigator.wakeLock`、`document` 由页面传进去）：只是浏览器的 Screen Wake Lock，不存东西、不同步
@@ -248,8 +250,11 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
   sync: null | { repo: 'owner/pick-nest-data', token: 'github_pat_…', tokenExp: null /* 用户填的到期日 23:59 */,
                  sha, etag, dirty, at /* 上次同步成功 */, err: null | { code, vars }, offline },
   view: { [listId]: { groupBy: 'category' | 'store', showDone: true, showLater: true } },   // 认不出的值按默认（core/group.js 的 listView）；购物模式只用 groupBy
-  storeView: { [storeId | 'none']: { showDone: true } } }                                     // 商店页「已买」折没折；'none' 是「未指定」（core/group.js 的 storeView）
+  storeView: { [storeId | 'none']: { showDone: true } },                                     // 商店页「已买」折没折；'none' 是「未指定」（core/group.js 的 storeView）
+  storeFilter: null | listId }                                                                 // 按商店看时只看哪张清单（core/stores.js 的 storeFilter）
 ```
+
+- `storeFilter`：「商店」页、每家店的页面、从商店进的购物模式共用一个（换一家店还是同一张）；`null` 是所有清单。读的时候一律经过 `stores.js` 的 `storeFilter(state, local)`：不是字符串、没有这张清单、删掉了、归档了 → 按所有清单显示（`null`），不提示，也不改记着的值（撤销删除、取消归档以后又按它筛）。改的时候用 `storeFilterPatch(listId)`
 
 - `device`：写进同步文件和提交说明的设备名；没设就用平台名（iPhone / iPad / Mac，`core/sync.js` 的 `platformDevice`）
 - `tabNoteOff`：在浏览器标签页里打开时（`navigator.standalone` 不是 true、也不是 `display-mode: standalone`；iPhone / iPad 和 Mac 的 Safari 说法不同，见 `views/lists.js` 的 `tabNoteKind`）首页那句「和主屏幕 / 程序坞上的不是同一份数据」点过「知道了」

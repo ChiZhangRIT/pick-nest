@@ -7,7 +7,9 @@
 // 屏幕常亮：core/wake.js（离开时放掉；不支持、被拒绝时最下面淡淡地说一句，拿到了不说）。地址里带着 ?shop=1：重新载入还在购物模式；数据都在本机，没网照常用。
 // 清单 / 商店不在了 → 回首页 / 「商店」并提示（和普通页面一样）。
 // 自己管更新（返回 onChange）：勾掉的行挪走以后焦点给谁、刚挪过的行这一下不算，都要跨重画记着。
-// 行能左右滑（ui/checklist.js，和普通页面一样：编辑、删除、以后再说）；正在滑时数据变了，滑完再重画。
+// 行能左右滑（ui/checklist.js，和普通页面一样：往右编辑、往左删除）；正在滑时数据变了，滑完再重画。
+// 从商店进来的：商店页选了只看一张清单（ui/storeFilter.js 的 storeFilter）这里也只有这张，进度旁边照样有「木工 ▾」能换（在店里买完一张再看下一张）；
+// 换了只重画这一页（常亮、「已买」点开没点开都留着），回到商店页也是换过的那张。
 import { h, icon } from '../ui/dom.js';
 import { t } from '../i18n.js';
 import { listName } from '../core/store.js';
@@ -18,6 +20,7 @@ import { groupNeed, collatorFor, listView, NO_STORE } from '../core/group.js';
 import { shopProgress } from '../core/shop.js';
 import { screenWake } from '../core/wake.js';
 import { checklist, foldSec, storeChip, listChip, groupSections } from '../ui/checklist.js';
+import { filterButton, currentFilter } from '../ui/storeFilter.js';
 
 // 常亮拿到了不说（少一行字；有的 iOS 版本在主屏幕 App 里给了也不管用，说了反而不对），没拿到才淡淡地说一句
 const WAKE_TEXT = { unsupported: 'shop.noWake', denied: 'shop.wakeFail' };
@@ -42,7 +45,9 @@ export function render(main, params, ctx, deps = {}) {
   if (!exists()) { gone(); return undefined; }
 
   const cl = checklist(ctx, main, deps.swipe);
-  const progress = () => shopProgress(ctx.state, kind, kind === 'list' ? listId : storeId);
+  // 一家店只看哪张清单（每次画重新读：那张清单删掉、归档了就是所有清单）；清单的购物模式不筛
+  const filter = () => (kind === 'store' ? currentFilter(ctx) : { id: null, list: null, name: '' });
+  const progress = () => shopProgress(ctx.state, kind, kind === 'list' ? listId : storeId, { listId: filter().id });
   // 「已买」一进来是折起来的：在店里要看的是还剩什么，勾掉的就收走（普通页面的「已买」默认展开，所以不用它的设置）。
   // 点开了只管这一次购物（不存）：重新载入、下次进来又是折起来的
   let doneOpen = false;
@@ -54,6 +59,7 @@ export function render(main, params, ctx, deps = {}) {
   const nameEl = h('span.shop-name');
   const progText = h('span.shop-prog-text');
   const barFill = h('span.shop-bar-fill');
+  const sfSlot = h('span.shop-sf');
   const bar = h('div.shop-bar', { role: 'progressbar', 'aria-label': t('shop.progressLabel'), 'aria-valuemin': '0' }, barFill);
   const top = h('header.shop-top', null, h('div.shop-top-in', null,
     h('div.shop-row', null,
@@ -61,7 +67,7 @@ export function render(main, params, ctx, deps = {}) {
       h('h1.shop-title', { tabindex: -1, dataset: { fid: 'lp-title' } },
         (kind === 'list' ? listTile(list(), 'shop-icon') : h('span.shop-icon', { 'aria-hidden': 'true' }, icon('store'))), nameEl),
       finishBtn('shop-finish')),
-    h('div.shop-prog', null, progText), bar));
+    h('div.shop-prog', null, progText, kind === 'store' ? sfSlot : null), bar));
   function drawTop() {
     const p = progress(), s = store();
     nameEl.textContent = kind === 'list' ? listName(list(), t) : s ? s.name : t('store.none');
@@ -71,22 +77,25 @@ export function render(main, params, ctx, deps = {}) {
     bar.setAttribute('aria-valuenow', String(p.done));
     bar.setAttribute('aria-valuetext', text);
     barFill.style.width = (p.total ? Math.round((p.done / p.total) * 100) : 0) + '%';
+    if (kind === 'store') sfSlot.replaceChildren(filterButton(ctx, { fid: 'sf-shop', storeId, onPicked: () => cl.keepFocus(() => { drawTop(); drawBody(); }) }));
   }
 
   // ---------- 列表 ----------
   const body = h('div.page.lp-body.shop-body');
   function clear() {
     const n = progress().done;
-    if (n) ctx.mutate(s => (kind === 'list' ? clearDone(s, listId, Date.now()) : clearStoreDone(s, storeId, Date.now())), { undoLabel: t('list.cleared', { n }) });
+    const f = { listId: filter().id };
+    if (n) ctx.mutate(s => (kind === 'list' ? clearDone(s, listId, Date.now()) : clearStoreDone(s, storeId, Date.now(), f)), { undoLabel: t('list.cleared', { n }) });
   }
   const clearBtn = (fid, tag = 'button.btn') => h(tag + '.shop-clear', { type: 'button', dataset: { fid }, onclick: () => clear() }, t('list.clearDone'));
   function drawBody() {
     const coll = collatorFor(ctx.lang());
     const groupBy = kind === 'list' ? listView(ctx.local, listId).groupBy : 'category';
-    const { groups, done } = kind === 'list' ? groupNeed(ctx.state, listId, groupBy, coll) : groupStore(ctx.state, storeId, coll);
-    // 小标签和普通页面一样：清单的标不在默认商店买的（按商店分组时组名就是店，不标），商店的标来自哪张清单
+    const f = filter();
+    const { groups, done } = kind === 'list' ? groupNeed(ctx.state, listId, groupBy, coll) : groupStore(ctx.state, storeId, coll, { listId: f.id });
+    // 小标签和普通页面一样：清单的标不在默认商店买的（按商店分组时组名就是店，不标），商店的标来自哪张清单（只看一张清单时不标）
     const ds = kind === 'list' ? list().defaultStoreId : null;
-    const chip = (it, needRow) => (kind === 'store' ? listChip(ctx, it) : needRow && groupBy === 'store' ? null : storeChip(ctx, it, ds));
+    const chip = (it, needRow) => (kind === 'store' ? (f.id ? null : listChip(ctx, it)) : needRow && groupBy === 'store' ? null : storeChip(ctx, it, ds));
     const rows = (arr, needRow) => h('ul.group.items', null, arr.map(it => cl.row(it, chip(it, needRow))));
     const p = progress();
     cl.draw(() => {
@@ -98,8 +107,8 @@ export function render(main, params, ctx, deps = {}) {
           h('p.shop-end-hint', null, t('shop.allDoneHint', { n: p.done })),
           h('div.shop-end-btns', null, finishBtn('shop-finish-end'), clearBtn('shop-clear-end'))));
       } else if (!p.total) {
-        kids.push(h('section.empty.lp-empty.shop-none', null, h('p', null, h('b', null, t('shop.nothing'))),
-          h('p.small', null, t('shop.nothingHint')), h('div.shop-end-btns', null, finishBtn('shop-finish-end'))));
+        kids.push(h('section.empty.lp-empty.shop-none', null, h('p', null, h('b', null, f.id ? t('store.nothingIn', { name: f.name }) : t('shop.nothing'))),
+          h('p.small', null, f.id ? t('store.filterHint', { name: f.name }) : t('shop.nothingHint')), h('div.shop-end-btns', null, finishBtn('shop-finish-end'))));
       }
       kids.push(...groupSections(ctx, groups, groupBy, arr => rows(arr, true)));
       // 都买齐了时上面已经有「清除已买」，这里不再放一个

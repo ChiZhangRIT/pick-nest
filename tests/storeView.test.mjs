@@ -7,10 +7,11 @@ import * as storeView from '../src/views/store.js';
 import * as settingsView from '../src/views/settings.js';
 import * as state from '../src/core/state.js';
 import { deletedRecord, normalizeRecord, SEED_STORES } from '../src/core/store.js';
-import { createList, setArchived } from '../src/core/lists.js';
+import { createList, setArchived, deleteList } from '../src/core/lists.js';
+import { storeFilter } from '../src/core/stores.js';
 import { memoryOf } from '../src/core/memory.js';
 import { setLang, t } from '../src/i18n.js';
-import { Element, all, find, installDom } from './helpers/dom.mjs';
+import { Element, all, find, installDom, fakeStorage } from './helpers/dom.mjs';
 
 const settle = async (n = 5) => { for (let i = 0; i < n; i++) await new Promise(r => setTimeout(r, 0)); };
 const cls = (el, c) => (el.className || el.attrs.class || '').split(' ').includes(c);
@@ -19,6 +20,11 @@ const allCls = (root, c) => all(root, el => cls(el, c));
 const btn = (root, label) => find(root, el => el.tag === 'button' && el.textContent === label);
 const S = () => state.getState();
 const itemNamed = (name) => Object.values(S().data.items).find(it => it.name === name && !it.deleted);
+const listNamed = (name) => Object.values(S().data.lists).find(l => l.name === name);
+// 只看一张清单的按钮和面板（ui/storeFilter.js）
+const sfBtn = (root) => byCls(root, 'sf-btn');
+const sfOpts = (env) => allCls(env.sheet().el, 'sf-opt').map(o => [byCls(o, 'sf-opt-name').textContent, byCls(o, 'list-count').textContent, o.attrs['aria-current'] || null]);
+const sfOpt = (env, name) => allCls(env.sheet().el, 'sf-opt').find(o => byCls(o, 'sf-opt-name').textContent === name);
 
 /** 编的数据：食材清单、想买、一张自建的木工清单、一张归档的清单；H Mart 归档了但还有东西要买；台灯没指定商店 */
 function seed(s) {
@@ -40,13 +46,15 @@ function seed(s) {
 }
 
 /** 假 ctx。page：'stores' | 'store' | 'settings'；面板：记下内容和按钮，不开真的 <dialog> */
-function setup({ page, params = {}, lang = 'zh-Hans' }) {
+function setup({ page, params = {}, lang = 'zh-Hans', filter = null, storage = null }) {
   const dom = installDom();
   setLang(lang);
-  state.load({ storage: null });
+  state.load({ storage });
   state.mutate(seed);
+  // 本机记着只看哪张清单（按名字找编的清单）
+  if (filter) state.setLocal({ storeFilter: listNamed(filter).id });
   const views = { stores: storesView, store: storeView, settings: settingsView };
-  const env = { ...dom, toasts: [], navs: [], sheets: [], confirms: [], answer: true, handle: null };
+  const env = { ...dom, toasts: [], navs: [], sheets: [], confirms: [], answer: true, handle: null, refreshes: 0 };
   const ctx = env.ctx = {
     t, lang: () => lang, layout: () => 'phone',
     get state() { return S(); }, get local() { return state.getLocal(); },
@@ -55,6 +63,15 @@ function setup({ page, params = {}, lang = 'zh-Hans' }) {
     toast: (msg, o = {}) => env.toasts.push({ msg, ...o }),
     confirm: async (o) => { env.confirms.push(o); return env.answer; },
     navigate: (p, o) => env.navs.push(p), back: (p) => env.navs.push('back:' + p),
+    // 和 app.js 的 refresh 一样：页面清理掉再画一遍，焦点放回带同一个 data-fid 的控件
+    refresh() {
+      env.refreshes++;
+      const a = document.activeElement, fid = a && a.dataset ? a.dataset.fid : null;
+      if (env.handle && env.handle.cleanup) env.handle.cleanup();
+      mount();
+      const el = fid ? env.main.querySelector(`[data-fid="${fid}"]`) : null;
+      if (el) el.focus();
+    },
     sheet(content, opts = {}) {
       const el = new Element('dialog');
       const api = { el, body: el, opts, open: true,
@@ -109,6 +126,51 @@ test('「商店」：每家店还要买几样（跨清单，只数要买的；�
     assert.deepEqual(allCls(env.main, 'store-row').map(a => a.attrs.href).slice(-2), ['#/s/s_hmart', '#/s/none']);
     assert.equal(allCls(env.main, 'sr-only')[0].textContent, '还要买 3 样', '读屏念整句');
     assert.equal(find(env.main, el => el.tag === 'a' && el.textContent === '管理商店').attrs.href, '#/settings/stores');
+  } finally { env.done(); }
+});
+
+test('「商店」：「所有清单 ▾」选一张清单 → 只数这张（归档的店、未指定在这张里没东西就不列）；本机记住；选原来那张只关上；选回「所有清单」', async () => {
+  const env = setup({ page: 'stores' });
+  try {
+    const wood = listNamed('木工').id;
+    const storeRows = () => allCls(env.main, 'store-row').map(r => [byCls(r, 'store-name').textContent, byCls(r, 'list-count').textContent]);
+    const before = storeRows();
+    assert.equal(sfBtn(env.main).textContent, '所有清单');
+    assert.equal(sfBtn(env.main).attrs['aria-label'], '看哪张清单：所有清单');
+    assert.equal(sfBtn(env.main).attrs['aria-haspopup'], 'dialog');
+    assert.ok(!cls(sfBtn(env.main), 'on'));
+    assert.ok(byCls(sfBtn(env.main), 'sf-all-tile'), '「所有清单」是中性的方块');
+    sfBtn(env.main).focus();
+    await sfBtn(env.main).fire('click');
+    assert.equal(env.sheet().opts.title, '看哪张清单');
+    assert.equal(byCls(env.sheet().el, 'sf-help').textContent, t('store.filterHelp'));
+    assert.deepEqual(sfOpts(env), [['所有清单', '6', 'true'], ['食材', '3', null], ['想买', '2', null], ['木工', '1', null]], '归档的「去年的」不列；数的是所有店加起来');
+    assert.equal(document.activeElement, sfOpt(env, '所有清单'), '焦点先给现在选的那一行');
+    assert.ok(byCls(sfOpt(env, '所有清单'), 'ic-check'), '现在选的打勾');
+    assert.equal(allCls(sfOpt(env, '想买'), 'sr-only')[0].textContent, '还要买 2 样');
+    await sfOpt(env, '木工').fire('click');
+    assert.equal(env.sheets.length, 0, '点一行就关上');
+    assert.equal(state.getLocal().storeFilter, wood, '记在本机');
+    assert.equal(env.refreshes, 1);
+    assert.deepEqual(storeRows(), SEED_STORES.filter(([id]) => id !== 's_hmart').map(([id, name]) => [name, id === 's_wholefoods' ? '1' : '0']),
+      '只数木胶；H Mart（归档，只有食材的豆腐）、未指定（想买的台灯）不列');
+    assert.equal(byCls(sfBtn(env.main), 'sf-name').textContent, '木工');
+    assert.ok(byCls(sfBtn(env.main), 'list-tile'), '清单自己的图标方块');
+    assert.ok(cls(sfBtn(env.main), 'on'), '只看一张时换成强调色');
+    assert.equal(sfBtn(env.main).attrs['aria-label'], '看哪张清单：木工');
+    assert.equal(document.activeElement, sfBtn(env.main), '重画以后焦点回到按钮上');
+    await sfBtn(env.main).fire('click');
+    await sfOpt(env, '想买').fire('click');
+    assert.deepEqual(storeRows().filter(([, n]) => n !== '0'), [['Costco', '1'], ['未指定', '1']]);
+    // 点的还是现在这张：只关上，不重画
+    await sfBtn(env.main).fire('click');
+    assert.equal(sfOpts(env).find(o => o[2])[0], '想买');
+    await sfOpt(env, '想买').fire('click');
+    assert.deepEqual([env.sheets.length, env.refreshes], [0, 2]);
+    await sfBtn(env.main).fire('click');
+    await sfOpt(env, '所有清单').fire('click');
+    assert.equal(state.getLocal().storeFilter, null);
+    assert.deepEqual(storeRows(), before);
   } finally { env.done(); }
 });
 
@@ -199,6 +261,69 @@ test('一家店：「已买」折起来（每家店在本机各自记住）；�
     assert.deepEqual(gone.navs, ['/stores']);
     assert.equal(gone.toasts.at(-1).msg, '这家店不在了');
   } finally { gone.done(); }
+});
+
+test('一家店：只看一张清单（本机记着的）→ 数、要买、已买、清除已买都只算这张，行上不标清单；面板里的数是这家店的；空的时候说清；那张清单删掉了 → 所有清单', async () => {
+  const env = setup({ page: 'store', params: { id: 's_wholefoods' }, filter: '木工' });
+  try {
+    const wood = listNamed('木工').id;
+    assert.equal(byCls(env.main, 'lp-count').textContent, '还要买 1 样');
+    assert.deepEqual(env.rows(), ['木胶'], '食材清单的牛奶、苹果、鸡蛋（已买）都不在');
+    assert.equal(byCls(env.row('木胶'), 'list-chip'), undefined, '都是木工：不标');
+    assert.equal(sfBtn(byCls(env.main, 'lp-sub')).textContent, '\u{1FAB5}木工');
+    assert.ok(cls(sfBtn(env.main), 'on'));
+    await sfBtn(env.main).fire('click');
+    assert.deepEqual(sfOpts(env), [['所有清单', '3', null], ['食材', '2', null], ['想买', '0', null], ['木工', '1', 'true']], '只数在 Whole Foods 要买的');
+    assert.equal(byCls(env.sheet().el, 'sf-help').textContent, t('store.filterHelpHere'));
+    env.sheet().close();
+    await byCls(env.row('木胶'), 'item-tick').fire('click');
+    await settle();
+    assert.equal(byCls(env.main, 'lp-empty').textContent, '「木工」里在这家要买的都买齐了');
+    assert.deepEqual(env.rows(env.sec('done')), ['木胶'], '已买也只有木工的（鸡蛋不在）');
+    await btn(env.main, '清除已买').fire('click');
+    await settle();
+    assert.equal(env.toasts.at(-1).msg, '已清除 1 样');
+    assert.equal(itemNamed('鸡蛋').status, 'done', '没看见的食材清单的已买不清');
+    assert.equal(byCls(env.main, 'lp-empty').textContent, '这家店在「木工」里没有要买的东西现在只看「木工」，可以在上面换成「所有清单」。');
+    // 换成食材：整页重画，行上还是不标清单
+    await sfBtn(env.main).fire('click');
+    await sfOpt(env, '食材').fire('click');
+    assert.equal(state.getLocal().storeFilter, 'l_groceries');
+    assert.deepEqual(env.rows(), ['苹果', '牛奶', '鸡蛋']);
+    assert.equal(byCls(env.main, 'list-chip'), undefined);
+    assert.equal(document.activeElement, sfBtn(env.main));
+    // 记着的清单删掉了（别的设备上）：按所有清单显示，记着的不动
+    state.setLocal({ storeFilter: wood });
+    state.mutate(st => deleteList(st, wood, Date.now()));
+    await settle();
+    assert.equal(sfBtn(env.main).textContent, '所有清单');
+    assert.deepEqual(env.rows(), ['苹果', '牛奶', '鸡蛋']);
+    assert.ok(byCls(env.row('牛奶'), 'list-chip'), '所有清单：又标来自哪张清单');
+    assert.equal(state.getLocal().storeFilter, wood);
+  } finally { env.done(); }
+  // 归档的清单也一样
+  const archived = setup({ page: 'stores', filter: '去年的' });
+  try {
+    assert.equal(sfBtn(archived.main).textContent, '所有清单');
+    assert.equal(byCls(allCls(archived.main, 'store-row')[0], 'list-count').textContent, '3', 'Whole Foods：所有清单的牛奶、苹果、木胶');
+  } finally { archived.done(); }
+});
+
+test('只看哪张清单记在本机（picknest.local）：关掉再打开还在；不进数据（不同步、不进备份）', async () => {
+  const storage = fakeStorage();
+  const env = setup({ page: 'stores', storage });
+  try {
+    const wood = listNamed('木工').id;
+    await sfBtn(env.main).fire('click');
+    await sfOpt(env, '木工').fire('click');
+    assert.equal(JSON.parse(storage.getItem('picknest.local')).storeFilter, wood);
+    assert.equal(JSON.stringify(S()).includes('storeFilter'), false, '不在数据里');
+    state.load({ storage });          // 关掉再打开
+    assert.equal(storeFilter(S(), state.getLocal()), wood);
+    env.ctx.refresh();
+    assert.equal(byCls(sfBtn(env.main), 'sf-name').textContent, '木工');
+    assert.equal(byCls(allCls(env.main, 'store-row')[0], 'list-count').textContent, '1');
+  } finally { env.done(); }
 });
 
 // ---------- 设置 → 商店 ----------

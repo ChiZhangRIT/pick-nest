@@ -22,6 +22,12 @@ export const STRINGS = {
     'store.noActive': '没有在用的商店。', 'store.archivedN': '已归档（{n}）',
     // 宽屏双栏：右栏还没选商店时
     'store.pick': '选一家店，在那儿要买的东西显示在这里',
+    // 只看一张清单（「商店」页、一家店、购物模式上面的按钮和面板）
+    'store.filterAll': '所有清单', 'store.filterTitle': '看哪张清单', 'store.filterAria': '看哪张清单：{name}',
+    'store.filterHelp': '选一张清单，「商店」页的数和每家店里的东西就只算这张。这台设备会记住。',
+    'store.filterHelpHere': '数字是在这家店还要买几样。选了的清单换一家店也照样用，这台设备会记住。',
+    'store.nothingIn': '这家店在「{name}」里没有要买的东西', 'store.allDoneIn': '「{name}」里在这家要买的都买齐了',
+    'store.filterHint': '现在只看「{name}」，可以在上面换成「所有清单」。',
   },
   'zh-Hant-TW': {
     'store.manage': '管理商店', 'store.none': '未指定', 'store.archivedTag': '已封存', 'store.empty': '沒有要顯示的商店。',
@@ -38,6 +44,11 @@ export const STRINGS = {
     'store.manageHelp': '點名稱可以改名、封存或刪除。這裡的順序就是「商店」頁和選項裡的順序。',
     'store.noActive': '沒有使用中的商店。', 'store.archivedN': '已封存（{n}）',
     'store.pick': '選一家店，在那裡要買的東西會顯示在這裡',
+    'store.filterAll': '所有清單', 'store.filterTitle': '顯示哪張清單', 'store.filterAria': '顯示哪張清單：{name}',
+    'store.filterHelp': '選一張清單，「商店」頁的數字和每家店裡的東西就只算這張。這台裝置會記住。',
+    'store.filterHelpHere': '數字是在這家店還要買幾樣。選好的清單換一家店也照樣適用，這台裝置會記住。',
+    'store.nothingIn': '這家店在「{name}」裡沒有要買的東西', 'store.allDoneIn': '「{name}」裡在這家要買的都買齊了',
+    'store.filterHint': '目前只顯示「{name}」，可以在上方切換成「所有清單」。',
   },
   en: {
     'store.manage': 'Manage', 'store.none': 'No Store', 'store.archivedTag': 'Archived', 'store.empty': 'No stores to show.',
@@ -54,5 +65,10 @@ export const STRINGS = {
     'store.manageHelp': 'Tap a name to rename, archive or delete it. This order is used on Stores and when you pick a store.',
     'store.noActive': 'No active stores.', 'store.archivedN': 'Archived ({n})',
     'store.pick': 'Pick a store to see what to buy there',
+    'store.filterAll': 'All Lists', 'store.filterTitle': 'Show Items From', 'store.filterAria': 'Show items from: {name}',
+    'store.filterHelp': 'Pick a list to count and show only its items on Stores and every store page. This device remembers your choice.',
+    'store.filterHelpHere': 'Numbers are what’s left to buy at this store. Your choice stays when you switch stores, and this device remembers it.',
+    'store.nothingIn': 'Nothing from “{name}” to buy here', 'store.allDoneIn': 'Everything from “{name}” here is bought',
+    'store.filterHint': 'Showing only “{name}”. You can switch to All Lists above.',
   },
 };

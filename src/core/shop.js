@@ -1,7 +1,8 @@
 // @ts-check
 // 购物模式（#/l/<id>?shop=1、#/s/<id>?shop=1）：上面的进度「已买 N · 还剩 M」，都买齐了换成「都买齐了」。
 // 数法和下面画出来的两块一样（页面不自己数）：清单 = 这张清单上「要买」的和「已买」的（「以后再说」不算：这次不打算买）；
-// 一家店 = 商店页上的（core/stores.js 的 groupStore：所有清单里在这家买的，归档的清单不算，「以后再说」不在商店页上）。
+// 一家店 = 商店页上的（core/stores.js 的 groupStore：所有清单里在这家买的，归档的清单不算，「以后再说」不在商店页上；
+// 商店页只看一张清单时（storeFilter）也只数这张，和下面画出来的一样）。
 // 「已买」包括这次之前勾掉、还没清除的（它们也在下面「已买」里）；买完「清除已买」就从头算。
 import { countItems } from './items.js';
 import { groupStore } from './stores.js';
@@ -17,12 +18,13 @@ import { groupStore } from './stores.js';
  */
 /**
  * @param {State} state @param {'list' | 'store'} kind @param {string | null} id  清单 id；商店 id（null = 未指定）
+ * @param {import('./stores.js').ListFilter} [f]  一家店只看哪张清单（清单的购物模式不用）
  * @returns {Progress}
  */
-export function shopProgress(state, kind, id) {
+export function shopProgress(state, kind, id, f = {}) {
   let done = 0, left = 0;
   if (kind === 'store') {
-    const g = groupStore(state, id);
+    const g = groupStore(state, id, undefined, f);
     left = g.groups.reduce((n, x) => n + x.items.length, 0);
     done = g.done.length;
   } else if (typeof id === 'string') {

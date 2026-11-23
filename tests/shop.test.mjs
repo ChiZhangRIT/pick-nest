@@ -57,6 +57,17 @@ test('进度（商店）：所有清单里在这家买的（和商店页一样�
   assert.deepEqual(shopProgress(s, 'store', 's_wholefoods'), { done: 3, left: 0, total: 3, finished: true });
 });
 
+test('进度（商店，只看一张清单）：只数这张清单上在这家买的，和商店页一样；不给是所有清单', () => {
+  const { s, ids } = seeded();
+  assert.deepEqual(shopProgress(s, 'store', 's_wholefoods', { listId: 'l_tobuy' }), { done: 0, left: 1, total: 1, finished: false }, '台灯；雨伞以后再说');
+  assert.deepEqual(shopProgress(s, 'store', 's_wholefoods', { listId: 'l_groceries' }), { done: 1, left: 1, total: 2, finished: false }, '牛奶要买、鸡蛋已买');
+  assert.deepEqual(shopProgress(s, 'store', 's_wholefoods', {}), shopProgress(s, 'store', 's_wholefoods'));
+  setStatus(s, ids.lamp, 'done', 6000);
+  assert.equal(shopProgress(s, 'store', 's_wholefoods', { listId: 'l_tobuy' }).finished, true, '这张清单在这家买齐了');
+  assert.equal(shopProgress(s, 'store', 's_wholefoods').finished, false, '所有清单还剩牛奶');
+  assert.deepEqual(shopProgress(s, 'list', 'l_groceries', { listId: 'l_tobuy' }), shopProgress(s, 'list', 'l_groceries'), '清单的购物模式不筛');
+});
+
 /** 假的 navigator.wakeLock 和 document：记下要了几次、放了几次；系统收回 = 调 sentinel 的 release 监听 */
 function fakeWake({ supported = true, deny = false, hold = false } = {}) {
   const env = { requests: 0, released: 0, sentinels: [], pending: [], doc: null };
