@@ -149,13 +149,14 @@ test('一道食谱：名字、几人份、来源链接（新标签页）、食�
     assert.deepEqual(allCls(main, 'rcp-ing').map(r => [byCls(r, 'rcp-ing-name').textContent, byCls(r, 'rcp-ing-qty').textContent, byCls(r, 'rcp-ing-note')?.textContent ?? '']),
       [['五花肉', '500 g', '带皮'], ['洋葱', '1 个', ''], ['生抽常备品', '2 勺', ''], ['香菜可选', '', ''], ['盐', '', '适量']]);
     assert.deepEqual(allCls(main, 'rcp-prose').map(x => x.textContent), ['切块\n炖', '别糊锅']);
-    assert.ok(!btn(main, '加到计划'), '加到计划第 9 步才有，不放点了没反应的按钮');
+    assert.ok(fid(main, 'rcp-plan'), '「加到计划」在「加到清单」旁边（面板的测试在 planView.test.mjs）');
     fid(main, 'rcp-edit').click();
     assert.equal(env.navs.at(-1), '/r/' + env.ids.hsr + '/edit');
     const m2 = env.mount(recipeView, { name: 'recipe', id: env.ids.egg });
     assert.equal(byCls(m2, 'rcp-sub').textContent, '2 样食材');
     assert.deepEqual([byCls(m2, 'rcp-source').tag, byCls(m2, 'rcp-source').textContent], ['p', '妈妈教的']);
     assert.equal(allCls(m2, 'rcp-prose').length, 0, '没写做法、备注的不画');
+    assert.ok(!m2.textContent.includes('null'), '也不画成字「null」（replaceChildren 不跳过 null）');
   } finally { env.done(); }
 });
 

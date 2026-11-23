@@ -185,11 +185,13 @@ const byRecipeName = (collator) => (/** @type {Recipe} */ a, /** @type {Recipe} 
 
 /**
  * 「食谱」页的搜索：名字和食材都搜，normName 折过再比（简繁、大小写、全角半角）。几个词（空格隔开）每个都要出现在名字或某一样食材里。
- * 返回 [{ recipe, ings：命中的食材名（原文，名字里没命中时页面写「用到：…」）}]，按名字排（collator）；空的搜索词 → 全部
- * @param {State} state @param {unknown} query @param {Intl.Collator} [collator]
+ * 返回 [{ recipe, ings：命中的食材名（原文，名字里没命中时页面写「用到：…」）}]，按名字排（collator）；空的搜索词 → 全部。
+ * nameFirst（计划里选一道菜）：名字开头就是它的在最前，再是名字里有的，只是食材里有的在最后（各自还按名字排）——
+ * 搜「鸡」回车选第一道，要的是鸡胸肉沙拉，不是只因为用到鸡蛋排在前面的番茄炒蛋
+ * @param {State} state @param {unknown} query @param {Intl.Collator} [collator] @param {{ nameFirst?: boolean }} [opts]
  * @returns {{ recipe: Recipe, ings: string[] }[]}
  */
-export function searchRecipes(state, query, collator = collatorFor('zh-Hans')) {
+export function searchRecipes(state, query, collator = collatorFor('zh-Hans'), { nameFirst = false } = {}) {
   const terms = searchTerms(query);
   const all = /** @type {Recipe[]} */ (live(state, 'recipes')).sort(byRecipeName(collator));
   if (!terms.length) return all.map(recipe => ({ recipe, ings: [] }));
@@ -197,9 +199,12 @@ export function searchRecipes(state, query, collator = collatorFor('zh-Hans')) {
   for (const recipe of all) {
     const name = normName(recipe.name), ings = recipe.ings.map(g => normName(g.name));
     if (!terms.every(w => name.includes(w) || ings.some(x => x.includes(w)))) continue;
-    out.push({ recipe, ings: recipe.ings.filter((g, i) => terms.some(w => ings[i].includes(w))).map(g => g.name) });
+    const rank = !terms.every(w => name.includes(w)) ? 2 : name.startsWith(terms.join(' ')) || name.startsWith(terms[0]) ? 0 : 1;
+    out.push({ recipe, ings: recipe.ings.filter((g, i) => terms.some(w => ings[i].includes(w))).map(g => g.name), rank });
   }
-  return out;
+  // sort 是稳定的：同一档里还是按名字
+  if (nameFirst) out.sort((a, b) => a.rank - b.rank);
+  return out.map(({ recipe, ings }) => ({ recipe, ings }));
 }
 
 /**

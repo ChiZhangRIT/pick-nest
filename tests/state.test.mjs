@@ -197,7 +197,7 @@ test('存储空间满时 mutate 照常改内存，info.saved = false；applyRemo
 test('本机设置：默认值齐全，坏的 JSON 不影响启动，setLocal 浅合并并保存', () => {
   const st = fakeStorage([[state.LKEY, '{bad']]);
   state.load({ storage: st, locks: null });
-  assert.deepEqual(state.getLocal(), { lang: null, theme: 'auto', device: null, sync: null, lastBackupAt: null, view: {}, storeView: {}, tabNoteOff: false, storeFilter: null });
+  assert.deepEqual(state.getLocal(), { lang: null, theme: 'auto', device: null, sync: null, lastBackupAt: null, view: {}, storeView: {}, tabNoteOff: false, storeFilter: null, planView: 'week' });
   state.setLocal({ theme: 'dark' });
   assert.equal(JSON.parse(st.getItem(state.LKEY)).theme, 'dark');
   state.load({ storage: st, locks: null });

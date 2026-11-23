@@ -143,6 +143,12 @@ test('搜索食谱：名字和食材都搜，简繁、大小写互通，几个�
   assert.deepEqual(names('鸡蛋 五花'), []);
   assert.deepEqual(names('FLOUR'), ['Pancakes']);
   assert.deepEqual(names('ＦＬＯＵＲ'), ['Pancakes'], '全角');
+  // 计划里选一道菜（nameFirst）：名字开头就是它的在前，再是名字里有的，只是食材里有的在最后
+  recipe(s, 'r_5', { name: '鸡胸肉沙拉', ings: [ing('鸡胸肉', 150, 'g')] });
+  recipe(s, 'r_6', { name: '日式咖喱鸡', ings: [ing('鸡腿', 2, '个')] });
+  assert.deepEqual(names('鸡'), ['番茄炒蛋', '鸡胸肉沙拉', '日式咖喱鸡'], '平常按名字排');
+  assert.deepEqual(searchRecipes(s, '鸡', undefined, { nameFirst: true }).map(x => x.recipe.name), ['鸡胸肉沙拉', '日式咖喱鸡', '番茄炒蛋']);
+  assert.deepEqual(Object.keys(searchRecipes(s, '鸡', undefined, { nameFirst: true })[0]), ['recipe', 'ings']);
 });
 
 test('用到它的食谱：同名，或者包含它（至少两个字）；简繁互通；删掉的不算；按名字排', () => {

@@ -1,5 +1,5 @@
 // @ts-check
-// 数据层：state.data 下每个集合都是「id → 记录」——lists 清单、items 清单里的东西、stores 商店、categories 分类、memory 买过的东西、recipes 食谱（第二版）。
+// 数据层：state.data 下每个集合都是「id → 记录」——lists 清单、items 清单里的东西、stores 商店、categories 分类、memory 买过的东西、recipes 食谱、plan 计划（第二版）。
 // 每条记录有 updatedAt（毫秒）；删除只打 deleted 标记、内容保留（「最近删除」里能恢复，也照样同步）。
 // 多台设备合并时逐条比较 updatedAt 取较新的一整条；时间相同内容不同时按 canon() 排序取一份，保证每台设备结果一样。
 // 例外：items、memory 的 id 是算出来的，两台设备各自从头建的同一条（createdAt 不一样）要补上空着的字段（mergeRecord）。
@@ -27,9 +27,10 @@ import { toSimplified } from './hanzi.js';
 /**
  * @typedef {Base & { listId: string, name: string, qty: number | null, unit: string, note: string,
  *   categoryId: string | null, storeId: string | null, status: ItemStatus, doneAt: number | null,
- *   url: string, price: number | null, needs: Record<string, any>, fromLater?: true }} Item
- * 清单里的一样东西。qty / unit 是自己加的；needs 是食谱（以后还有计划）加进来的用量：来源 → { qty, unit, label, recipeId }（core/items.js 的 addNeeds），
+ *   url: string, price: number | null, needs: Record<string, any>, boughtFor?: Record<string, number>, fromLater?: true }} Item
+ * 清单里的一样东西。qty / unit 是自己加的；needs 是食谱、计划加进来的用量：来源 → { qty, unit, label, recipeId }（core/items.js 的 addNeeds），
  * 显示的数量是两样加起来（qtyParts）。不认识的来源和字段原样保留。
+ * boughtFor：买过以后又加回来时，上一轮计划里哪几道菜的这一样已经买过（来源 'p:<id>' → 买的时间，boughtAfter）；不算在数量里，只给计划看
  * fromLater：从「以后再说」勾成已买的（取消勾选时回以后再说）；只在已买时有
  */
 /** @typedef {Base & { name: string, order: number, archived: boolean }} Store 商店 */
@@ -49,24 +50,55 @@ import { toSimplified } from './hanzi.js';
  * @typedef {Base & { name: string, servings: number | null, steps: string, source: string, note: string, ings: Ingredient[] }} Recipe
  * 食谱（第二版）。servings：几人份，null = 没写（加到清单时不能按人数换算）；steps 做法、source 来源（链接或一句话）、note 备注
  */
+/** @typedef {'breakfast' | 'lunch' | 'dinner' | 'snack'} Meal */
+/**
+ * @typedef {Base & { date: string, meal: Meal, recipeId: string | null, title: string, servings: number | null, note: string, order: number }} PlanEntry
+ * 计划里的一道菜（第二版）：某一天（本地日期 'YYYY-MM-DD'）某一顿。连着食谱的 recipeId 有值、title 抄下食谱名字（食谱删掉了照样看得懂）；
+ * 只写一句的（「出去吃」）recipeId 是 null。servings：这一顿几人份（换算用量），null = 照食谱的
+ */
 /**
  * @typedef {object} State
  * @property {'picknest'} app
  * @property {1} v
  * @property {{ lists: Record<string, List>, items: Record<string, Item>, stores: Record<string, Store>,
- *   categories: Record<string, Category>, memory: Record<string, Memory>, recipes: Record<string, Recipe>, [collection: string]: Record<string, any> }} data
+ *   categories: Record<string, Category>, memory: Record<string, Memory>, recipes: Record<string, Recipe>, plan: Record<string, PlanEntry>,
+ *   [collection: string]: Record<string, any> }} data
  * @property {Record<string, any>} settings     同步的设置（按键合并）
  * @property {Record<string, number>} settingsAt 各设置键的修改时间
  */
 /** @typedef {(key: string, vars?: Record<string, any>) => string} Translate */
 
-export const COLLECTIONS = ['lists', 'items', 'stores', 'categories', 'memory', 'recipes'];
+export const COLLECTIONS = ['lists', 'items', 'stores', 'categories', 'memory', 'recipes', 'plan'];
 // kind、status 认不出的取值按默认值读（下面的整理函数），改过以后会照默认值写回去。
 // 以后要加新的取值（比如「项目」清单）：用新字段表达，或者同时升 v（旧版会拒绝读、不会改坏），不要直接往这几个字段里塞新值
 /** @type {ListKind[]} */
 export const LIST_KINDS = ['grocery', 'general'];
 /** @type {ItemStatus[]} */
 export const ITEM_STATUS = ['need', 'done', 'later'];
+/** 计划里的几顿，也是一天里排的顺序；认不出的按晚饭读 @type {Meal[]} */
+export const MEALS = ['breakfast', 'lunch', 'dinner', 'snack'];
+/** 计划里一道菜加进清单的那一份的来源前缀（'p:<计划里那一道的 id>'，core/plan.js 的 planSource）；同一张清单上不同单位的另记 'p:<id>#2'…… */
+export const PLAN_SOURCE = 'p:';
+/** 一样东西上最多记几道菜「买过」（items.boughtFor） */
+export const BOUGHT_MAX = 50;
+/**
+ * 已买 / 已清除的这一样又要买了（新的一轮：再加回来、隔久了取消勾选、合并成另一条）：上一轮的 needs 要清空（不然买过的用量又成了要买的），
+ * 可上面计划的那几道菜「这一样已经买过了」得留着——不然再生成一次购物清单，这道菜的这一样又成了没买过的，默认勾上放回清单（core/plan.js）。
+ * 返回新的 boughtFor：原来记着的 + 这一轮 needs 里计划的来源（'p:<id>#2' 算 'p:<id>'）→ 买的时间（doneAt，缺了用 fallback）；不是已买的只返回原来记着的
+ * @param {any} it @param {number} fallback @returns {Record<string, number>}
+ */
+export function boughtAfter(it, fallback) {
+  /** @type {Record<string, number>} */
+  const out = isObj(it && it.boughtFor) ? copySafe(it.boughtFor) : {};
+  if (!it || it.status !== 'done' || !isObj(it.needs)) return out;
+  const at = numOrNull(it.doneAt) ?? fallback;
+  for (const k of Object.keys(it.needs)) {
+    if (!k.startsWith(PLAN_SOURCE)) continue;
+    const src = k.replace(/#\d+$/, '');
+    out[src] = Math.max(numOrNull(out[src]) ?? 0, at);
+  }
+  return out;
+}
 // V1 还没有同步的设置（语言、主题这些是本机设置，在 picknest.local）；以后加的设置在这里给默认值
 export const DEFAULT_SETTINGS = Object.freeze({});
 
@@ -75,7 +107,7 @@ const collectionsOf = (...states) => [...new Set([...COLLECTIONS, ...states.flat
 
 /** @returns {State} */
 export function blankState() {
-  return { app: 'picknest', v: 1, data: { lists: {}, items: {}, stores: {}, categories: {}, memory: {}, recipes: {} }, settings: { ...DEFAULT_SETTINGS }, settingsAt: {} };
+  return { app: 'picknest', v: 1, data: { lists: {}, items: {}, stores: {}, categories: {}, memory: {}, recipes: {}, plan: {} }, settings: { ...DEFAULT_SETTINGS }, settingsAt: {} };
 }
 
 /** 和键的顺序无关的序列化：判断两份数据是否一样，以及打平时决定取哪一份 @param {any} v @returns {string} */
@@ -159,6 +191,11 @@ export function normalizeItem(rec, id = rec && rec.id) {
   r.url = str(r.url);
   r.price = numOrNull(r.price);
   r.needs = isObj(r.needs) ? copySafe(r.needs) : {};     // 食谱 / 计划加进来的用量（core/items.js 的 addNeeds）：里面是什么都原样留着，新版的来源、字段旧版也不丢
+  // 买过以后又加回来时记下的「这几道菜的这一样已经买过」（计划的来源 → 买的时间，boughtAfter）：只留时间是数字的，最多 BOUGHT_MAX 道
+  // （最近买的；再早的菜不会再生成，记录不越积越大）；一道也没有就不放这个键（没有这段历史的记录和以前一模一样）
+  const bf = isObj(r.boughtFor) ? Object.entries(r.boughtFor).filter(([k, v]) => safeKey(k) && typeof v === 'number' && Number.isFinite(v) && v >= 0) : [];
+  if (bf.length) r.boughtFor = Object.fromEntries(bf.sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, BOUGHT_MAX));
+  else delete r.boughtFor;
   if (r.fromLater !== true || r.status !== 'done') delete r.fromLater;   // 从「以后再说」勾掉的已买（items.js 的 untickStatus）：只在已买时有
   return /** @type {Item} */ (r);
 }
@@ -231,8 +268,26 @@ export function normalizeRecipe(rec, id = rec && rec.id) {
   return /** @type {Recipe} */ (r);
 }
 
+/**
+ * 计划里的一道菜。date 认不出的（不是 'YYYY-MM-DD'）原样留着：哪一天都不显示，但不改用户的数据（新版也许有别的写法）；
+ * meal 认不出的按晚饭读（和 kind、status 一样，改过以后照晚饭写回去）
+ * @param {Record<string, any>} rec @param {string} [id] @returns {PlanEntry}
+ */
+export function normalizePlan(rec, id = rec && rec.id) {
+  const r = base(rec, /** @type {string} */ (id));
+  r.date = str(r.date);
+  r.meal = MEALS.includes(r.meal) ? r.meal : 'dinner';
+  r.recipeId = idOrNull(r.recipeId);
+  r.title = str(r.title);
+  const sv = numOrNull(r.servings);
+  r.servings = sv != null && sv > 0 ? sv : null;
+  r.note = str(r.note);
+  r.order = numOrNull(r.order) ?? 0;
+  return /** @type {PlanEntry} */ (r);
+}
+
 /** @type {Record<string, (rec: Record<string, any>, id?: string) => any>} */
-const NORMALIZERS = { lists: normalizeList, items: normalizeItem, stores: normalizeStore, categories: normalizeCategory, memory: normalizeMemory, recipes: normalizeRecipe };
+const NORMALIZERS = { lists: normalizeList, items: normalizeItem, stores: normalizeStore, categories: normalizeCategory, memory: normalizeMemory, recipes: normalizeRecipe, plan: normalizePlan };
 
 /**
  * 按集合整理一条记录。不认识的集合（新版才有的）只修 id 和 updatedAt，别的原样保留
@@ -320,6 +375,12 @@ function blend(c, w, o) {
     // 各道菜的那几份（needs）只在两条都还没买时补：另一条已买、已清除，那是买过的一轮，补过来就又成了要买的；
     // 较新的已买、已清除，补了也没用（再加回来时会清空），只是白白多改一次
     if (blank(out.needs) && !blank(o.needs) && openItem(w) && openItem(o)) out.needs = o.needs;
+    // 买过的那几道菜（boughtFor）是历史：两条的都留着；另一条已买、已清除，它那一轮计划的来源这里不带过来，也记成买过的
+    // （较新的这条自己还是已买、needs 里还带着的不重复记：再合并一次结果一样）
+    const still = out.status === 'done' ? new Set(Object.keys(isObj(out.needs) ? out.needs : {}).map(k => k.replace(/#\d+$/, ''))) : new Set();
+    const bf = isObj(w.boughtFor) ? copySafe(w.boughtFor) : {};
+    for (const [k, v] of Object.entries(boughtAfter(o, time(o.updatedAt)))) if (!still.has(k)) bf[k] = Math.max(numOrNull(bf[k]) ?? 0, numOrNull(v) ?? 0);
+    if (Object.keys(bf).length) out.boughtFor = bf;
     return out;
   }
   const ws = isObj(w.stores) ? w.stores : {}, os = isObj(o.stores) ? o.stores : {};

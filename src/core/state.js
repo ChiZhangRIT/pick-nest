@@ -31,7 +31,8 @@ export const KEY = 'picknest.state', LKEY = 'picknest.local';
 // view：各清单的显示方式 { [listId]: { groupBy, showDone, showLater } }；storeView：各家店的页面 { [storeId | 'none']: { showDone } }（core/group.js 读）
 // tabNoteOff：在浏览器标签页里打开时首页那句「和主屏幕上的不是同一份数据」点过「知道了」（views/lists.js）
 // storeFilter：按商店看时只看哪张清单的 id，null 是所有清单（「商店」页、每家店、从商店进的购物模式共用；core/stores.js 的 storeFilter 读）
-export const LOCAL_DEFAULTS = Object.freeze({ lang: null, theme: 'auto', device: null, sync: null, lastBackupAt: null, view: {}, storeView: {}, tabNoteOff: false, storeFilter: null });
+// planView：「计划」页看一周还是一个月（'week' | 'month'，core/plan.js 的 planView 读）
+export const LOCAL_DEFAULTS = Object.freeze({ lang: null, theme: 'auto', device: null, sync: null, lastBackupAt: null, view: {}, storeView: {}, tabNoteOff: false, storeFilter: null, planView: 'week' });
 const UNDO_MAX = 20;
 
 /** @type {StorageLike | null} */

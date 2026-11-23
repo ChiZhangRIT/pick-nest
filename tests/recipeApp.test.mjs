@@ -56,7 +56,7 @@ test('食谱的路由、三种布局、离开前先问、最近删除', async ()
 
     // 手机：「食谱」是底栏的第三个，顶层页面（有底栏）
     assert.deepEqual([body.dataset.route, body.dataset.tabs], ['recipes', '1']);
-    assert.deepEqual(tabs.children.map(a => a.attrs['aria-current'] || null), [null, null, 'page', null]);
+    assert.deepEqual(tabs.children.map(a => a.attrs['aria-current'] || null), [null, null, 'page', null, null]);
     assert.ok(byCls(main, 'rcp-empty'), '还没有食谱');
     const r = ctx.put('recipes', { name: '红烧肉', servings: 2, ings: [{ name: '五花肉', qty: 500, unit: 'g' }] });
     assert.match(r.id, /^r_/);

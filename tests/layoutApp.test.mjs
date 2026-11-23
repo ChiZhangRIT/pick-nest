@@ -119,7 +119,7 @@ test('换布局、双栏、搜索、购物模式：页面不被拆掉，左栏�
     assert.deepEqual(panes(), ['pane pane-main view view-settings']);
     // 按着 ⌘ 点侧栏的「搜索」（在新标签页打开）：照浏览器自己的来，这一页不动
     let prevented = false;
-    for (const fn of dom.doc.querySelector('#side').querySelector('nav').children[3].events.click) fn({ metaKey: true, preventDefault() { prevented = true; } });
+    for (const fn of dom.doc.querySelector('#side').querySelector('nav').children[4].events.click) fn({ metaKey: true, preventDefault() { prevented = true; } });
     assert.deepEqual([prevented, loc.hash], [false, '#/settings']);
 
     // 搜索：ctx.navigate 马上画（不等 hashchange，在点按里 focus 搜索框 iPhone 才弹键盘）；双栏时左栏是首页，侧栏「搜索」亮着

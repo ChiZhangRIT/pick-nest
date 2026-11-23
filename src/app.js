@@ -4,13 +4,14 @@
 // export function render(main, params, ctx) → 清理函数 | { cleanup?(), onChange?(info), flush?() } | undefined
 //   main    空的容器（<section class="pane view view-<name>">，双栏时 .pane-list / .pane-detail，一栏 .pane-main），页面自己画标题和内容
 //   params  { name, path, id, sub, query, pane, selected, hash }
-//           name: 'lists' | 'list' | 'stores' | 'store' | 'shop' | 'search' | 'recipes' | 'recipe' | 'recipeEdit' | 'settings' | 'deleted'
+//           name: 'lists' | 'list' | 'stores' | 'store' | 'shop' | 'search' | 'recipes' | 'recipe' | 'recipeEdit' | 'plan' | 'settings' | 'deleted'
 //           #/ → lists（首页「清单」）；#/l/<listId> → list（一张清单，id；清单不在了由页面自己回首页）；
 //           #/stores → stores（「商店」）；#/s/<storeId> → store（一家店，id；#/s/none 是「未指定」；商店不在了由页面自己回「商店」）；
 //           #/l/<listId>?shop=1、#/s/<storeId>?shop=1 → shop（购物模式，id，sub 'list' | 'store'）；
 //           #/search、#/search?q=<词> → search（query.q）；
 //           #/recipes → recipes（「食谱」）；#/r/<recipeId> → recipe（一道食谱，id；不在了由页面自己回「食谱」）；
 //           #/r/new → recipeEdit（新建，sub 'new'）；#/r/<recipeId>/edit → recipeEdit（改，id）；
+//           #/plan → plan（「计划」：一周 / 一个月，看到哪一周页面自己记着，不放地址里）；
 //           #/settings → settings（sub null）；#/settings/stores、/categories、/sync、/data → settings（sub 'stores' | 'categories' | 'sync' | 'data'）；
 //           #/deleted → deleted（最近删除，从设置首页「数据」那一组进去）；不认识的地址 → lists
 //           pane: 'main'（一栏）| 'list'（双栏左）| 'detail'（双栏右）；selected: 双栏时右栏正在看的清单 / 商店的 id（左栏高亮那一行）
@@ -19,19 +20,19 @@
 //            否则 app 把这个页面整个重画一遍（保留滚动位置；带 data-fid 的控件重画后恢复焦点）。
 //   flush：页面上点过、还没写进数据的（勾选要停一下才改数据）马上写进去。切到后台时 app 先调它，再决定要不要马上上传
 //   三种布局（照 babble）：
-//     手机（<720px）：顶层页面（#/、#/stores、#/recipes、#/settings）显示底栏；推入的页面（#/l/…、#/s/…、#/r/…、#/search、#/settings/…、#/deleted）不显示底栏，自己画返回按钮（ctx.back）。
-//     侧栏（720–999px）：左边侧栏（清单、商店、食谱、搜索、设置），内容栏自己滚动；推入的页面照样有返回（和 babble 一样）。
+//     手机（<720px）：顶层页面（#/、#/stores、#/recipes、#/plan、#/settings）显示底栏；推入的页面（#/l/…、#/s/…、#/r/…、#/search、#/settings/…、#/deleted）不显示底栏，自己画返回按钮（ctx.back）。
+//     侧栏（720–999px）：左边侧栏（清单、商店、食谱、计划、搜索、设置），内容栏自己滚动；推入的页面照样有返回（和 babble 一样）。
 //     双栏（≥1000px，iPad 横放、Mac）：侧栏 + 两栏。#/、#/l/…、#/search 左栏是首页，右栏是那张清单 / 搜索（#/ 时右栏是提示）；
 //            #/stores、#/s/… 左栏是「商店」，右栏是那家店（#/stores 时是 App 图标 + 提示）；#/recipes、#/r/… 左栏是「食谱」，右栏是那道食谱 / 编辑食谱。
-//            右栏的返回由 CSS 藏起来（左栏就是上一页；编辑食谱的「取消」是 .back.text，照样显示）；别的页面一栏、有返回。
+//            右栏的返回由 CSS 藏起来（左栏就是上一页；编辑食谱的「取消」是 .back.text，照样显示）；别的页面（「计划」、设置……）一栏。
 //     购物模式不管哪种布局都占满整个窗口（没有底栏、侧栏）。
 //   换布局（转 iPad、拉窗口）：同一栏的页面原样留着；要换栏时，有 onChange 的页面（清单页、一家店、搜索）整个搬过去（params.pane / selected 原地更新），
 //            输入框里打了一半的字、焦点都不丢；其余重画。要随布局变化的页面听 ctx.on('layout')。
 //
 // ===== ctx =====
 // 数据（src/core/state.js 的包装；改数据一律走这些，app 会保存、重画）
-//   ctx.state                  当前数据（只读）：{ app, v, data: { lists, items, stores, categories, memory, recipes }, settings, settingsAt }
-//   ctx.local                  本机设置 picknest.local（只读）：{ lang, theme, device, sync, lastBackupAt, view, storeView, storeFilter }
+//   ctx.state                  当前数据（只读）：{ app, v, data: { lists, items, stores, categories, memory, recipes, plan }, settings, settingsAt }
+//   ctx.local                  本机设置 picknest.local（只读）：{ lang, theme, device, sync, lastBackupAt, view, storeView, storeFilter, planView }
 //   ctx.mutate(fn, { undoLabel })  fn(state) 直接改（同步函数），返回 fn 的返回值；修改时间自动补；给 undoLabel 会弹 10 秒「撤销」提示
 //   ctx.put(collection, rec, { undoLabel })   新建（没有 id 就生成）或整条替换：整理字段、盖修改时间，返回存好的记录。
 //                              内容和原来一样就什么也不做（不盖新时间、不进撤销）；id 不符合 safeKey 直接抛错
@@ -97,12 +98,13 @@ import * as search from './views/search.js';
 import * as recipes from './views/recipes.js';
 import * as recipe from './views/recipe.js';
 import * as recipeEdit from './views/recipeEdit.js';
+import * as plan from './views/plan.js';
 import { liveRecipe, recipeName } from './core/recipes.js';
 
-const VIEWS = { lists, list, stores, store, shop, search, recipes, recipe, recipeEdit, settings, deleted };
+const VIEWS = { lists, list, stores, store, shop, search, recipes, recipe, recipeEdit, plan, settings, deleted };
 const SETTINGS_SUBS = ['stores', 'categories', 'sync', 'data'];
 const THEME_COLOR = { light: '#f6f5f0', dark: '#121412' };          // 和 styles.css 的 --bg 一样：状态栏和页面连成一片
-const ID_PREFIX = { lists: 'l_', items: 'i_', stores: 's_', categories: 'c_', memory: 'm_', recipes: 'r_' };
+const ID_PREFIX = { lists: 'l_', items: 'i_', stores: 's_', categories: 'c_', memory: 'm_', recipes: 'r_', plan: 'p_' };
 
 state.load();
 const S = () => state.getState();
@@ -135,6 +137,7 @@ function parseRoute(hash) {
   else if (a === 'r' && path[1] === 'new') r = { name: 'recipeEdit', sub: 'new' };
   else if (a === 'r' && path[1] && path[2] === 'edit') r = { name: 'recipeEdit', id: path[1] };
   else if (a === 'r' && path[1]) r = { name: 'recipe', id: path[1] };
+  else if (a === 'plan') r = { name: 'plan' };
   else r = { name: 'lists' };                  // #/ 和不认识的地址（比如以后才有的页面的旧链接）
   return { id: null, sub: null, ...r, path, query, hash: '#/' + raw };
 }
@@ -142,7 +145,7 @@ const route = () => parseRoute(location.hash);
 
 const mqSide = matchMedia('(min-width: 720px)'), mqTwo = matchMedia('(min-width: 1000px)');
 const layout = () => (mqTwo.matches ? 'two' : mqSide.matches ? 'side' : 'phone');
-const TOP_LEVEL = r => r.name === 'lists' || r.name === 'stores' || r.name === 'recipes' || (r.name === 'settings' && !r.sub);
+const TOP_LEVEL = r => r.name === 'lists' || r.name === 'stores' || r.name === 'recipes' || r.name === 'plan' || (r.name === 'settings' && !r.sub);
 // 双栏时左栏放什么：清单这一边（首页、一张清单、搜索）是首页，商店这一边（「商店」、一家店）是「商店」，食谱这一边（「食谱」、一道食谱、编辑）是「食谱」
 const LEFT = { lists: 'lists', list: 'lists', search: 'lists', stores: 'stores', store: 'stores', recipes: 'recipes', recipe: 'recipes', recipeEdit: 'recipes' };
 
@@ -231,6 +234,7 @@ function pageTitle(r) {
   if (r.name === 'stores') return t('nav.stores');
   if (r.name === 'search') return t('nav.search');
   if (r.name === 'recipes') return t('nav.recipes');
+  if (r.name === 'plan') return t('nav.plan');
   if (r.name === 'recipe') { const rc = liveRecipe(S(), r.id); return rc ? recipeName(rc, t) : null; }
   if (r.name === 'recipeEdit') return t(r.sub === 'new' ? 'rcp.newTitle' : 'rcp.editTitle');
   if (r.name === 'settings') return t(r.sub ? SUB_TITLE[r.sub] : 'nav.settings');
@@ -434,14 +438,15 @@ function renderShell(r) {
     h('div.brand', null, h('img', { src: 'icons/icon-180.png', alt: '', width: 32, height: 32, onerror: e => { e.target.style.visibility = 'hidden'; } }), h('b', null, t('common.appName'))),
     // 搜索在点按里就换页（search.searchLink）：iPad 上搜索框的键盘才弹得出来；已经在搜索页上就只把焦点给搜索框，搜索词不清掉
     h('nav', { 'aria-label': t('nav.label') }, item('lists', '#/', icon('list'), t('nav.lists')), item('stores', '#/stores', icon('store'), t('nav.stores')),
-      item('recipes', '#/recipes', icon('recipe'), t('nav.recipes')), item('search', '#/search', icon('search'), t('nav.search'), search.searchLink(ctx))),
+      item('recipes', '#/recipes', icon('recipe'), t('nav.recipes')), item('plan', '#/plan', icon('calendar'), t('nav.plan')),
+      item('search', '#/search', icon('search'), t('nav.search'), search.searchLink(ctx))),
     h('div.side-foot', null, h('nav', { 'aria-label': t('nav.settings') }, item('settings', '#/settings', icon('gear'), t('nav.settings'))), ctx.syncBadge()),
   );
   const tabs = $('#tabs');
   tabs.setAttribute('aria-label', t('nav.label'));
-  // 底栏：清单 · 商店 · 食谱 · 设置（第 9 步「计划」和计划页一起加，不放点了没反应的入口）
+  // 底栏：清单 · 商店 · 食谱 · 计划 · 设置
   tabs.replaceChildren(tab('lists', '#/', icon('list'), t('nav.lists')), tab('stores', '#/stores', icon('store'), t('nav.stores')),
-    tab('recipes', '#/recipes', icon('recipe'), t('nav.recipes')), tab('settings', '#/settings', icon('gear'), t('nav.settings')));
+    tab('recipes', '#/recipes', icon('recipe'), t('nav.recipes')), tab('plan', '#/plan', icon('calendar'), t('nav.plan')), tab('settings', '#/settings', icon('gear'), t('nav.settings')));
 }
 
 // ---------- 页面挂载（一栏，或者双栏的左右两栏；照 babble） ----------

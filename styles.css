@@ -1,4 +1,4 @@
-/* PickNest 的全部样式，一个文件：变量、基础、外壳、通用组件、深色 → 首页清单 → 清单页 → 商店 → 购物模式 → 搜索 → 面板里的表单 → 设置 → 同步、数据、最近删除 → 食谱 → 恢复页。
+/* PickNest 的全部样式，一个文件：变量、基础、外壳、通用组件、深色 → 首页清单 → 清单页 → 商店 → 购物模式 → 搜索 → 面板里的表单 → 设置 → 同步、数据、最近删除 → 食谱 → 计划 → 恢复页。
    页面样式请只用下面的变量，深色模式就自动对了：
      --bg 底色  --card 卡片 / 分组底  --ink 正文  --ink-2 次要正文  --muted 说明文字  --faint 占位 / 最淡
      --line 分隔线  --fill 浅填充（分段控件底、输入框底）  --seg-on 分段控件选中的那段  --side-bg 侧栏底  --tile 购物模式里商店图标的底
@@ -698,8 +698,6 @@ select.f-in { width: 100%; }
 p.rcp-source { color: var(--ink-2); overflow-wrap: anywhere; }
 .rcp-source span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rcp-source .ic { flex: none; width: 16px; height: 16px; }
-.rcp-add { margin-top: 18px; }
-.rcp-add .ic { width: 20px; height: 20px; }
 .rcp-ing { align-items: flex-start; min-height: 48px; }
 .rcp-ing-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .rcp-ing-name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 16px; line-height: 1.45; overflow-wrap: anywhere; }
@@ -779,6 +777,84 @@ p.rcp-source { color: var(--ink-2); overflow-wrap: anywhere; }
 .need-qty { flex: none; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .need-x { width: 44px; height: 44px; color: var(--muted); }
 .need-total { color: var(--ink-2); }
+
+/* ================= 计划（第二版）：「计划」页（一周、一个月）、加一道菜 / 改一道菜、生成购物清单；食谱页的「加到计划」 ================= */
+/* 食谱页：「加到清单」「加到计划」并排（主按钮在前） */
+.rcp-acts { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin-top: 18px; }
+.rcp-acts .btn .ic { width: 20px; height: 20px; }
+.rcp-acts .rcp-add { margin-top: 0; }
+/* 大标题右边是「按周 / 按月」；下面一行 ‹ 哪一周 › 今天 */
+.plan-seg { margin-top: 4px; }
+.plan-nav { display: flex; align-items: center; gap: 2px; margin: 10px -10px 0; }
+.plan-range { flex: 1; min-width: 0; margin: 0; font-size: 17px; font-weight: 600; text-align: center; font-variant-numeric: tabular-nums;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plan-nav .icon-btn .ic { width: 22px; height: 22px; stroke-width: 2.2; }
+.plan-today { flex: none; margin-left: 6px; }
+.plan-body { padding-top: 6px; }
+/* 一天一张：上面「周一 11月23日 [今天]  +」，下面这一天的菜（分组列表），没有就一句淡的「还没安排」 */
+/* 一栏要写明 minmax(0, 1fr)：默认的 auto 一栏会被不折行的「几人份 · 备注」撑宽，手机上整周横着溢出，每天的「+」被挤到屏幕外 */
+.plan-week { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
+/* 挪过去以后滚到那一天（views/plan.js 的 follow）：下面让开提示条（手机上还有底栏） */
+.plan-day { margin-top: 10px; scroll-margin: 8px 0 calc(84px + env(safe-area-inset-bottom)); }
+body[data-layout="phone"][data-tabs="1"] .plan-day { scroll-margin-bottom: calc(132px + env(safe-area-inset-bottom)); }
+.pd-head { display: flex; align-items: center; gap: 8px; min-height: 44px; padding-left: 4px; }
+.pd-title { flex: 1; min-width: 0; display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; margin: 0; font-size: 16px; font-weight: 650; }
+.pd-date { color: var(--muted); font-size: 14px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.pd-today { align-self: center; background: var(--accent-soft); color: var(--accent-text); }
+.plan-day.today .pd-wd { color: var(--accent-text); }
+.pd-add { flex: none; margin-right: -8px; }
+.pd-empty { margin: 0 4px; padding: 10px 14px; border: 1px dashed var(--line); border-radius: var(--radius); color: var(--muted); font-size: 14px; }
+.pd-list > li { position: relative; }
+.pd-list > li + li > .pd-dish::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: .5px; background: var(--line); }
+.pd-dish { align-items: flex-start; min-height: 50px; }
+/* 哪一顿：左边一栏（同一顿的第二道起空着，看着是一组）；字数不一样（早饭 / Breakfast）也对齐 */
+.pd-meal { flex: none; width: 3.2em; padding-top: 2px; color: var(--muted); font-size: 13px; font-weight: 600; line-height: 1.5; }
+:lang(en) .pd-meal { width: 5.6em; }
+.pd-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pd-name { font-size: 16px; line-height: 1.45; overflow-wrap: anywhere; }
+.pd-sub { font-size: 13px; line-height: 1.35; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pd-dish.go::after { align-self: center; }
+/* 一个月：周一开头的月历，每天一格（数字 + 最多 3 个点），选中的那天底色、今天的数字是绿底白字；下面是选中那天的卡片 */
+.pm { margin-top: 6px; padding: 8px 6px 10px; border-radius: var(--radius); background: var(--card); box-shadow: var(--shadow-card); }
+.pm-head, .pm-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.pm-head span { padding: 2px 0 6px; color: var(--muted); font-size: 12px; font-weight: 600; text-align: center; }
+.pm-cell { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 3px; min-height: 52px; padding: 6px 0 4px; border: 0; border-radius: 10px;
+  background: none; color: var(--ink); font-variant-numeric: tabular-nums; }
+.pm-cell:hover { background: var(--fill); }
+.pm-num { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; font-size: 16px; line-height: 1; }
+.pm-cell.out { color: var(--faint); }
+.pm-cell.today .pm-num { background: var(--accent); color: var(--on-accent); font-weight: 650; }
+.pm-cell.sel { background: var(--accent-soft); }
+.pm-cell.sel:not(.today) .pm-num { color: var(--accent-text); font-weight: 650; }
+.pm-dots { display: flex; gap: 3px; height: 6px; }
+.pm-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent-text); }
+.pm-cell.out .pm-dot { background: var(--faint); }
+/* 加一道菜：选好的那道（「换一道」），或者搜索框 + 搜到的食谱（框里能滚，日子、哪一顿不会被挤到很下面） */
+/* 几人份那一项和「没写几人份」的那句只出现一个（另一个 hidden 也还在中间）：.f-row + .f-row 接不上，按「前面有东西」留空 */
+.dish-form > * + .f-row, .dish-form > * + .f-help { margin-top: 16px; }
+.dish-open { margin-bottom: 2px; }
+.dish-open .ic { width: 20px; height: 20px; }
+.dish-chosen { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 2px 4px 2px 14px; border-radius: var(--radius); background: var(--accent-soft); }
+.dish-chosen > .ic { flex: none; width: 20px; height: 20px; color: var(--accent-text); }
+.dish-chosen-name { flex: 1; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.dish-change { flex: none; padding: 6px 10px; }
+.dish-results { max-height: 264px; margin: 8px 0 0; padding: 0; list-style: none; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--line); border-radius: var(--radius); }
+.dish-results > li + li { border-top: .5px solid var(--line); }
+.dish-opt { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 50px; padding: 8px 14px; border: 0; background: none; color: var(--ink); text-align: left; }
+.dish-opt:hover { background: var(--fill); }
+.dish-opt > .ic { flex: none; width: 20px; height: 20px; color: var(--muted); }
+.dish-opt-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.dish-opt-name { font-size: 16px; line-height: 1.35; overflow-wrap: anywhere; }
+.dish-opt-meta { font-size: 13px; line-height: 1.35; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.meal-seg { display: flex; }
+.meal-seg > button { flex: 1; padding-left: 4px; padding-right: 4px; }
+/* 生成购物清单：从 · 到 并排；每行「来自 红烧肉（周一）」 */
+.pl-range { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.pl .pl-range .f-row + .f-row { margin-top: 0; }
+.pl-range-help { margin-bottom: 16px; }
+.pl .pl-skipped, .pl .pl-empty { margin-top: 14px; }
+.pl-from { color: var(--muted); }
 
 /* ================= 本机数据坏了：恢复页盖在整个 App 上；启动失败的提示 ================= */
 .recovery-screen { position: fixed; inset: 0; z-index: 200; overflow: auto; background: var(--bg); color: var(--ink);
