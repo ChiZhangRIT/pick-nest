@@ -364,8 +364,9 @@ export function pick(a, b) {
 // 店里离线）就又加了同名的，建的是一条空白的新记录，时间更新。整条取较新的话，云端那条的备注、链接、价格、常去的商店、记住的单位
 // 就永远没了——云端那条可能是几个月前的，不是「两台设备同时改」。
 // 认法：createdAt 不一样（同一条记录改来改去、恢复、移动，createdAt 都不变）。这时以较新的为底，它空着的字段用另一条的补上
-// （memory 的次数、常去的商店取两边大的，选过的分类以较新的为准）；createdAt 取早的，以后两边就是同一条。
-// 补到了东西的结果比较新的那条晚 1 毫秒：还拿着较新那条的设备合并时它赢；没补到东西就是较新的那条（再合并几次结果都一样）
+// （memory 的次数、常去的商店取两边大的，选过的分类以较新的为准；items 的状态、数量、needs 先照同一条的规则定，见 blend）；createdAt 取早的，以后两边就是同一条。
+// 结果和较新的那条不一样（补到了东西、购买算数，或者只是 createdAt 换成了早的）就比它晚 1 毫秒：还拿着较新那条的设备合并时它赢；
+// 完全一样就是较新的那条（再合并几次结果都一样）
 const blank = (/** @type {unknown} */ v) => v == null || v === '' || (isObj(v) && !Object.keys(v).length);
 const ITEM_CARRY = ['note', 'url', 'price', 'unit', 'storeId', 'categoryId'];
 /** 还没买的（要买、以后再说，没删除）：只有这种上面的 needs 是还要买的用量 @param {any} r */
@@ -375,16 +376,32 @@ function blend(c, w, o) {
   if (c === 'items') {
     // 同一个 id 上是另一样东西（那条改过名、移到了别的清单）：不是同一样，照旧整条取较新的
     if (w.listId !== o.listId || normName(w.name) !== normName(o.name)) return null;
-    const out = { ...w };
-    for (const k of ITEM_CARRY) if (blank(out[k]) && !blank(o[k])) out[k] = o[k];
-    // 各道菜的那几份（needs）只在两条都还没买时合在一起（同一个来源用较新的）：两台设备从来没拿到过对方这一条，谁也不是有意拿掉对方的那几份——
+    // 状态、自己加的数量、needs、boughtFor 和同一条记录一样定（boughtMeanwhile：一条勾成已买、另一条是在那以后写的还没买的，购买算数，
+    // 多出来的还要买）。不一样定的话，合并一次以后 createdAt 取了早的，两边成了「同一条」，再和原来那两份里的一份合并就走同一条的路、
+    // 改判（新设备上买过以后才快速添加的「洋葱 1」：第一次合并成已买、自己写的 1 丢了，再合并一次又成了要买）——重复合并结果会变
+    const bm = boughtMeanwhile(w, o, true);
+    const out = bm ? { ...bm } : { ...w };
+    // 空着的从另一条补；购买算数时单位换成了还没买那份的（可能是空的），较新那条自己的也算（不然再和它合并一次又补上，结果会变）
+    for (const k of ITEM_CARRY) if (blank(out[k])) { const from = [o, w].find(r => !blank(r[k])); if (from) out[k] = from[k]; }
+    // 各道菜的那几份（needs）只在两条都还没买时合在一起：两台设备从来没拿到过对方这一条，谁也不是有意拿掉对方的那几份——
     // 一台生成了第一周、另一台离线生成了第二周，合并后两周的洋葱都要算上。另一条已买、已清除，那是买过的一轮，补过来就又成了要买的；
-    // 较新的已买、已清除，补了也没用（再加回来时会清空），只是白白多改一次
-    if (!blank(o.needs) && openItem(w) && openItem(o)) out.needs = { ...copySafe(o.needs), ...(isObj(w.needs) ? w.needs : {}) };
+    // 较新的已买、已清除，补了也没用（再加回来时会清空），只是白白多改一次（购买算数时一条是已买的，也不合：买过的几份已经拿掉了）。
+    // 一条记着某个来源买过（boughtFor）、比另一条记着的晚（另一条没记着当最早），另一条上这个来源的那几份是没见过那次购买时加的，算买过了、不要：
+    // 较新那条可能就是把另一条（或者带着同样几份的一份）合并进来、购买算数以后的结果，不跳过的话再合并一次买过的又回来（重复合并结果会变）；
+    // 反过来较新那条上的也一样，不然经过一次中间的合并，买过的会从另一份各自建的那条上回来（先合并哪两份结果不一样）。
+    // 同一个来源（连同不同单位另记的 '#2'）只用一条的，较新那条有就整个用它的：按键一个一个取的话，一条是「1 个 + 200 g」、
+    // 另一条改成了「300 g」，合出来是「300 g + 200 g」，同一道菜算了两遍
+    if (openItem(w) && openItem(o)) {
+      const wb = isObj(w.boughtFor) ? w.boughtFor : {}, ob = isObj(o.boughtFor) ? o.boughtFor : {};
+      const mine = Object.entries(copySafe(isObj(w.needs) ? w.needs : {})).filter(([k]) => !unseen(k, ob, wb));
+      const srcs = new Set(mine.map(([k]) => shareKey(k)));
+      const theirs = Object.entries(copySafe(isObj(o.needs) ? o.needs : {})).filter(([k]) => !unseen(k, wb, ob) && !srcs.has(shareKey(k)));
+      out.needs = { ...Object.fromEntries(theirs), ...Object.fromEntries(mine) };
+    }
     // 买过的那几道菜（boughtFor）是历史：两条的都留着；另一条已买、已清除，它那一轮计划的来源这里不带过来，也记成买过的
     // （较新的这条自己还是已买、needs 里还带着的不重复记：再合并一次结果一样）
-    const still = out.status === 'done' ? new Set(Object.keys(isObj(out.needs) ? out.needs : {}).map(k => k.replace(/#\d+$/, ''))) : new Set();
-    const bf = isObj(w.boughtFor) ? copySafe(w.boughtFor) : {};
+    const still = out.status === 'done' ? new Set(Object.keys(isObj(out.needs) ? out.needs : {}).map(shareKey)) : new Set();
+    const bf = isObj(out.boughtFor) ? copySafe(out.boughtFor) : {};
     for (const [k, v] of Object.entries(boughtAfter(o, time(o.updatedAt)))) if (!still.has(k)) bf[k] = Math.max(numOrNull(bf[k]) ?? 0, numOrNull(v) ?? 0);
     if (Object.keys(bf).length) out.boughtFor = bf;
     // 合并出来的这一条两份都见过了：另一条后来勾成的已买也算见过（不然以后和还留着那一份的设备合并，boughtMeanwhile 会以为没见过、把买过的又标回已买）
@@ -424,14 +441,42 @@ function boughtUnion(...xs) {
   for (const x of xs) for (const [k, v] of Object.entries(isObj(x) ? x : {})) if (safeKey(k) && numOrNull(v) != null) out[k] = Math.max(out[k] ?? 0, /** @type {number} */ (numOrNull(v)));
   return out;
 }
-/** @param {any} w 较新的 @param {any} o 另一份 @returns {any} 合并结果；不是这种情况 → null */
-function boughtMeanwhile(w, o) {
+/** 'p:<id>#2'、'a:<id>#2'（同名不同单位另记的一份）算它的来源 @param {string} k */
+const shareKey = k => k.replace(/#\d+$/, '');
+/**
+ * 这一份（needs 的键）对方记着它的来源买过、比自己记着的晚（自己没记着当最早）：自己是没见过那次购买时加的，算买过了。
+ * 自己记着一样晚或更晚的，是买过以后又自己加的，留着
+ * @param {string} k @param {Record<string, unknown>} theirs 对方知道的（boughtFor，已买的还有这一轮） @param {Record<string, unknown>} mine 自己的 boughtFor
+ */
+const unseen = (k, theirs, mine) => (numOrNull(own(theirs, shareKey(k))) ?? -1) > (numOrNull(own(mine, shareKey(k))) ?? -1);
+/**
+ * 购买算数（boughtMeanwhile）时买过的那几份记进 boughtFor：计划的来源照 boughtAfter（计划要认「这道菜已经买过」），
+ * 别的来源（食谱页加的 a:<随机>，以后新的来源）也记——只给合并认（unseen：别的那份上这几份不要），计划不看，数量也不算它。
+ * 以前买过、这一轮又买了的取这一轮的时间（unseen 比的是谁知道的那次购买晚）
+ * @param {any} d 已买的那份 @returns {Record<string, number>}
+ */
+function boughtShares(d) {
+  const out = boughtAfter(d, time(d.updatedAt));
+  const at = numOrNull(d.doneAt) ?? time(d.updatedAt);
+  for (const k of Object.keys(isObj(d.needs) ? d.needs : {})) if (safeKey(shareKey(k))) out[shareKey(k)] = Math.max(numOrNull(own(out, shareKey(k))) ?? 0, at);
+  return out;
+}
+/**
+ * @param {any} w 较新的 @param {any} o 另一份
+ * @param {boolean} [fresh] 两份是各自从头建的（blend）：还没买那份自己加的数量是它自己写的（没见过买的那份，不会是抄过来的），一样也留着
+ * （新设备上快速添加的「跑鞋」，就是又要买了）；同一条里和买的那份一样的数量是买之前就有的，算买过了
+ * @returns {any} 合并结果；不是这种情况 → null
+ */
+function boughtMeanwhile(w, o, fresh = false) {
   const [d, p] = w.status === 'done' ? [w, o] : [o, w];
   if (d.status !== 'done' || !openItem(p) || !(time(d.statusAt) > time(p.statusAt)) || !(time(p.updatedAt) > time(d.statusAt))) return null;
-  const had = isObj(d.needs) ? d.needs : {};
-  const left = Object.fromEntries(Object.entries(isObj(p.needs) ? p.needs : {}).filter(([k]) => !own(had, k)));
+  // 还没买那份上，已买那份知道买过的（这一轮的 needs 按来源算：'p:x#2' 是 'p:x' 的另一个单位，同一道菜，一起买过了；还有它记着的以前买过的）、
+  // 比还没买那份知道的晚的，都算买过了（unseen）。和 blend 里两条都还没买时的认法一样，不然先合并哪两份，买过的会不会回到清单上就不一样
+  const pb = isObj(p.boughtFor) ? p.boughtFor : {};
+  const knew = boughtShares(d);
+  const left = Object.fromEntries(Object.entries(isObj(p.needs) ? p.needs : {}).filter(([k]) => !unseen(k, knew, pb)));
   const sameOwn = p.qty === d.qty && normName(str(p.unit)) === normName(str(d.unit));
-  const ownLeft = p.qty != null && !sameOwn ? p.qty : null;
+  const ownLeft = p.qty != null && (fresh || !sameOwn) ? p.qty : null;
   if (!Object.keys(left).length && ownLeft == null) {
     if (d === w) return null;              // 较新的就是买过的那份，照旧整条取它
     const out = { ...w, status: 'done', doneAt: d.doneAt, statusAt: d.statusAt, needs: d.needs, fromLater: d.fromLater };
@@ -441,8 +486,9 @@ function boughtMeanwhile(w, o) {
     return out;
   }
   const { deleted, deletedAt, fromLater, ...rest } = w;
-  const out = { ...rest, status: p.status, doneAt: null, statusAt: d.statusAt, needs: left, qty: ownLeft,
-    boughtFor: boughtUnion(w.boughtFor, p.boughtFor, boughtAfter(d, time(d.updatedAt))) };
+  // 留下的自己加的数量是还没买那份的，单位跟着它（较新的是买的那份时，不能写成那份的单位：「2 斤」变成「2 g」）
+  const out = { ...rest, status: p.status, doneAt: null, statusAt: d.statusAt, needs: left, qty: ownLeft, unit: ownLeft != null ? p.unit : w.unit,
+    boughtFor: boughtUnion(w.boughtFor, p.boughtFor, boughtShares(d)) };
   if (!Object.keys(out.boughtFor).length) delete out.boughtFor;
   return out;
 }
@@ -467,7 +513,9 @@ export function mergeRecord(c, a, b) {
   const out = blend(c, w, o);
   if (!out) return w;
   out.createdAt = Math.min(wc, oc);
-  if (canon({ ...out, createdAt: w.createdAt }) !== canon(w)) out.updatedAt = (w.updatedAt || 0) + 1;
+  // 和较新那条不一样（补到了东西，或者只是 createdAt 换成了早的）就晚 1 毫秒：两条 updatedAt 一样时只换了 createdAt 的结果不比另一条新，
+  // 再和另一条合并（createdAt 已经一样，走同一条的路）按内容排可能就取了另一条——重复合并结果会变
+  if (canon(out) !== canon(w)) out.updatedAt = (w.updatedAt || 0) + 1;
   return out;
 }
 
