@@ -56,7 +56,12 @@ Chi 的四个 App（`../babble`、`../house-ledger`、`../virtual-bookshelf` 和
 ## 数据规则（细节见 docs/DATA_MODEL.md）
 
 - 删除一律软删除；改动一律经过 `stamp()`；读入的数据一律经过 `normalizeState()`；不认识的字段和集合原样保留
-- 合并是整条取较新的（`mergeRecord`）；例外只有 `items`、`memory` 里各自从头建的同一条（`createdAt` 不一样）：补上空着的字段。新建 items / memory 记录时 `createdAt` 用现在，改的时候一律保留原来的 `createdAt`（`{ ...旧的, ...改动 }`），不然会被当成「各自从头建的」
+- 合并（`store.js` 的 `mergeRecord`）：一般整条取较新的。例外都在 DATA_MODEL「合并」里写清楚了，改合并规则前先读它：
+  - `items`、`memory` 里各自从头建的同一条（`createdAt` 不一样）：补上空着的字段；`memory` 的次数、商店取两边大的
+  - `items` 的买没买按**状态改的时间**（`statusAt`，每次改状态都盖；老记录没有算 0）判断，不按整条的 `updatedAt`：一份已买、另一份是在那次购买以后、但不知道它时写的 → 购买照样算，买过的那几份进 `boughtFor`，后写的那份只留下它自己加的和新加的菜。两条路径（同一条 / 各自新建）用同一个判断（`boughtMeanwhile`）
+  - 两份都还没买、又是各自新建的：各道菜的用量合在一起（同一道菜只用一份的，不算两遍；买过的不带回来）
+  - 必须一直满足：顺序无关、重复合并结果不变、几台设备轮流同步会收敛；不满足结合律是允许的。`tests/mergeConvergence.test.mjs` 用随机数据查这几条，改了合并规则要它照样通过
+- 新建 items / memory 记录时 `createdAt` 用现在，改的时候一律保留原来的 `createdAt`（`{ ...旧的, ...改动 }`），不然会被当成「各自从头建的」；改 `status` 的写入要盖 `statusAt`（`items.js` 里的写法已经这样做，新写的地方照这条）
 - 预置的清单、商店、分类用固定 id、`updatedAt: 0`，由 `ensureSeeds()` 补（加载后、每次合并后），不重复、不复活被删的
 - 同一张清单里同名的东西是同一条记录：id 一律用 `itemId(state, listId, name)` 算（先找同名的，再固定 id，固定 id 被占了再算下一个空位；都不随机）；再加一次就恢复同一条
 - `items.needs` 是食谱、计划加进来的用量，和自己加的 `qty` 分开记；规则在 `items.js` 的 `addNeeds` / `removeNeeds`（见 DATA_MODEL「来自食谱的数量」）。计划里一道菜的那一份要换成新的用量时就地换（先 `addNeeds` 放上新的、再 `removeNeeds` 的 `skip` 拿掉不要的；几道菜一起换时所有的都放上了再拿；改人数只 `addNeeds` 名字和单位对得上的那几份，别的不动），不要先删再加（会恢复成一条新的：商店变回默认、memory 多记一次）；已买、已清除的、自己加的 `qty` 一律不动（DATA_MODEL「plan」）。不认识的来源和字段必须原样保留。已买 / 已清除那一轮的 `needs` 不能再变成要买的：再加回来、隔久了取消勾选时清空，合并、移到别的清单时不带（新写的地方也要照这条）；清空时一律用 `items.js` 的 `newRound`（或 `store.js` 的 `boughtAfter`）把上一轮里计划的来源记进 `boughtFor`，不然计划会把「已经为这道菜买过」的又当成没买、放回清单。算出来的用量上限是 `NEED_MAX`，9999（`QTY_MAX`）只是输入框的
