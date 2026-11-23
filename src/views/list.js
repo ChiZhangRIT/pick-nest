@@ -3,6 +3,7 @@
 // 自己管更新（返回 onChange）：数据变了只重画页头和列表，输入框和联想原样留着，打字不会被打断。
 // 规则都在 core：解析和添加（items.js、parse.js）、联想（memory.js）、分组排序（group.js）、清单操作（lists.js）。
 // 点一行 = 勾掉 / 取消：行和勾选的节奏（先在原地打勾，停一下再挪）在 ui/checklist.js，商店页也用它。
+// 行能左右滑（也在 ui/checklist.js）：往左露出「编辑」「删除」，往右露出「以后再说」/「移回要买」，点了按钮才做；正在滑时数据变了，滑完再重画。
 // 顶栏右边「开始购物」进购物模式（#/l/<id>?shop=1，views/shop.js）。
 // ⌘N（别的系统 Ctrl+N）：光标放进快速添加（Babble、房屋账本的 ⌘N 是新建一条，这里新建的就是一样东西）；一栏的清单页、双栏右栏的清单页都算。
 import { h, icon, backText } from '../ui/dom.js';
@@ -17,7 +18,8 @@ import { checklist, foldSec, storeChip, groupSections } from '../ui/checklist.js
 import { listSheet } from '../ui/listEditor.js';
 import { composing, isNewKey, isTextField } from '../ui/form.js';
 
-export function render(main, params, ctx) {
+/** @param {{ swipe?: object }} [deps]  测试用：交给 ui/swipe.js 的 createSwipes 的 env（时钟、计时器、宽度、减少动态效果） */
+export function render(main, params, ctx, deps = {}) {
   const listId = params.id;
   const list = () => liveList(ctx.state, listId);
   let leaving = false;
@@ -29,7 +31,7 @@ export function render(main, params, ctx) {
   }
   if (!list()) { gone(); return undefined; }
 
-  const cl = checklist(ctx, main);
+  const cl = checklist(ctx, main, deps.swipe);
   const keepFocus = cl.keepFocus;
   let sugs = [], active = -1;
   const view = () => listView(ctx.local, listId);
@@ -221,17 +223,19 @@ export function render(main, params, ctx) {
   drawBody();
 
   return {
-    onChange: () => {
+    // 正在滑一行（或者行在动、删除在等动画）：滑完再重画，手底下的行不换掉
+    onChange: () => cl.whenIdle(() => {
       if (!list()) { gone(); return; }
       keepFocus(() => { drawHead(); drawBody(); });
       if (!sugBox.hidden) updateSugs();
-    },
+    }),
     cleanup: () => {
       document.removeEventListener('keydown', onShortcut);
       window.removeEventListener('scroll', onScroll, { capture: true });
       if (vv) { vv.removeEventListener('resize', fitSugs); vv.removeEventListener('scroll', fitSugs); }
       // 离开时点过、还没挪的，马上改：点过的不能丢（清单删掉、归档了的不改）
       if (leaving) cl.drop(); else cl.flush();
+      cl.destroy();
     },
     flush: () => { if (!leaving) cl.flush(); },       // 切到后台：同上，app 接着把它传上去
   };

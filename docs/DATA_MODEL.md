@@ -115,7 +115,7 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 - `qty`：数字或 `null`（不写数量）。新加的默认 1。显示时 `null` 不显示数量。编辑时只收 `null` 或 0 < q ≤ 9999
 - `unit`：任意文字，空字符串是没有单位。常用单位在界面里给选项（个、袋、盒、瓶、包、罐、把、根、斤、磅、lb、oz、g、kg、mL、L……）
 - `storeId`：**这次**打算在哪买，`null` 是未指定。长期习惯记在 `memory` 里，改这一项不影响习惯
-- `status`：`need` 要买、`done` 已买、`later` 以后再说（只在 `kind: 'general'` 的清单里出现）
+- `status`：`need` 要买、`done` 已买、`later` 以后再说（只在 `kind: 'general'` 的清单里出现）。一行往右滑露出的「以后再说」/「移回要买」也是 `setStatus`，往左的「删除」是同样的软删除；哪一行能滑出哪几个由 `items.js` 的 `swipeActions` 定（不存任何东西）
 - `fromLater`：从「以后再说」勾成已买的（`setStatus` 记，不是已买时 `normalizeItem` 去掉）。取消勾选时回哪由 `items.js` 的 `untickStatus` 定：有这个标记、勾上 30 分钟内（`UNTICK_MS`）、还在一般清单上 → 回「以后再说」（点错了再点一下就是没点过）；别的回「要买」
 - `url`、`price`：一般物品可选填（手动粘贴链接，V1 不抓取网页）。`url` 只收 `http:` / `https:`（或空），`price` 是 `null` 或 ≥ 0
 - `needs`：**预留给食谱和计划**：`{ [来源]: { qty, unit, label } }`。V1 永远是 `{}`，但读写时原样保留。到时 `qty` 表示手动加的那一部分，总数 = 手动 + 各来源（同单位才相加）

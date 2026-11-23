@@ -12,6 +12,15 @@ import { listName, categoryName, live, byOrder } from '../core/store.js';
 
 const STATUSES = ['need', 'later', 'done'];
 
+/**
+ * 删掉一样：软删除（进「最近删除」），10 秒内能撤销。面板里的「删除」和行往左滑露出的「删除」（ui/checklist.js）走同一条路。
+ * 已经不在了 → null
+ */
+export function removeItem(ctx, itemId) {
+  const cur = liveItem(ctx.state, itemId);
+  return cur ? ctx.remove('items', itemId, { undoLabel: t('item.deleted', { name: cur.name }) }) : null;
+}
+
 /** itemSheet(ctx, itemId)：打开面板；这一样已经不在了 → null */
 export function itemSheet(ctx, itemId) {
   const st = ctx.state;
@@ -105,10 +114,7 @@ export function itemSheet(ctx, itemId) {
     ],
   });
 
-  function remove() {
-    const cur = liveItem(ctx.state, itemId);
-    if (cur) ctx.remove('items', itemId, { undoLabel: t('item.deleted', { name: cur.name }) });
-  }
+  function remove() { removeItem(ctx, itemId); }
 
   let saving = false;
   async function save() {

@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ensureSeeds, blankState, normalizeRecord, itemId, hash64, normName, deletedRecord, restoredRecord } from '../src/core/store.js';
 import { addFromInput, addItem, defaultsFor, toggleDone, setStatus, clearDone, moveItem, moveConflict, validateItemPatch, editItem, editAndMove, untickStatus,
-  readPrice, cleanUrl, liveItem, countItems, UNTICK_MS } from '../src/core/items.js';
+  readPrice, cleanUrl, liveItem, countItems, swipeActions, UNTICK_MS } from '../src/core/items.js';
 import { memoryOf, memoryId, usualStore, recordUse, recordPurchase, recordPrefs, suggestions } from '../src/core/memory.js';
 import * as state from '../src/core/state.js';
 
@@ -338,6 +338,28 @@ test('勾掉 / 取消：要买 → 已买（记 doneAt）→ 要买；以后再�
   const at = s.data.items[lamp].updatedAt;
   setStatus(s, lamp, 'done', now());
   assert.equal(s.data.items[lamp].updatedAt, at);
+});
+
+test('左右滑的按钮（swipeActions）：往左每一行都是编辑、删除；往右只有一般清单的要买（以后再说）、以后再说（移回要买），食材清单、已买的没有', () => {
+  const s = seeded();
+  const milk = add(s, '牛奶').id, lamp = add(s, '台灯', 'l_tobuy').id, desk = add(s, '书桌', 'l_tobuy').id;
+  const of = (id) => swipeActions(s, s.data.items[id]);
+  assert.deepEqual(of(milk), { left: [], right: ['edit', 'delete'] }, '食材清单没有以后再说');
+  assert.deepEqual(of(lamp), { left: ['later'], right: ['edit', 'delete'] });
+  setStatus(s, lamp, 'later', now());
+  assert.deepEqual(of(lamp), { left: ['need'], right: ['edit', 'delete'] }, '以后再说的：移回要买');
+  setStatus(s, desk, 'done', now());
+  setStatus(s, milk, 'done', now());
+  assert.deepEqual([of(desk), of(milk)], [{ left: [], right: ['edit', 'delete'] }, { left: [], right: ['edit', 'delete'] }], '已买的点一下就放回去：往右没有按钮');
+  // 删掉的、清单不在的、没有的：两边都没有
+  s.data.items[lamp] = deletedRecord(s.data.items[lamp], now());
+  assert.deepEqual(of(lamp), { left: [], right: [] });
+  custom(s, 'l_tools');
+  const saw = add(s, '锯子', 'l_tools').id;
+  assert.deepEqual(of(saw).left, ['later']);
+  s.data.lists.l_tools = deletedRecord(s.data.lists.l_tools, now());
+  assert.deepEqual(of(saw), { left: [], right: [] });
+  assert.deepEqual(swipeActions(s, null), { left: [], right: [] });
 });
 
 test('countItems：这张清单里没删除的有几样（可以只数一种状态）；别的清单、删掉的不算', () => {

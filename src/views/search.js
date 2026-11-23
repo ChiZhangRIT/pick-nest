@@ -1,6 +1,6 @@
 // 搜索（#/search?q=）：所有清单里的东西（core/search.js 的 searchItems：名字和备注，简繁、大小写、全角半角都算；归档的清单也在里面，标「已归档」）。
 // 结果按清单分组（组名是清单的图标和名字，点了进那张清单），每组里要买、以后再说、已买（画淡）；命中的字标出来（<mark>，用 textContent，不拼 HTML）。
-// 点一行勾掉 / 取消、› 打开编辑面板，和清单页一样（ui/checklist.js）。手机上是推入的页面（有返回）；宽屏双栏时在右栏，左栏是首页。
+// 点一行勾掉 / 取消、› 打开编辑面板、左右滑，和清单页一样（ui/checklist.js）。手机上是推入的页面（有返回）；宽屏双栏时在右栏，左栏是首页。
 // 打字时只换下面的结果和地址栏（ctx.replaceHash：重新载入、后退回来还是这次搜的），输入框不重画；数据变了也只重画结果（返回 onChange）。
 // 输入法还在选字时不搜（拼音字母会先搜出一堆英文的），选好字再搜。
 // 打开时焦点放进搜索框：从首页的入口点进来时（ui/dom.js 的 linkTo，在点按里就换页）iPhone 也会弹出键盘；
@@ -19,9 +19,10 @@ import { composing } from '../ui/form.js';
  */
 export const searchLink = (ctx) => linkTo(ctx, '/search', () => (ctx.route.name === 'search' ? document.querySelector('.search-input') : null));
 
-export function render(main, params, ctx) {
+/** @param {{ swipe?: object }} [deps]  测试用：交给 ui/swipe.js 的 createSwipes 的 env */
+export function render(main, params, ctx, deps = {}) {
   let q = String((params.query && params.query.q) || '');
-  const cl = checklist(ctx, main);
+  const cl = checklist(ctx, main, deps.swipe);
 
   // 顶栏吸顶（和清单页一样），双栏右栏里 CSS 把返回藏起来（左栏就是上一页）；标题能接焦点（重画后按过的控件没了，焦点给它）
   const navbar = h('header.navbar.lp-nav', null, h('button.back', { type: 'button', onclick: () => ctx.back('/') }, icon('back'), backText(ctx, t('nav.lists'))));
@@ -78,9 +79,9 @@ export function render(main, params, ctx) {
   input.focus({ preventScroll: true });
 
   return {
-    onChange: () => cl.keepFocus(drawBody),
+    onChange: () => cl.whenIdle(() => cl.keepFocus(drawBody)),     // 正在滑一行：滑完再重画
     // 离开时点过、还没挪的，马上改（和清单页一样）
-    cleanup: () => cl.flush(),
+    cleanup: () => { cl.flush(); cl.destroy(); },
     flush: () => cl.flush(),
   };
 }

@@ -4,13 +4,15 @@
 // 商店不在了（地址错了、删掉了）→ 回「商店」并提示。
 // 自己管更新（返回 onChange）：勾掉的行挪走以后焦点给谁、刚挪过的行这一下不算，都要跨重画记着（ui/checklist.js，和清单页一样）。
 // 顶栏右边「开始购物」进购物模式（#/s/<id>?shop=1，views/shop.js）。
+// 行能左右滑（ui/checklist.js，和清单页一样）；正在滑时数据变了，滑完再重画。
 import { h, icon, backText } from '../ui/dom.js';
 import { t } from '../i18n.js';
 import { liveStore, storeCounts, groupStore, clearStoreDone, setStoreArchived } from '../core/stores.js';
 import { collatorFor, storeView, storeViewPatch, NO_STORE } from '../core/group.js';
 import { checklist, foldSec, listChip, groupSections } from '../ui/checklist.js';
 
-export function render(main, params, ctx) {
+/** @param {{ swipe?: object }} [deps]  测试用：交给 ui/swipe.js 的 createSwipes 的 env */
+export function render(main, params, ctx, deps = {}) {
   const storeId = params.id === NO_STORE ? null : params.id;
   const store = () => (storeId ? liveStore(ctx.state, storeId) : null);
   let leaving = false;
@@ -22,7 +24,7 @@ export function render(main, params, ctx) {
   }
   if (storeId && !store()) { gone(); return undefined; }
 
-  const cl = checklist(ctx, main);
+  const cl = checklist(ctx, main, deps.swipe);
   const view = () => storeView(ctx.local, storeId);
   const setView = (patch) => ctx.setLocal(storeViewPatch(ctx.local, storeId, patch));
 
@@ -74,12 +76,12 @@ export function render(main, params, ctx) {
   drawHead();
   drawBody();
   return {
-    onChange: () => {
+    onChange: () => cl.whenIdle(() => {
       if (storeId && !store()) { gone(); return; }
       cl.keepFocus(() => { drawHead(); drawBody(); });
-    },
+    }),
     // 离开时点过、还没挪的，马上改：点过的不能丢（商店删掉了也一样：东西还在各自的清单上）
-    cleanup: () => cl.flush(),
+    cleanup: () => { cl.flush(); cl.destroy(); },
     flush: () => cl.flush(),        // 切到后台：同上，app 接着把它传上去
   };
 }

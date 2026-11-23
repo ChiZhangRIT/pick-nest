@@ -5,27 +5,35 @@
 // 连着点几样时等最后一下之后一起挪（挪的时候行会动，手指下面换了一样东西）；减少动态效果时马上挪。
 // 刚挪了位置的行，紧接着的一下不算（连点两下不会改掉两样）；用键盘、读屏勾掉一样以后，焦点给顶替它位置的那一样。
 // 规则在 core/items.js（setStatus：勾成已买时记下这次的商店）。
+// 每一行能左右滑（ui/swipe.js，照 babble）：往左露出「编辑」「删除」，往右露出「以后再说」/「移回要买」（哪一行有哪几个：core/items.js 的 swipeActions）。
+// 滑开只是露出按钮，点了按钮才做；点开着的行只是关上，不勾掉。删除和编辑面板里的「删除」同一条路（进「最近删除」，10 秒内能撤销），
+// 编辑就是行右边的 › 打开的那个面板；以后再说 / 移回要买和勾掉一样：挪走以后焦点给顶替它的那一行，放回「要买」的在新位置闪一下。
+// 一行是 <li.item-row>（可滑的那一层）> <div.item-in>（跟着手指动的：勾 + ›）+ 露出来时才建的按钮。
 import { h, icon } from './dom.js';
 import { t } from '../i18n.js';
-import { liveItem, liveList, setStatus, untickStatus, storeExists } from '../core/items.js';
+import { liveItem, liveList, setStatus, untickStatus, storeExists, swipeActions } from '../core/items.js';
 import { listName, listIcon, categoryName } from '../core/store.js';
 import { qtyLabel } from '../core/parse.js';
-import { itemSheet } from './itemEditor.js';
+import { itemSheet, removeItem } from './itemEditor.js';
+import { createSwipes } from './swipe.js';
 
 const TICK_MS = 320;          // 点了以后在原地停多久再挪
 const SETTLE_MS = 350;        // 刚挪过位置的行，这么久之内点到的不算：手指多半是冲着原来在那儿的那一行去的
 const firstLine = (s) => String(s || '').split('\n').map(x => x.trim()).find(Boolean) || '';
 
 /**
- * checklist(ctx, main) → { row, draw, keepFocus, flash, flashNow, flush, drop }
+ * checklist(ctx, main, swipeEnv) → { row, draw, keepFocus, flash, flashNow, flush, drop, whenIdle, destroy }
+ *   swipeEnv：测试用，交给 ui/swipe.js 的 createSwipes（时钟、计时器、宽度、减少动态效果）
  *   row(it, chip, { name, note })  画一行（chip：页面给的小标签元素（可以是几个的数组），或 null；
  *                   name / note：代替名字、备注第一行的内容（搜索把命中的字标出来），不给就是原文）
  *   draw(fn)        重画列表：fn 里调 row() 把行放进页面；前后比一比哪些行挪了位置，画完闪一下要闪的那一行
  *   keepFocus(fn)   重画以后焦点放回同一个控件（带 data-fid 的）；勾掉的那一行挪走了就给顶替它的那一行，控件没了给页面标题
  *   flash(id)       下次画完闪这一行；flashNow() 现在就闪（数据没变、不会重画的时候）
- *   flush()         点过、还没挪的马上改（离开页面时）；drop() 不改了（清单删掉、归档了）
+ *   flush()         点过、还没挪的马上改，滑开以后点了、还在等动画的删除 / 移动也马上做（离开页面、切到后台时）；drop() 勾过的不改了（清单删掉、归档了）
+ *   whenIdle(fn)    数据变了要重画（页面的 onChange）：正在滑、行在动、删除在等动画时等做完再画（最多等几秒），不然手底下的行换成新的
+ *   destroy()       离开页面（页面的 cleanup 里，flush / drop 之后）：不再听手势
  */
-export function checklist(ctx, main) {
+export function checklist(ctx, main, swipeEnv) {
   const reduced = () => !globalThis.matchMedia || matchMedia('(prefers-reduced-motion: reduce)').matches;
   const pending = new Map();            // 点过、还没挪的：id → 要改成的状态（'done' | 'need' | 'later'：刚从以后再说勾掉的放回去，core 的 untickStatus）
   let tickTimer = null;
@@ -33,6 +41,7 @@ export function checklist(ctx, main) {
   let moved = new Set(), movedUntil = 0;  // 上次重画时挪了位置的行（SETTLE_MS 之内点它不算）
   let focusTo = null;                   // 下次重画后焦点给谁（勾掉的那一行挪走了）
   let flashId = null;
+  const swipes = createSwipes(swipeEnv);
 
   /** 打勾的样子：点过还没挪的按要改成的状态画（「已买」里去掉了勾的、要买里打上了勾的） */
   const checkedNow = (it) => (pending.has(it.id) ? pending.get(it.id) === 'done' : it.status === 'done');
@@ -48,16 +57,47 @@ export function checklist(ctx, main) {
       h('span.item-name', null, name || it.name),
       hasChip || nt ? h('span.item-sub', null, chip, nt ? h('span.item-note', null, nt) : null) : null),
     q ? h('span.item-qty', null, q) : null);
-    const li = h('li.item-row' + (was && checked ? '.done' : '') + (!was && checked ? '.ticking' : ''), { dataset: { id: it.id } }, check,
+    const inner = h('div.item-in', null, check,
       h('button.item-more', { type: 'button', 'aria-label': t('item.edit', { name: it.name }), title: t('item.edit', { name: it.name }), dataset: { fid: 'more-' + it.id },
         onclick: () => itemSheet(ctx, it.id) }, icon('chev')));
+    const li = h('li.item-row' + (was && checked ? '.done' : '') + (!was && checked ? '.ticking' : ''), { dataset: { id: it.id } });
+    swipes.wrap(inner, { el: li, id: it.id, focus: check, ...swipeButtons(it) });
     rowEls.set(it.id, { li, check, sec: it.status });
     return li;
+  }
+  /** 左右滑露出的按钮（core/items.js 的 swipeActions 定有哪几个）；按钮上的字短，读屏念的带上名字 */
+  function swipeButtons(it) {
+    const id = it.id, name = it.name;
+    const make = {
+      edit: () => ({ key: 'edit', cls: 'sw-edit', icon: 'pencil', label: t('item.swEdit'), aria: t('item.edit', { name }), instant: true, run: () => itemSheet(ctx, id) }),
+      delete: () => ({ key: 'delete', cls: 'sw-del', icon: 'trash', label: t('common.delete'), aria: t('item.swDelete', { name }), out: true,
+        run: () => { pending.delete(id); removeItem(ctx, id); } }),
+      later: () => ({ key: 'later', cls: 'sw-later', icon: 'clock', label: t('item.st.later'), aria: t('item.swLater', { name }), run: () => moveTo(it, 'later') }),
+      need: () => ({ key: 'need', cls: 'sw-later', icon: 'undo', label: t('item.swNeedLabel'), aria: t('item.swNeed', { name }), run: () => moveTo(it, 'need') }),
+    };
+    const a = swipeActions(ctx.state, it);
+    return { left: a.left.map(k => make[k]()), right: a.right.map(k => make[k]()) };
+  }
+  /**
+   * 滑开以后点了「以后再说」/「移回要买」：和勾掉一样挪走（焦点给顶替它的那一行），放回「要买」的在新位置闪一下。
+   * 移到「以后再说」的给「撤销」（在商店页、购物模式里它就不见了，清单页上「以后再说」可能折着）。
+   * 滑开之前看到的状态已经被别处改了（同步进来）就不再改；点过、还没挪的勾不算了（按钮是冲着这一行现在的样子去的）
+   */
+  function moveTo(it, st) {
+    const cur = liveItem(ctx.state, it.id);
+    if (!cur || cur.status !== it.status) return;
+    pending.delete(it.id);
+    if (!pending.size) { clearTimeout(tickTimer); tickTimer = null; }
+    focusTo = nextFocus(new Map([[it.id, st]]));
+    const done = ctx.mutate(s => setStatus(s, it.id, st, Date.now()), st === 'later' ? { undoLabel: t('item.toLater', { name: cur.name }) } : undefined);
+    if (done && st === 'need') flashId = it.id;
+    queueMicrotask(() => { focusTo = null; });
   }
 
   function draw(fn) {
     const tops = rowTops();
     rowEls = new Map();
+    swipes.reset();                     // 重画：开着的那行关上（这一页自己点按钮引起的重画除外，见 ui/swipe.js）
     fn();
     markMoved(tops);
     flashNow();
@@ -116,7 +156,7 @@ export function checklist(ctx, main) {
     clearTimeout(tickTimer);
     tickTimer = null;
     if (!pending.size) return;
-    if (reduced()) flush(); else tickTimer = setTimeout(flush, TICK_MS);
+    if (reduced()) flushTicks(); else tickTimer = setTimeout(flushTicks, TICK_MS);
   }
   function paintRow(id) {
     const r = rowEls.get(id), it = liveItem(ctx.state, id);
@@ -126,7 +166,7 @@ export function checklist(ctx, main) {
     r.li.classList.toggle('ticking', !was && checked);
     r.check.setAttribute('aria-checked', String(checked));
   }
-  function flush() {
+  function flushTicks() {
     clearTimeout(tickTimer);
     tickTimer = null;
     if (!pending.size) return;
@@ -159,9 +199,12 @@ export function checklist(ctx, main) {
   }
 
   return {
-    row, draw, keepFocus, flashNow, flush,
+    row, draw, keepFocus, flashNow,
+    flush() { swipes.settle(); flushTicks(); },
     flash(id) { flashId = id; },
     drop() { clearTimeout(tickTimer); tickTimer = null; pending.clear(); },
+    whenIdle: (fn) => swipes.whenIdle(fn),
+    destroy: () => swipes.destroy(),
   };
 }
 

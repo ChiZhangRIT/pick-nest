@@ -152,6 +152,23 @@ export function toggleDone(state, id, now = Date.now()) {
 }
 
 /**
+ * @typedef {'edit' | 'delete' | 'later' | 'need'} SwipeAction
+ * 一行左右滑露出哪些按钮（ui/checklist.js 照这个画，清单页、商店页、搜索、购物模式一样；按钮都要点一下才做，见 ui/swipe.js）：
+ *   往左滑（右边，从左往右）：「编辑」「删除」——每一行都有，和行右边的 ›、编辑面板里的「删除」是同一件事；
+ *   往右滑（左边）：一般清单「要买」的 → 'later'（以后再说），「以后再说」的 → 'need'（移回要买）。
+ *   食材清单没有「以后再说」，已买的点一下就放回去：这两种往右滑没有按钮（只能拉动一点点）。
+ * 不在了（删掉了、清单不在）→ 两边都没有
+ * @param {State} state @param {Item | null} it
+ * @returns {{ left: SwipeAction[], right: SwipeAction[] }}
+ */
+export function swipeActions(state, it) {
+  const list = it && !it.deleted ? liveList(state, it.listId) : null;
+  if (!it || !list) return { left: [], right: [] };
+  const left = list.kind !== 'general' ? [] : it.status === 'need' ? ['later'] : it.status === 'later' ? ['need'] : [];
+  return { left: /** @type {SwipeAction[]} */ (left), right: ['edit', 'delete'] };
+}
+
+/**
  * 这张清单里没删除的东西有几样；给了 status 只数这种状态的（「已买（N）」、删除清单时的提示）。
  * 首页的「还要买几样」用 store.js 的 needCounts，数法一样
  * @param {State} state @param {string} listId @param {ItemStatus} [status]

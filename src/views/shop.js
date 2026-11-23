@@ -7,6 +7,7 @@
 // 屏幕常亮：core/wake.js（离开时放掉；不支持、被拒绝时最下面淡淡地说一句，拿到了不说）。地址里带着 ?shop=1：重新载入还在购物模式；数据都在本机，没网照常用。
 // 清单 / 商店不在了 → 回首页 / 「商店」并提示（和普通页面一样）。
 // 自己管更新（返回 onChange）：勾掉的行挪走以后焦点给谁、刚挪过的行这一下不算，都要跨重画记着。
+// 行能左右滑（ui/checklist.js，和普通页面一样：编辑、删除、以后再说）；正在滑时数据变了，滑完再重画。
 import { h, icon } from '../ui/dom.js';
 import { t } from '../i18n.js';
 import { listName, listIcon } from '../core/store.js';
@@ -20,7 +21,8 @@ import { checklist, foldSec, storeChip, listChip, groupSections } from '../ui/ch
 // 常亮拿到了不说（少一行字；有的 iOS 版本在主屏幕 App 里给了也不管用，说了反而不对），没拿到才淡淡地说一句
 const WAKE_TEXT = { unsupported: 'shop.noWake', denied: 'shop.wakeFail' };
 
-export function render(main, params, ctx) {
+/** @param {{ swipe?: object }} [deps]  测试用：交给 ui/swipe.js 的 createSwipes 的 env */
+export function render(main, params, ctx, deps = {}) {
   const kind = params.sub === 'store' ? 'store' : 'list';
   const listId = kind === 'list' ? params.id : null;
   const storeId = kind === 'store' && params.id !== NO_STORE ? params.id : null;
@@ -38,7 +40,7 @@ export function render(main, params, ctx) {
   }
   if (!exists()) { gone(); return undefined; }
 
-  const cl = checklist(ctx, main);
+  const cl = checklist(ctx, main, deps.swipe);
   const progress = () => shopProgress(ctx.state, kind, kind === 'list' ? listId : storeId);
   // 「已买」一进来是折起来的：在店里要看的是还剩什么，勾掉的就收走（普通页面的「已买」默认展开，所以不用它的设置）。
   // 点开了只管这一次购物（不存）：重新载入、下次进来又是折起来的
@@ -129,15 +131,16 @@ export function render(main, params, ctx) {
   paintWake();
 
   return {
-    onChange: () => {
+    onChange: () => cl.whenIdle(() => {
       if (!exists()) { gone(); return; }
       cl.keepFocus(() => { drawTop(); drawBody(); });
-    },
+    }),
     cleanup: () => {
       wake.stop();
       main.removeEventListener('click', retry);
       // 离开时点过、还没挪的，马上改：点过的不能丢（清单删掉了的不改；商店删掉了照改，东西还在各自的清单上）
       if (leaving && kind === 'list') cl.drop(); else cl.flush();
+      cl.destroy();
     },
     flush: () => { if (!(leaving && kind === 'list')) cl.flush(); },       // 切到后台：同上，app 接着把它传上去
   };

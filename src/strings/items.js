@@ -1,4 +1,5 @@
-// 清单里的东西：已经在清单上的提示、编辑面板（名字、数量、单位、商店、分类、备注、状态、链接、价格、所在的清单（换一张就移过去）、删除）、错误提示。
+// 清单里的东西：已经在清单上的提示、编辑面板（名字、数量、单位、商店、分类、备注、状态、链接、价格、所在的清单（换一张就移过去）、删除）、
+// 一行左右滑露出的按钮（item.sw*：按钮上的字短，读屏念的带上名字）、错误提示。
 // item.err.* 是 core/items.js 的 validateItemPatch / editItem 返回的键。繁體（台灣）用台灣用語。
 export const STRINGS = {
   'zh-Hans': {
@@ -11,6 +12,8 @@ export const STRINGS = {
     'item.url': '商品链接', 'item.open': '打开', 'item.price': '价格',
     'item.list': '清单', 'item.listHelp': '换一张清单就移过去。', 'item.moveQ': '「{list}」上已经有「{name}」了，合并成一条？', 'item.merge': '合并', 'item.moved': '已移到「{list}」',
     'item.delete': '删除这一样', 'item.deleted': '已删除「{name}」',
+    'item.swEdit': '编辑', 'item.swDelete': '删除「{name}」', 'item.swLater': '以后再说「{name}」', 'item.swNeed': '移回要买「{name}」', 'item.swNeedLabel': '移回要买',
+    'item.toLater': '已把「{name}」移到以后再说',
     'item.discardQ': '放弃没保存的修改？', 'item.discard': '放弃',
     'item.err.name': '名字不能空着', 'item.err.nameTaken': '这张清单上已经有同名的了', 'item.err.qty': '数量要大于 0，最多 9999',
     'item.err.url': '链接要以 http:// 或 https:// 开头', 'item.err.price': '价格要是 0 或更大的数字', 'item.err.gone': '这一样已经不在了',
@@ -25,6 +28,8 @@ export const STRINGS = {
     'item.url': '商品連結', 'item.open': '開啟', 'item.price': '價格',
     'item.list': '清單', 'item.listHelp': '換一張清單就會移過去。', 'item.moveQ': '「{list}」上已經有「{name}」了，要合併成一筆嗎？', 'item.merge': '合併', 'item.moved': '已移到「{list}」',
     'item.delete': '刪除這一項', 'item.deleted': '已刪除「{name}」',
+    'item.swEdit': '編輯', 'item.swDelete': '刪除「{name}」', 'item.swLater': '以後再說「{name}」', 'item.swNeed': '移回要買「{name}」', 'item.swNeedLabel': '移回要買',
+    'item.toLater': '已把「{name}」移到以後再說',
     'item.discardQ': '捨棄沒儲存的修改？', 'item.discard': '捨棄',
     'item.err.name': '名稱不能空白', 'item.err.nameTaken': '這張清單上已經有同名的了', 'item.err.qty': '數量要大於 0，最多 9999',
     'item.err.url': '連結要以 http:// 或 https:// 開頭', 'item.err.price': '價格要是 0 或更大的數字', 'item.err.gone': '這一項已經不在了',
@@ -39,6 +44,8 @@ export const STRINGS = {
     'item.url': 'Product link', 'item.open': 'Open', 'item.price': 'Price',
     'item.list': 'List', 'item.listHelp': 'Pick another list to move it there.', 'item.moveQ': '“{list}” already has “{name}”. Merge them?', 'item.merge': 'Merge', 'item.moved': 'Moved to “{list}”',
     'item.delete': 'Delete Item', 'item.deleted': 'Deleted “{name}”',
+    'item.swEdit': 'Edit', 'item.swDelete': 'Delete “{name}”', 'item.swLater': 'Move “{name}” to Later', 'item.swNeed': 'Move Back “{name}” to To Buy', 'item.swNeedLabel': 'Move Back',
+    'item.toLater': 'Moved “{name}” to Later',
     'item.discardQ': 'Discard unsaved changes?', 'item.discard': 'Discard',
     'item.err.name': 'Name can’t be empty', 'item.err.nameTaken': 'This list already has an item with that name', 'item.err.qty': 'Quantity must be more than 0 and at most 9999',
     'item.err.url': 'Links must start with http:// or https://', 'item.err.price': 'Price must be a number, 0 or more', 'item.err.gone': 'This item no longer exists',

@@ -338,7 +338,9 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
 .item-row { position: relative; display: flex; align-items: stretch;
   /* 闪一下、滚到看得见时：让开上面吸顶的顶栏和快速添加（48 + 68，再留一点），下面让开提示条 */
   scroll-margin-top: calc(128px + env(safe-area-inset-top)); scroll-margin-bottom: 84px; }
-.item-row + .item-row::before { content: ""; position: absolute; top: 0; left: 56px; right: 0; height: .5px; background: var(--line); }
+/* 勾 + › 在 .item-in 里（左右滑时跟着手指动的那一层，ui/swipe.js）：分隔线画在它上面，跟着一起动，不划过露出来的按钮 */
+.item-in { position: relative; flex: 1; min-width: 0; display: flex; align-items: stretch; background: var(--card); }
+.item-row + .item-row > .item-in::before { content: ""; position: absolute; top: 0; left: 56px; right: 0; height: .5px; background: var(--line); }
 .item-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; min-height: 54px; padding: 10px 2px 10px 14px; border: 0; background: none; color: var(--ink); text-align: left; }
 .item-main:active { background: var(--fill); }
 .check { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--muted); color: transparent;
@@ -364,8 +366,42 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
 .item-row.done .item-name, .item-row.ticking .item-name { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--muted); }
 @keyframes tick-pop { 0% { transform: scale(.8); } 60% { transform: scale(1.12); } 100% { transform: scale(1); } }
 /* 刚加的、已经在清单上的、从已买放回来的：底色闪一下（减少动态效果时没有动画，靠提示条和读屏） */
-.item-row.flash { animation: row-flash 1.4s ease-out; }
-@keyframes row-flash { 0%, 25% { background: var(--accent-soft); } 100% { background: transparent; } }
+.item-row.flash > .item-in { animation: row-flash 1.4s ease-out; }
+@keyframes row-flash { 0%, 25% { background: var(--accent-soft); } 100% { background: var(--card); } }   /* .item-in 平时是 --card（盖住下面的按钮） */
+
+/* 一行左右滑（ui/swipe.js，照 babble 的 .swipe / .sw-*；checklist.js 的行都是）：<li.item-row.swipe> 里跟着手指动的是 .item-in（勾 + ›），按钮垫在它下面。
+   往左滑右边露出「编辑」（中性的灰）「删除」（红，最外面），往右滑左边露出「以后再说」/「移回要买」（琥珀色）。
+   babble 的卡片是一张张分开的，按钮也是单独的圆角块；这里的行在一整块分组（.group）里，按钮和 iOS 的列表一样贴着行、铺满一行高（SWIPE.gap 0），
+   分组的圆角和 overflow: hidden 把按钮的角、滑出去的部分裁掉（页面不会横着滚）。
+   一个按钮宽 84（SWIPE.action），一边几个就是几个加起来（.sw-side 的宽由 JS 给，按钮按 flex-grow 分）；字和图标贴着行那一边，拉得更开时跟着走（最多拉开这一边的 1.5 倍）。
+   按钮第一次滑开时才建，之后关着时 hidden。滑开只是露出按钮：点了按钮才做（没有「滑到底直接做」）。减少动态效果时上面的全局规则去掉了所有过渡 */
+.swipe { touch-action: pan-y pinch-zoom; }
+:root.sw-zoomed .swipe { touch-action: auto; }      /* 捏合放大着：单指横着拖是在移动放大的页面，不滑行 */
+.swipe > .item-in { z-index: 1; }
+.swipe.sw-drag > .item-in { will-change: transform; -webkit-user-select: none; user-select: none; }
+.swipe.sw-drag .item-main:active { background: none; }   /* 横着拖的时候不像按下去了 */
+.swipe.sw-anim > .item-in { transition: transform .24s cubic-bezier(.2, .8, .2, 1); }
+.swipe.sw-out { pointer-events: none; }
+.swipe.sw-gone { overflow: hidden; opacity: 0; transition: height .2s ease, opacity .2s ease; }
+.sw-side { position: absolute; top: 0; bottom: 0; z-index: 0; display: flex; width: 0; overflow: hidden; }
+.sw-side.sw-l { left: 0; }
+.sw-side.sw-r { right: 0; }
+.swipe.sw-anim > .sw-side { transition: width .24s cubic-bezier(.2, .8, .2, 1); }
+.sw-btn { flex: 1 1 0; min-width: 0; display: flex; align-items: stretch; padding: 0; border: 0; border-radius: 0; overflow: hidden;
+  font-size: 13px; font-weight: 600; letter-spacing: .02em; -webkit-touch-callout: none; }
+.sw-l .sw-btn { justify-content: flex-end; }        /* 字和图标贴着行那一边 */
+.sw-r .sw-btn { justify-content: flex-start; }
+.swipe.sw-anim .sw-btn { transition: flex-grow .24s cubic-bezier(.2, .8, .2, 1); }   /* 删除滑出去时「编辑」收起来，「删除」占满 */
+.swipe.sw-anim .sw-in { transition: opacity .24s; }
+.sw-in { flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: 84px; padding: 0 4px; line-height: 1.2; text-align: center; }
+.sw-in .ic { width: 22px; height: 22px; stroke-width: 2; }
+.sw-del { background: var(--danger); color: #fff; }
+.sw-edit { background: #6b726b; color: #fff; }       /* 编辑：中性的灰（白字对比度够 4.5:1） */
+.sw-later { background: #e6a84f; color: #2b1d08; }   /* 以后再说 / 移回要买：琥珀色、深色字（和 babble 的「收藏」同一个颜色） */
+:root[data-theme="dark"] .sw-del { color: #2a0d0a; }
+:root[data-theme="dark"] .sw-edit { background: #4a514a; color: #eef1ec; }
+:root[data-theme="dark"] .sw-later { background: #e0b06a; }
+.sw-btn:focus-visible { outline: 2px solid currentColor; outline-offset: -4px; }   /* 画在里面：外面被分组裁掉；跟字一个颜色，红、灰、琥珀上都看得见 */
 
 .lp-sec { margin-top: 16px; }
 .sec-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 4px; padding-left: 4px; }
@@ -411,7 +447,7 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
 .view-shop .item-sub { font-size: 14px; }
 .view-shop .item-qty { font-size: 18px; }
 .view-shop .item-more { width: 52px; }
-.view-shop .item-row + .item-row::before { left: 64px; }
+.view-shop .item-row + .item-row > .item-in::before { left: 64px; }
 .view-shop .group-h { font-size: 14px; }
 /* 已买：收在最下面，紧凑一点（一行、小一号，点一下照样放回去） */
 .view-shop .sec-done .item-main { min-height: 48px; gap: 12px; padding-top: 6px; padding-bottom: 6px; }
@@ -421,7 +457,7 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
 .view-shop .sec-done .item-sub { display: none; }
 .view-shop .sec-done .item-qty { font-size: 15px; }
 .view-shop .sec-done .item-more { width: 44px; }
-.view-shop .sec-done .item-row + .item-row::before { left: 54px; }
+.view-shop .sec-done .item-row + .item-row > .item-in::before { left: 54px; }
 /* 都买齐了 */
 .shop-end { margin-top: 12px; padding: 28px 20px 22px; text-align: center; }
 .shop-end-ic { display: grid; place-items: center; width: 56px; height: 56px; margin: 0 auto 10px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-text); }
