@@ -6,7 +6,8 @@
 // 确定性的规则，不用 AI：粘贴的食材拆不出来就整段当名字（宁可不认，也不认错），加进去以后还能改。
 // 第 11 步：标签（菜系、风格；tagChoices、usedTags、筛选在 searchRecipes 的 tags）、食材的默认顺序（ingredientGroup、sortIngredients、placeIngredients）、
 // 重复的食材（duplicateOf、mergeIngredient）、食材替换（ingredientNames、replacePreview、replaceDuplicates、replaceIngredient）。
-import { normName, writeRecord, deletedRecord, newId, live, homeLists, itemId, normalizeTags, TAG_GROUPS, GROCERY_CATEGORIES } from './store.js';
+// 第 12 步：成品图 photo（{ sha256, mime, w, h, bytes }）跟着 saveRecipe 存，给了才改；图片本身不在这里（core/blobStore.js、core/photo.js）。
+import { normName, writeRecord, deletedRecord, newId, live, homeLists, itemId, normalizeTags, normalizePhoto, TAG_GROUPS, GROCERY_CATEGORIES } from './store.js';
 import { own, isObj, str, safeKey } from './util.js';
 import { parseQuickAdd, readQty, isRecipeUnit, qtyLabel, QTY_MAX } from './parse.js';
 import { searchTerms } from './search.js';
@@ -581,17 +582,18 @@ export function replaceIngredient(state, from, to, now = Date.now()) {
 // ---------- 新建、改、删 ----------
 /**
  * @typedef {{ key?: unknown, name?: unknown, qty?: unknown, unit?: unknown, note?: unknown, optional?: unknown }} IngInput
- * @typedef {{ name?: unknown, servings?: unknown, steps?: unknown, source?: unknown, note?: unknown, ings?: IngInput[], tags?: unknown, ordered?: unknown, place?: unknown }} RecipeInput
- * 编辑页交来的（数量、几人份可以是输入框里的字）。tags、ordered 没给就不动原来的；place：「加一样」新写的那几行的 key（保存时按类别放好，见 placeIngredients）
+ * @typedef {{ name?: unknown, servings?: unknown, steps?: unknown, source?: unknown, note?: unknown, ings?: IngInput[], tags?: unknown, ordered?: unknown, place?: unknown, photo?: unknown }} RecipeInput
+ * 编辑页交来的（数量、几人份可以是输入框里的字）。tags、ordered、photo 没给就不动原来的（别处调 saveRecipe、旧版的草稿不会冲掉成品图）；
+ * photo: null 是删掉成品图；place：「加一样」新写的那几行的 key（保存时按类别放好，见 placeIngredients）
  */
 const blankRow = (/** @type {IngInput} */ g) => !str(g.name).trim() && !str(g.qty).trim() && !str(g.unit).trim() && !str(g.note).trim();
 
 /**
  * 检查编辑页交来的食谱：名字不能空；几人份空着（没写）或 0 < n ≤ 99；食材一行一样：全空的行扔掉，有别的没名字的报错，
  * 数量空着（适量）或 0 < q ≤ 9999。返回整理好的（clean）或错误（文案的键；食材的错误按交来的第几行：errors.ings[i]）。
- * 给了 tags / ordered 才放进 clean（没给的保存时照原来的）
+ * 给了 tags / ordered / photo 才放进 clean（没给的保存时照原来的）
  * @param {RecipeInput} input
- * @returns {{ ok: boolean, clean: { name: string, servings: number | null, steps: string, source: string, note: string, ings: IngInput[], tags?: import('./store.js').RecipeTags, ordered?: boolean },
+ * @returns {{ ok: boolean, clean: { name: string, servings: number | null, steps: string, source: string, note: string, ings: IngInput[], tags?: import('./store.js').RecipeTags, ordered?: boolean, photo?: import('./store.js').Photo | null },
  *   errors: { name?: string, servings?: string, ings?: Record<number, string> } }}
  */
 export function validateRecipe(input) {
@@ -616,6 +618,7 @@ export function validateRecipe(input) {
   const clean = { name, servings: sv !== null && Number.isFinite(sv) ? sv : null, steps: str(input.steps), source: str(input.source).trim(), note: str(input.note), ings };
   if (input.tags !== undefined) clean.tags = normalizeTags(input.tags);
   if (input.ordered !== undefined) clean.ordered = input.ordered === true;
+  if (input.photo !== undefined) clean.photo = normalizePhoto(input.photo);
   return { ok: !Object.keys(errors).length, clean, errors };
 }
 

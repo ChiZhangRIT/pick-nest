@@ -5,11 +5,13 @@
 //   从备份恢复：选一个文件 → 读、检查（core/backup.js 的 readBackup：是不是 PickNest 的、是不是新版做的）→ 先确认（说里面有几张清单、
 //     几样东西、是什么时候的）→ 逐条合并（ctx.mergeIn：较新的为准，备份里没有的不删）→ 说改了几条；开着同步马上同步一次，合并的结果传到别的设备
 //   恢复前的原始数据（恢复页修过本机数据才有，下载下来排查问题用）。「最近删除」的入口在设置首页「数据」那一组里，这一页只管备份
+//   成品图（第 12 步）不在备份里（图片在 IndexedDB 和同步仓库里，JSON 里只有记录）：备份卡片里说一句，下面写这台设备上存了几张、多大（读出来了才写）
 // 没有输入框，数据变了由 app 整页重画。
 import { h, pushFrame, download } from '../ui/dom.js';
 import { t } from '../i18n.js';
 import { backupFileName, buildBackup, readBackup, backupAge, BackupError } from '../core/backup.js';
 import { fmtFull } from '../core/dates.js';
+import { fmtBytes } from '../core/photo.js';
 
 /** 这个浏览器能不能把文件交给系统的分享面板（iPhone、iPad 上存到「文件」、隔空投送要用它；Mac 上的 Safari 也能，多一条路不碍事，不特意藏） */
 function canShareFiles() {
@@ -62,10 +64,18 @@ export function dataPage(main, params, ctx) {
     ctx.toast(changed ? t('backup.restored', { n: changed }) : t('backup.nothing'), { ms: 7000 });
   }
 
+  // 这台设备上存的成品图：读 IndexedDB 是异步的，读到了（有图）才显示这一行
+  const photoLine = h('p.small.muted.data-photos', { hidden: true });
+  if (ctx.photos) Promise.resolve(ctx.photos.usage()).then(u => {
+    if (u && u.count) { photoLine.textContent = t('data.photos', { n: u.count, size: fmtBytes(u.bytes) }); photoLine.hidden = false; }
+  }, () => {});
+
   const archive = ctx.recoveryArchive ? ctx.recoveryArchive() : null;
   page.append(...[
     sec(t('data.backupH'), h('div.card.data-card', null,
       h('p.small', null, t('backup.what')),
+      h('p.small', null, t('backup.noPhotos')),
+      photoLine,
       lastLine,
       h('div.row', null,
         h('button.btn.primary', { type: 'button', dataset: { fid: 'dt-download' }, onclick: downloadBackup }, t('backup.download')),

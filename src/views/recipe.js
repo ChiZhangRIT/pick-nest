@@ -4,6 +4,8 @@
 // 顶栏：返回（双栏右栏里 CSS 藏起来：左栏「食谱」就是上一页）、「编辑」（#/r/<id>/edit）。
 // 食谱不在了（地址错了、别的设备删掉了）→ 回「食谱」并提示。
 // 自己管更新（返回 onChange）：数据变了就地重画（焦点按 data-fid 放回）；删除时先离开再删，不然重画时会当成「不在了」再提示一次。
+// 第 12 步：有成品图的最上面一张大图（ui/photo.js：本机没有、开着同步时写「正在下载图片…」，拿不到写「这台设备上没有这张图」；
+// 这一页的 object URL 页面清理时放掉）。
 import { h, icon, backText } from '../ui/dom.js';
 import { t } from '../i18n.js';
 import { liveRecipe, recipeName, deleteRecipe, recipeTags } from '../core/recipes.js';
@@ -14,6 +16,7 @@ import { addToListSheet } from '../ui/addToList.js';
 import { dishSheet } from '../ui/dishSheet.js';
 import { todayDay } from '../core/dates.js';
 import { recipeMeta } from './recipes.js';
+import { photoPool } from '../ui/photo.js';
 
 export function render(main, params, ctx) {
   const id = params.id;
@@ -30,6 +33,7 @@ export function render(main, params, ctx) {
     h('button.back', { type: 'button', onclick: () => ctx.back('/recipes') }, icon('back'), backText(ctx, t('nav.recipes'))),
     h('div.nav-acts', null, h('button.tb-btn', { type: 'button', dataset: { fid: 'rcp-edit' }, onclick: () => ctx.navigate('/r/' + encodeURIComponent(id) + '/edit') }, icon('pencil'), t('rcp.edit'))));
   const content = h('div.rcp-page');
+  const photos = photoPool(ctx, main);
 
   // 标签（第 11 步）：菜系在前、风格在后，读屏先念「标签」
   function tagsOf(r) {
@@ -43,6 +47,7 @@ export function render(main, params, ctx) {
     const text = (cls, s) => h('div.card.rcp-prose' + cls, null, s);
     // 没写做法、备注的那两块是 null：replaceChildren 会把 null 写成字「null」（只有 h() 跳过 null），先 filter 掉
     content.replaceChildren(...[
+      r.photo ? h('div.page.rcp-hero-wrap', null, photos.view(r.photo, { cls: '.rcp-hero', hero: true, alt: t('rcp.photo.alt', { name: recipeName(r, t) }) })) : null,
       h('div.page.lp-head.rcp-head', null,
         h('h1.lp-name', { tabindex: -1, dataset: { fid: 'lp-title' } }, recipeName(r, t)),
         h('p.rcp-sub', null, recipeMeta(r)),
@@ -92,5 +97,6 @@ export function render(main, params, ctx) {
       const el = fid ? main.querySelector(`[data-fid="${fid}"]`) : null;
       if (el) el.focus({ preventScroll: true });
     },
+    cleanup: () => photos.revoke(),
   };
 }

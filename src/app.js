@@ -64,11 +64,20 @@
 //   ctx.sync.status()          { on, running, repo, at, err, offline, dirty, tokenExp }（at：上次同步成功；dirty：有没上传的修改）
 //   ctx.syncBadge({ link })    同步状态的小标签（元素；默认是去 #/settings/sync 的链接，link: false 是 <span>）。状态变了 app 自己换，页面不用管。
 //                              侧栏「设置」下面一直有一个；首页标题旁边的只在手机上画（宽屏有侧栏那个就够了）
-//   ctx.on('sync', fn)         同步状态变了（开始、结束一轮，连接、停止）
+//   ctx.on('sync', fn)         同步状态变了（开始、结束一轮，连接、停止，成品图传 / 下载的进度）
+//   ctx.sync.status() 里还有成品图的：uploading、downloading、pendingUp、pendingDown（还剩几张）、blobErr（最近一次没传上 / 没下载成，不算同步出错）
+// 成品图（第 12 步；图片本身在 IndexedDB picknest-blobs：core/blobStore.js，不在 state 里；页面上显示用 ui/photo.js 的 photoPool）
+//   ctx.photos.put(blob) → Promise<{ sha256, mime, bytes }>   存一张（同样内容只存一份）
+//   ctx.photos.local(sha) → Promise<Blob | null>              本机有没有（不下载）
+//   ctx.photos.fetch(sha) → Promise<Blob | null>              本机没有就马上从同步仓库下载（没开同步 → null；下载出错抛出来）
+//   ctx.photos.canFetch()                                       开着同步（本机没有的能下载）
+//   ctx.photos.discard(sha) → Promise<boolean>                 删掉一张从来没上传过的（编辑页里加了又放弃的）；有没有食谱在用由页面先查
+//   ctx.photos.usage() → Promise<{ count, bytes } | null>      这台设备上存了几张、多大（设置 → 备份与恢复里写）
+//   ctx.on('photo', fn(sha))   后台下载好了一张
 // 界面
 //   ctx.t(key, vars)、ctx.lang()、ctx.setLang(l)、ctx.setTheme('auto'|'light'|'dark')、ctx.theme()（当前生效的 'light'|'dark'）
 //   ctx.toast(msg, { ms, action: { label, run } })、ctx.sheet(content, opts)、ctx.confirm(opts) → Promise<boolean>（见 ui/dom.js）
-//   ctx.on(event, fn)          'change'(info) | 'sync'(status) | 'layout'(layout) | 'theme'(theme) | 'update'；返回取消函数，页面清理时自动取消
+//   ctx.on(event, fn)          'change'(info) | 'sync'(status) | 'layout'(layout) | 'theme'(theme) | 'update' | 'photo'(sha)；返回取消函数，页面清理时自动取消
 //   ctx.onChange(fn)           = ctx.on('change', fn)
 //   ctx.build                  当前版本（src/version.js，和 sw.js 的 CACHE 一样）
 //   ctx.updateReady()          新版本下载好了、等着下次打开（设置 → 关于里说一声）；ctx.on('update', fn) 下载好的时候
@@ -82,6 +91,7 @@ import { stamp, deletedRecord, restoredRecord, setSetting, normalizeRecord, newI
 import { liveList } from './core/items.js';
 import { isObj, own, safeKey, debounce } from './core/util.js';
 import { createSync, platformDevice } from './core/sync.js';
+import { blobStore } from './core/blobStore.js';
 import { t, setLang, getLang, guessLang, LANGS } from './i18n.js';
 import { h, $, icon, toast, sheet, confirmDialog, download } from './ui/dom.js';
 import { recoveryPanel } from './ui/recovery.js';
@@ -312,11 +322,15 @@ const syncer = createSync({
   editVersion: state.editVersion,
   device: deviceName,
   onStatus: () => syncChanged(),
+  // 成品图（第 12 步）：本机的图片库；后台下载好一张，页面上还空着的那张换成图（ui/photo.js 听 'photo'）
+  blobs: blobStore,
+  onBlob: (sha) => emit('photo', sha),
 });
 function syncStatus() {
-  const c = L().sync;
-  return { on: !!c, running: !!syncer.status().running, repo: c ? c.repo : null, at: (c && c.at) || null, err: (c && c.err) || null,
-    offline: !!(c && c.offline), dirty: !!(c && c.dirty), tokenExp: (c && c.tokenExp) || null };
+  const c = L().sync, b = syncer.status();
+  return { on: !!c, running: !!b.running, repo: c ? c.repo : null, at: (c && c.at) || null, err: (c && c.err) || null,
+    offline: !!(c && c.offline), dirty: !!(c && c.dirty), tokenExp: (c && c.tokenExp) || null,
+    uploading: !!b.uploading, downloading: !!b.downloading, pendingUp: b.pendingUp || 0, pendingDown: b.pendingDown || 0, blobErr: b.blobErr || null };
 }
 function renderSyncBadges() {
   const st = syncStatus(), lang = getLang();
@@ -419,6 +433,15 @@ const ctx = {
   updateReady: () => updateReady,
   sync: syncApi,
   syncBadge: (opts) => syncBadge(syncStatus(), getLang(), opts),
+  photos: {
+    // 存一张（编辑页刚压缩好的）：顺手请浏览器把存储标成持久的——图片比文字占地方，空间紧张时最先被清的就是不持久的网站数据
+    put: (blob) => { askPersist(); return blobStore.putBlob(blob); },
+    local: (sha) => blobStore.getBlob(sha).then(r => (r && r.blob) || null, () => null),
+    fetch: (sha) => (L().sync && !state.storageIssue() ? syncer.getBlob(sha) : Promise.resolve(null)),
+    canFetch: () => !!L().sync && !state.storageIssue(),
+    discard: (sha) => blobStore.deleteBlob(sha).catch(() => false),
+    usage: () => blobStore.usage().catch(() => null),
+  },
 };
 
 // ---------- 外壳 ----------

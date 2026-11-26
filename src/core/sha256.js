@@ -1,0 +1,114 @@
+// @ts-check
+// 内容哈希（sha256 十六进制，从 babble 的 core/sha256.js 移植，第 12 步给成品图用）：图片按它存本机（IndexedDB picknest-blobs）、
+// 传云端（images/<sha256>.jpg），同一张图不会存两份、传两次；下载下来的再算一遍，对不上就不收（传坏了、文件被改过）。
+// 有 crypto.subtle（https、localhost、Node ≥ 20）就用它；没有（比如用局域网 http 地址打开）退回下面的纯 JS 实现，结果一样。
+
+export const HASH_CHUNK_BYTES = 1024 * 1024;
+const BLOB_HASH_THRESHOLD = 4 * HASH_CHUNK_BYTES;
+
+/**
+ * @param {Blob | ArrayBuffer | ArrayBufferView | { size: number, slice(a: number, b: number): Blob }} input
+ * @returns {Promise<string>} 64 位小写十六进制
+ */
+export async function sha256Hex(input) {
+  const big = /** @type {any} */ (input);
+  if (big && typeof big.slice === 'function' && Number.isFinite(big.size) && big.size > BLOB_HASH_THRESHOLD) {
+    const state = sha256State();
+    for (let off = 0; off < big.size; off += HASH_CHUNK_BYTES) {
+      const bytes = new Uint8Array(await big.slice(off, off + HASH_CHUNK_BYTES).arrayBuffer());
+      state.update(bytes);
+      // 大文件分块计算，避免整份读进内存，也给取消、导航等事件留机会
+      if (off + bytes.length < big.size) await new Promise(resolve => {
+        if (typeof MessageChannel !== 'function') { setTimeout(resolve, 0); return; }
+        const ch = new MessageChannel();
+        ch.port1.onmessage = () => { ch.port1.close(); ch.port2.close(); resolve(undefined); };
+        ch.port2.postMessage(0);
+      });
+    }
+    return state.digest();
+  }
+  const bytes = await bytesOf(input);
+  const subtle = globalThis.crypto && globalThis.crypto.subtle;
+  if (subtle) {
+    try { return hex(new Uint8Array(await subtle.digest('SHA-256', /** @type {BufferSource} */ (bytes)))); }
+    catch (e) { /* 个别环境 subtle 存在但不能用：走 JS 版 */ }
+  }
+  return sha256Js(bytes);
+}
+
+/** @param {any} input @returns {Promise<Uint8Array>} */
+async function bytesOf(input) {
+  if (input instanceof ArrayBuffer) return new Uint8Array(input);
+  if (ArrayBuffer.isView(input)) return new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+  if (input && typeof input.arrayBuffer === 'function') return new Uint8Array(await input.arrayBuffer());
+  throw new TypeError('sha256Hex: 需要 Blob / ArrayBuffer / TypedArray');
+}
+/** @param {Uint8Array} u8 */
+const hex = (u8) => Array.from(u8, b => b.toString(16).padStart(2, '0')).join('');
+
+// ---------- 纯 JS 版（FIPS 180-4） ----------
+const K = new Uint32Array([
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+]);
+/** @param {number} x @param {number} n */
+const ror = (x, n) => (x >>> n) | (x << (32 - n));
+
+/** 同步算（导出给测试用） @param {Uint8Array} bytes @returns {string} 64 位小写十六进制 */
+export function sha256Js(bytes) {
+  const state = sha256State();
+  state.update(bytes);
+  return state.digest();
+}
+
+// 增量 SHA-256：最多保留一个 64 字节尾块，Blob 调用方一次只提供 1 MB
+function sha256State() {
+  const H = new Uint32Array([0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]);
+  const W = new Uint32Array(64), tail = new Uint8Array(64), tailView = new DataView(tail.buffer);
+  let used = 0, length = 0;
+  /** @param {DataView} dv @param {number} off */
+  function block(dv, off) {
+    for (let i = 0; i < 16; i++) W[i] = dv.getUint32(off + i * 4);
+    for (let i = 16; i < 64; i++) {
+      const a = W[i - 15], b = W[i - 2];
+      W[i] = W[i - 16] + (ror(a, 7) ^ ror(a, 18) ^ (a >>> 3)) + W[i - 7] + (ror(b, 17) ^ ror(b, 19) ^ (b >>> 10));
+    }
+    let a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];
+    for (let i = 0; i < 64; i++) {
+      const t1 = (h + (ror(e, 6) ^ ror(e, 11) ^ ror(e, 25)) + ((e & f) ^ (~e & g)) + K[i] + W[i]) | 0;
+      const t2 = ((ror(a, 2) ^ ror(a, 13) ^ ror(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) | 0;
+      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;
+    }
+    H[0] += a; H[1] += b; H[2] += c; H[3] += d; H[4] += e; H[5] += f; H[6] += g; H[7] += h;
+  }
+  /** @param {Uint8Array} bytes */
+  function update(bytes) {
+    length += bytes.byteLength;
+    let off = 0;
+    if (used) {
+      const n = Math.min(64 - used, bytes.length);
+      tail.set(bytes.subarray(0, n), used); used += n; off += n;
+      if (used === 64) { block(tailView, 0); used = 0; }
+    }
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    for (; off + 64 <= bytes.length; off += 64) block(dv, off);
+    if (off < bytes.length) { tail.set(bytes.subarray(off), used); used += bytes.length - off; }
+  }
+  function digest() {
+    const end = new Uint8Array(used < 56 ? 64 : 128), dv = new DataView(end.buffer);
+    end.set(tail.subarray(0, used)); end[used] = 0x80;
+    dv.setUint32(end.length - 8, Math.floor(length / 0x20000000));
+    dv.setUint32(end.length - 4, (length * 8) >>> 0);
+    for (let off = 0; off < end.length; off += 64) block(dv, off);
+    const out = new Uint8Array(32), ov = new DataView(out.buffer);
+    for (let i = 0; i < 8; i++) ov.setUint32(i * 4, H[i]);
+    return hex(out);
+  }
+  return { update, digest };
+}

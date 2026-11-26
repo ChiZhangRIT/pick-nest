@@ -15,13 +15,19 @@
 //     「按类别重新排」整张排一次、去掉 ordered
 //   - 重复的食材：名字写好（change）时这道菜里已经有同一样（duplicateOf）→ 这一行下面提醒「这道菜里已经有「生抽」了」[合并] [仍然加一行]；
 //     提醒是就地插进这一行的，不重画（不然刚点的下一个输入框就没了）
+// 第 12 步：成品图（几人份下面）：「添加成品图」打开系统的选图（<input type=file accept=image/*>：iPhone 上能拍照、从相册选）→
+//   压缩成长边 1600 px 的 JPEG（ui/photo.js 的 encodePhoto）→ 存进本机的图片库（ctx.photos.put，按 sha256）→ 工作副本的 photo 换成它；
+//   有图时「换一张」「删除图片」（删了 10 秒内能撤销）。和别的修改一样点「保存」才算。这次加的图保存、取消、放弃时还没有食谱用着
+//  （也不在别的草稿里）的从本机删掉（只删从来没上传过的）：不然换几次图本机就多几张没用的
 import { h, icon, keepUnderFinger } from '../ui/dom.js';
 import { t } from '../i18n.js';
 import { field, showErr, onEnter } from '../ui/form.js';
 import { liveRecipe, validateRecipe, saveRecipe, sortIngredients, placeIngredients, duplicateOf, mergeIngredient, tagChoices, addTag, removeTag, hasTag,
   RECIPE_TAG_PRESETS } from '../core/recipes.js';
 import { formatQty, readQty, stepQty } from '../core/parse.js';
-import { canon, newId, normName, hash64, normalizeTags, TAG_GROUPS } from '../core/store.js';
+import { canon, newId, normName, hash64, normalizeTags, normalizePhoto, TAG_GROUPS } from '../core/store.js';
+import { photoInUse } from '../core/photo.js';
+import { photoPool, encodePhoto, PhotoError } from '../ui/photo.js';
 import { collatorFor } from '../core/group.js';
 import { isObj } from '../core/util.js';
 import { pasteSheet } from '../ui/pasteIngredients.js';
@@ -35,11 +41,26 @@ export function workingCopy(r) {
   return {
     name: r ? r.name : '', servings: r && r.servings ? formatQty(r.servings) : '', steps: r ? r.steps : '', source: r ? r.source : '', note: r ? r.note : '',
     ings: r ? r.ings.map(g => ({ key: g.key, name: g.name, qty: formatQty(g.qty), unit: g.unit, note: g.note, optional: g.optional })) : [],
-    tags: normalizeTags(r && r.tags), ordered: !!(r && r.ordered),
+    tags: normalizeTags(r && r.tags), ordered: !!(r && r.ordered), photo: normalizePhoto(r && r.photo),
   };
 }
 
-/** @param {{ storage?: any }} [deps]  测试用：假的 localStorage */
+/** 本机另存的编辑食谱草稿里用着的图（sha）：放弃这一页时不能删掉别的草稿里刚加的那张 @param {any} storage */
+function draftPhotos(storage) {
+  const out = new Set();
+  try {
+    for (let i = 0; storage && i < storage.length; i++) {
+      const k = storage.key(i);
+      if (!k || !k.startsWith(DRAFT_PREFIX)) continue;
+      const d = JSON.parse(storage.getItem(k) || 'null');
+      const p = d && d.w && normalizePhoto(d.w.photo);
+      if (p) out.add(p.sha256);
+    }
+  } catch (e) { /* 读不出来的草稿不算 */ }
+  return out;
+}
+
+/** @param {{ storage?: any, encodePhoto?: typeof encodePhoto }} [deps]  测试用：假的 localStorage、假的图片压缩（不用浏览器解码） */
 export function render(main, params, ctx, deps = {}) {
   const isNew = params.sub === 'new';
   const id = isNew ? null : params.id;
@@ -70,13 +91,14 @@ export function render(main, params, ctx, deps = {}) {
   // 旧版存的草稿没有标签、ordered：用这道食谱现在的；坏了的整理一下
   w.tags = normalizeTags(draft && draft.tags !== undefined ? draft.tags : w.tags);
   w.ordered = w.ordered === true;
+  w.photo = normalizePhoto(w.photo);       // 旧版存的草稿没有 photo：上面已经是这道食谱现在的
   // 「加一样」写的、还没按类别放好的那几行（保存时放：saveRecipe 的 place）；草稿里也记着，接着改时照样放
   const fresh = new Set(saved && Array.isArray(saved.place) ? saved.place.filter(k => typeof k === 'string') : []);
   if (draft && canon(w) === base) dropDraft();
   const dirty = () => canon(w) !== base;
   let done = false;                   // 存好了 / 放弃了：离开时不再问、不再另存
   // 在别处换页、点了「放弃」：删掉另存的草稿（不然下次打开又回来了）
-  ctx.guard(() => !done && dirty(), () => { done = true; dropDraft(); });
+  ctx.guard(() => !done && dirty(), () => { done = true; dropDraft(); sweep(); });
 
   // ---------- 顶栏 ----------
   const navbar = h('header.navbar.lp-nav.push-nav', null,
@@ -99,6 +121,94 @@ export function render(main, params, ctx, deps = {}) {
     h('button.icon-btn.step-btn', { type: 'button', 'aria-label': t('rcp.servingsDec'), onclick: () => svStep(-1) }, icon('minus')),
     svIn,
     h('button.icon-btn.step-btn', { type: 'button', 'aria-label': t('rcp.servingsInc'), onclick: () => svStep(1) }, icon('plus'))), help: t('rcp.servingsHelp') });
+
+  // ---------- 成品图 ----------
+  const encode = deps.encodePhoto || encodePhoto;
+  const photos = photoPool(ctx, main);
+  const added = new Set();            // 这次编辑里加进本机的图（sha）：保存、放弃时没有食谱用着的删掉
+  // 接着上次的草稿：草稿里换上的那张也是这个编辑页加的（放弃草稿时一样要删，不然一直留在本机）
+  if (draft && w.photo && !(src && src.photo && src.photo.sha256 === w.photo.sha256)) added.add(w.photo.sha256);
+  let photoBusy = false, photoErr = '';
+  /** @type {Promise<boolean> | null} */
+  let photoJob = null;                // 正在处理的那张（保存时先等它：不然存下的是没有这张图的食谱，处理好的图也被当成没用的删掉）
+  const photoIn = h('input', { type: 'file', accept: 'image/*', hidden: true, dataset: { fid: 're-photo-file' },
+    onchange: (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) addPhoto(f); } });
+  // 一组按钮（「换一张」「删除图片」）：role=group 读屏才把「成品图」这个标题和按钮一起念
+  const photoBox = h('div.re-photo', { role: 'group' });
+  const photoRow = field(t('rcp.photo'), photoBox, { help: t('rcp.photo.help') });
+  function drawPhoto() {
+    const p = w.photo;
+    const status = photoBusy ? h('p.small.muted.re-photo-busy', { role: 'status' }, t('rcp.photo.busy')) : null;
+    const err = photoErr ? h('p.f-err', { role: 'alert' }, t(photoErr)) : null;
+    if (!p) {
+      photoBox.replaceChildren(...[
+        h('button.btn.re-photo-add', { type: 'button', disabled: photoBusy, dataset: { fid: 're-photo-add' }, onclick: () => photoIn.click() }, icon('photo'), t('rcp.photo.add')),
+        status, err, photoIn].filter(Boolean));
+      return;
+    }
+    photoBox.replaceChildren(...[
+      h('div.re-photo-has', null,
+        photos.view(p, { cls: '.re-photo-thumb', alt: t('rcp.photo.alt', { name: w.name.trim() || t('rcp.untitled') }) }),
+        h('div.re-photo-acts', null,
+          h('button.btn', { type: 'button', disabled: photoBusy, dataset: { fid: 're-photo-replace' }, onclick: () => photoIn.click() }, t('rcp.photo.replace')),
+          h('button.btn.danger', { type: 'button', disabled: photoBusy, dataset: { fid: 're-photo-remove' }, onclick: () => removePhoto() }, t('rcp.photo.remove')))),
+      status, err, photoIn].filter(Boolean));
+  }
+  /** 选好了一张：压缩、存进本机、换上（还没保存）；压缩不了、存不了 → 这一栏下面说一句，原来的图不动。→ 换上了没有 */
+  function addPhoto(file) {
+    if (photoBusy) return photoJob;
+    photoJob = processPhoto(file);
+    return photoJob;
+  }
+  async function processPhoto(file) {
+    photoBusy = true; photoErr = '';
+    drawPhoto();
+    let put = null, size = null;
+    try {
+      if (!ctx.photos) throw new Error('no-store');
+      const out = await encode(file);
+      size = out;
+      try { put = await ctx.photos.put(out.blob); } catch (e) { throw new Error('store'); }
+    } catch (e) {
+      photoErr = e instanceof PhotoError ? 'rcp.photo.err.' + e.code : 'rcp.photo.err.store';
+    }
+    photoBusy = false;
+    if (unmounted || done) { if (put) sweep([put.sha256]); return false; }
+    if (put && size) {
+      added.add(put.sha256);
+      w.photo = normalizePhoto({ sha256: put.sha256, mime: put.mime, w: size.w, h: size.h, bytes: put.bytes });
+      touched();
+    }
+    drawPhoto();
+    // 点了保存在等它的话焦点不动（马上就离开这一页了；没处理成的话 save 自己把焦点给这一栏）
+    if (!saving) focusFid(w.photo ? 're-photo-replace' : 're-photo-add');
+    return !!(put && size);
+  }
+  function removePhoto() {
+    const prev = w.photo;
+    if (!prev) return;
+    w.photo = null; photoErr = '';
+    touched();
+    drawPhoto();
+    focusFid('re-photo-add');
+    ctx.toast(t('rcp.photo.removed'), { ms: 10000, action: { label: t('common.undo'), run: () => {
+      if (done || unmounted || w.photo) return;
+      w.photo = prev;
+      touched();
+      drawPhoto();
+      focusFid('re-photo-replace');
+    } } });
+  }
+  /** 这次加的图里，没有食谱用着、也不在哪份草稿里的，从本机删掉（ctx.photos.discard 只删从来没上传过的） */
+  function sweep(list = [...added]) {
+    if (!ctx.photos) return;
+    const inDrafts = draftPhotos(storage);
+    for (const sha of list) {
+      if ((w.photo && w.photo.sha256 === sha && !done) || photoInUse(ctx.state, sha) || inDrafts.has(sha)) continue;
+      added.delete(sha);
+      Promise.resolve(ctx.photos.discard(sha)).catch(() => {});
+    }
+  }
 
   // ---------- 食材 ----------
   const rowsEl = h('ul.re-rows');
@@ -305,12 +415,14 @@ export function render(main, params, ctx, deps = {}) {
     banner,
     nameRow,
     svRow,
+    photoRow,
     h('div.f-row.re-ings', null, h('div.re-ings-head', null, h('h2.group-h', null, t('rcp.ings')), sortBtn), emptyNote, rowsEl, h('div.re-ing-acts', null, addBtn, pasteBtn)),
     tagsRow,
     field(t('rcp.steps'), stepsIn),
     field(t('rcp.source'), sourceIn),
     field(t('rcp.note'), noteIn)));
   drawRows();
+  drawPhoto();
   for (const g of TAG_GROUPS) drawTags(g);
   if (isNew && !draft) nameIn.focus({ preventScroll: true });
 
@@ -318,6 +430,14 @@ export function render(main, params, ctx, deps = {}) {
   let saving = false;
   async function save() {
     if (saving) return;
+    if (photoBusy && photoJob) {
+      // 「正在处理图片…」时点了保存（⌘S）：等这张处理好了一起存；没处理成（打不开、存不了）就留在这一页，错误写在这一栏下面
+      saving = true;
+      const ok = await photoJob.catch(() => false);
+      saving = false;
+      if (unmounted || done) return;
+      if (!ok) { focusFid(w.photo ? 're-photo-replace' : 're-photo-add'); return; }
+    }
     const v = validateRecipe(w);
     showErr(nameRow, v.errors.name);
     showErr(svRow, v.errors.servings);
@@ -346,6 +466,7 @@ export function render(main, params, ctx, deps = {}) {
     if (!res.ok) { if (res.errors.recipe) ctx.toast(t(res.errors.recipe)); return; }
     done = true;
     dropDraft();
+    sweep();                            // 换掉了的、加了又删掉的（存好的那张有食谱用着，不删）
     ctx.guard(null);
     if (!target) ctx.navigate('/r/' + encodeURIComponent(res.id), { replace: true });
     else ctx.back(backTo);
@@ -354,6 +475,7 @@ export function render(main, params, ctx, deps = {}) {
     if (dirty() && !done && !(await ctx.confirm({ message: t('item.discardQ'), cancelLabel: t('common.keepEditing'), confirmLabel: t('item.discard'), danger: true }))) return;
     done = true;
     dropDraft();
+    sweep();
     ctx.guard(null);
     ctx.back(backTo);
   }
@@ -361,10 +483,13 @@ export function render(main, params, ctx, deps = {}) {
   function discard() {
     dropDraft();
     Object.assign(w, workingCopy(src && liveRecipe(ctx.state, id)));
+    sweep();                            // 草稿里加的图（这道食谱没在用的）
     base = canon(w);
     nameIn.value = w.name; svIn.value = w.servings; stepsIn.value = w.steps; sourceIn.value = w.source; noteIn.value = w.note;
     rowErr.clear(); prompts.clear(); dismissed.clear(); fresh.clear();
+    photoErr = '';
     drawRows();
+    drawPhoto();
     for (const g of TAG_GROUPS) drawTags(g);
     if (banner) banner.remove();
     nameIn.focus({ preventScroll: true });
@@ -392,6 +517,7 @@ export function render(main, params, ctx, deps = {}) {
       main.removeEventListener('keydown', onKey);
       window.removeEventListener('pagehide', onPageHide);
       if (!done) persist(); else dropDraft();
+      photos.revoke();
     },
   };
 }

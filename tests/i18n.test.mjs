@@ -6,7 +6,7 @@ import { t, setLang, getLang, guessLang, has, listJoin, LANGS, LANG_LABELS, STRI
 import { SYS_LISTS, SYS_CATEGORIES } from '../src/core/store.js';
 
 const fields = s => [...s.matchAll(/\{(\w+)\}/g)].map(x => x[1]).sort();
-const SAMPLE = { n: 3, v: 'picknest-v1', lists: 2, items: 5, name: '木工' };
+const SAMPLE = { n: 3, v: 'picknest-v1', lists: 2, items: 5, name: '木工', size: '1.2 MB' };
 
 test('每个文案文件：三种语言的键完全一样', () => {
   for (const [name, table] of Object.entries(TABLES)) {

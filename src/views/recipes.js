@@ -8,6 +8,7 @@
 // 按钮在链接外面，不能套在 <a> 里）；搜索框下面按标签筛选（core/recipes.js 的 usedTags 列用到的、searchRecipes 的 tags 筛：
 // 一组里任一、两组都要；选的也记在这次打开期间）；左上角「食材替换」（ui/replaceIngredient.js）。
 // 数据变了先比一下要画的东西（卡片、筛选）有没有变，没变不重画：加到清单、标常备品这种和食谱无关的修改，不把焦点从刚点的购物车上弄丢。
+// 第 12 步：有成品图的卡片左边一张圆角小图（ui/photo.js：这一页的 object URL 页面清理时放掉；本机没有、在下载的是淡淡的占位）。
 import { h, icon, linkTo } from '../ui/dom.js';
 import { t, listJoin } from '../i18n.js';
 import { searchRecipes, recipeName, recipeTags, usedTags } from '../core/recipes.js';
@@ -17,6 +18,7 @@ import { formatQty } from '../core/parse.js';
 import { composing, isNewKey, isTextField } from '../ui/form.js';
 import { addToListSheet } from '../ui/addToList.js';
 import { replaceSheet } from '../ui/replaceIngredient.js';
+import { photoPool } from '../ui/photo.js';
 
 /** q：搜索词；tags：按标签筛选选了的（组 → normName 的集合） */
 const ui = { q: '', tags: { cuisine: new Set(), style: new Set() } };
@@ -37,6 +39,7 @@ export function render(main, params, ctx) {
     } });
   const found = h('p.sr-only', { role: 'status' });          // 读屏听得到「找到 3 道食谱」
   const body = h('div.page.rcp-body');
+  const photos = photoPool(ctx, main);
 
   function changed() {
     if (input.value === ui.q) return;
@@ -59,7 +62,7 @@ export function render(main, params, ctx) {
     const hits = searchRecipes(ctx.state, ui.q, collator, { tags: filtering ? sel : null });
     const q = ui.q.trim();
     // 要画的东西没变（只是清单、计划、常备品变了）：不重画，焦点、读屏的位置都不动
-    const sig = JSON.stringify([all, q, sel, used, params.selected || null, ctx.lang(), hits.map(({ recipe: r, ings }) => [r.id, r.name, r.servings, r.ings.length, recipeTags(r), ings])]);
+    const sig = JSON.stringify([all, q, sel, used, params.selected || null, ctx.lang(), hits.map(({ recipe: r, ings }) => [r.id, r.name, r.servings, r.ings.length, recipeTags(r), ings, r.photo && r.photo.sha256])]);
     if (sig === lastSig) return;
     lastSig = sig;
     replaceBtn.hidden = !all;
@@ -80,6 +83,7 @@ export function render(main, params, ctx) {
       const name = recipeName(r, t), tg = recipeTags(r), tags = [...tg.cuisine, ...tg.style];
       return h('li.rcp-li' + (sel_(r) ? '.sel' : ''), null,
         h('a.group-row.rcp-row' + (sel_(r) ? '.sel' : ''), { href: '#/r/' + encodeURIComponent(r.id), dataset: { id: r.id, fid: 'rcp-open-' + r.id }, 'aria-current': sel_(r) ? 'page' : null },
+          r.photo ? photos.view(r.photo, { cls: '.rcp-thumb' }) : null,
           h('span.rcp-text', null,
             h('span.rcp-name', null, name),
             h('span.rcp-meta', null, ings.length ? t('rcp.uses', { names: listJoin(ings) }) : recipeMeta(r)),
@@ -141,6 +145,6 @@ export function render(main, params, ctx) {
       // 重画了（食谱真的变了）：焦点放回原来那个控件（卡片、购物车、筛选的标签）
       if (fid && !main.contains(a)) { const el = main.querySelector(`[data-fid="${fid}"]`); if (el) el.focus({ preventScroll: true }); }
     },
-    cleanup: () => document.removeEventListener('keydown', onShortcut),
+    cleanup: () => { document.removeEventListener('keydown', onShortcut); photos.revoke(); },
   };
 }

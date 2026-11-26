@@ -53,9 +53,13 @@ import { toSimplified } from './hanzi.js';
  * 食谱的标签（第 11 步）：菜系、风格两组，存的是写出来的字（预设的也是），同一组里 normName 一样的只有一个
  */
 /**
- * @typedef {Base & { name: string, servings: number | null, steps: string, source: string, note: string, ings: Ingredient[], tags: RecipeTags, ordered?: true }} Recipe
+ * @typedef {{ sha256: string, mime: string, w: number | null, h: number | null, bytes: number | null }} Photo
+ * 食谱的成品图（第 12 步）：sha256 是图片内容的哈希（小写 64 位十六进制），图片本身在本机的 IndexedDB（core/blobStore.js）和同步仓库的 images/ 里
+ */
+/**
+ * @typedef {Base & { name: string, servings: number | null, steps: string, source: string, note: string, ings: Ingredient[], tags: RecipeTags, photo: Photo | null, ordered?: true }} Recipe
  * 食谱（第二版）。servings：几人份，null = 没写（加到清单时不能按人数换算）；steps 做法、source 来源（链接或一句话）、note 备注；
- * ordered：食材手动 ↑↓ 排过（第 11 步：新加的只放进它那一组的最后，不再整张按类别排），没排过的记录上没有这个键
+ * ordered：食材手动 ↑↓ 排过（第 11 步：新加的只放进它那一组的最后，不再整张按类别排），没排过的记录上没有这个键；photo：成品图（第 12 步），没有是 null
  */
 /** @typedef {'breakfast' | 'lunch' | 'dinner' | 'snack'} Meal */
 /**
@@ -257,6 +261,7 @@ export function normalizeRecipe(rec, id = rec && rec.id) {
   const r = base(rec, /** @type {string} */ (id));
   r.name = str(r.name);
   r.tags = normalizeTags(r.tags);
+  r.photo = normalizePhoto(r.photo);
   if (r.ordered !== true) delete r.ordered;          // 只有 true 有意思；没排过的记录上不放这个键（以前的食谱和原来一模一样）
   const sv = numOrNull(r.servings);
   r.servings = sv != null && sv > 0 ? sv : null;
@@ -278,6 +283,21 @@ export function normalizeRecipe(rec, id = rec && rec.id) {
     return { ...x, key, name: str(x.name), qty: q != null && q > 0 ? q : null, unit: str(x.unit), note: str(x.note), optional: x.optional === true };
   });
   return /** @type {Recipe} */ (r);
+}
+
+/** 正整数（像素、字节数）；不是 → null @param {unknown} v */
+const posInt = v => { const n = numOrNull(v); return n != null && n > 0 ? Math.round(n) : null; };
+/**
+ * 整理成品图（第 12 步）：不是对象、sha256 不是 64 位十六进制的 → null（指不到哪张图，留着只会一直显示「没有这张图」）；
+ * sha256 转小写（文件名、本机的键都是小写）；mime 去掉参数、转小写，没写的是 image/jpeg；宽高、字节数不是正整数的 → null；别的字段（新版加的）原样留着
+ * @param {unknown} p @returns {Photo | null}
+ */
+export function normalizePhoto(p) {
+  if (!isObj(p) || typeof p.sha256 !== 'string') return null;
+  const sha256 = p.sha256.trim().toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(sha256)) return null;
+  const mime = str(p.mime).toLowerCase().split(';')[0].trim() || 'image/jpeg';
+  return /** @type {Photo} */ ({ ...copySafe(p), sha256, mime, w: posInt(p.w), h: posInt(p.h), bytes: posInt(p.bytes) });
 }
 
 /** 食谱标签的两组（第 11 步） */

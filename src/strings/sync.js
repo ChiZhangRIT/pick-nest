@@ -61,6 +61,12 @@ export const STRINGS = {
     'syncErr.badRepo': '仓库要写成「用户名/仓库名」，比如 yourname/pick-nest-data。',
     'syncErr.off': '这台设备还没开同步。', 'syncErr.nofile': '云端还没有数据（仓库里没有 {file}）。',
     'syncErr.unknown': '同步出错了。',
+    'syncErr.blobUp': '有的成品图这次没传上去，下次同步会再试（文字照常同步了）。',
+    'syncErr.blobDown': '有的成品图这次没下载下来，稍后会再试。',
+    'syncErr.blobFull': '这台设备的存储空间满了，存不下成品图：别的设备的图先不下载（打开的那道照样能看）。空出地方以后会自己接着下。',
+    'syncErr.shaMismatch': '有一张成品图和记录对不上（文件可能坏了），没有用它。',
+    'sync.imgUp': '还有 {n} 张成品图没上传。', 'sync.imgDown': '还有 {n} 张成品图在下载。',
+    'sync.note5': '食谱的成品图传到仓库的 images/ 里，按内容命名、只加不改：换掉、删掉的图在仓库和提交历史里还会一直留着。',
   },
 
   'zh-Hant-TW': {
@@ -120,6 +126,12 @@ export const STRINGS = {
     'syncErr.badRepo': '儲存庫要寫成「使用者名稱/儲存庫名稱」，例如 yourname/pick-nest-data。',
     'syncErr.off': '這臺裝置還沒開同步。', 'syncErr.nofile': '雲端還沒有資料（儲存庫裡沒有 {file}）。',
     'syncErr.unknown': '同步出錯了。',
+    'syncErr.blobUp': '有些成品照片這次沒上傳成功，下次同步會再試（文字照常同步了）。',
+    'syncErr.blobDown': '有些成品照片這次沒下載成功，稍後會再試。',
+    'syncErr.blobFull': '這臺裝置的儲存空間滿了，存不下成品照片：其他裝置的照片先不下載（打開的那道照樣能看）。空出空間後會自動繼續下載。',
+    'syncErr.shaMismatch': '有一張成品照片和紀錄對不上（檔案可能壞了），沒有使用它。',
+    'sync.imgUp': '還有 {n} 張成品照片沒上傳。', 'sync.imgDown': '還有 {n} 張成品照片在下載。',
+    'sync.note5': '食譜的成品照片會上傳到儲存庫的 images/ 裡，依內容命名、只加不改：換掉、刪掉的照片在儲存庫和提交紀錄裡還會一直留著。',
   },
 
   en: {
@@ -179,5 +191,11 @@ export const STRINGS = {
     'syncErr.badRepo': 'Write the repository as “username/repository”, for example yourname/pick-nest-data.',
     'syncErr.off': "Sync isn't on for this device.", 'syncErr.nofile': 'There is no data in the cloud yet ({file} is not in the repository).',
     'syncErr.unknown': 'Sync failed.',
+    'syncErr.blobUp': 'Some recipe photos didn’t upload this time. They’ll be retried on the next sync (everything else synced).',
+    'syncErr.blobDown': 'Some recipe photos didn’t download this time. Will retry shortly.',
+    'syncErr.blobFull': 'This device is out of storage, so recipe photos from your other devices aren’t being downloaded (the recipe you open still shows its photo). They’ll download once there’s space.',
+    'syncErr.shaMismatch': 'A recipe photo didn’t match its record (the file may be damaged), so it wasn’t used.',
+    'sync.imgUp': v => `${v.n} recipe ${Number(v.n) === 1 ? 'photo' : 'photos'} still to upload.`, 'sync.imgDown': v => `${v.n} recipe ${Number(v.n) === 1 ? 'photo' : 'photos'} still downloading.`,
+    'sync.note5': 'Recipe photos are uploaded to images/ in the repository, named by their content and never changed: photos you replace or remove stay in the repository and its commit history.',
   },
 };

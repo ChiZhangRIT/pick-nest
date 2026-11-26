@@ -7,6 +7,7 @@
 // 看到哪一周、选的哪一天记在这次打开 App 期间（ui，不放地址里）：点进一道食谱再返回，还是刚才那一周。
 // 自己管更新（返回 onChange）：数据变了（同步来的、撤销、面板里存的）只重画下面的日子，焦点按 data-fid 放回去。
 // ⌘N 加一道菜。不管哪种布局都是一栏（双栏只给清单、商店、食谱三边）。日子是本地日期（core/dates.js：按日历算，夏令时不差一天）。
+// 第 12 步：连着的食谱有成品图时，这一行右边一张小图（ui/photo.js；这一页的 object URL 页面清理时放掉）。
 import { h, icon } from '../ui/dom.js';
 import { t } from '../i18n.js';
 import { entriesOn, dayCounts, dishName, planView, MEALS } from '../core/plan.js';
@@ -14,6 +15,7 @@ import { liveRecipe } from '../core/recipes.js';
 import { formatQty } from '../core/parse.js';
 import { todayDay, addDays, weekStart, weekDays, addMonths, monthStart, monthGrid, weekdayName, weekdayLetters, fmtPlanDay, fmtDayRange, fmtMonth } from '../core/dates.js';
 import { dishSheet } from '../ui/dishSheet.js';
+import { photoPool } from '../ui/photo.js';
 import { planListSheet } from '../ui/planList.js';
 import { isNewKey, isTextField } from '../ui/form.js';
 
@@ -43,6 +45,7 @@ export function render(main, params, ctx) {
   const title = h('h2.plan-range', { 'aria-live': 'polite' });
   const todayBtn = h('button.btn.small.plan-today', { type: 'button', dataset: { fid: 'plan-today' }, onclick: () => goToday() }, t('plan.today'));
   const body = h('div.page.plan-body');
+  const photos = photoPool(ctx, main);
 
   function setView(v) {
     if (view() === v) return;
@@ -97,7 +100,9 @@ export function render(main, params, ctx) {
         // 同一顿的第二道起不再写「晚饭」（看着是一组），读屏照样念
         rows.push(h('li', null, h('button.group-row.go.pd-dish', { type: 'button', dataset: { fid: 'pd-' + e.id, id: e.id }, onclick: () => dishSheet(ctx, { id: e.id, onSaved: follow }) },
           i === 0 ? h('span.pd-meal', null, t('plan.meal.' + m)) : h('span.pd-meal.cont', null, h('span.sr-only', null, t('plan.meal.' + m))),
-          h('span.pd-text', null, h('span.pd-name' + (r ? '' : '.plain'), null, name), sub ? h('span.pd-sub', null, sub) : null))));
+          h('span.pd-text', null, h('span.pd-name' + (r ? '' : '.plain'), null, name), sub ? h('span.pd-sub', null, sub) : null),
+          // 连着的食谱有成品图：右边一张小图（第 12 步；看一眼就认得是哪道）
+          r && r.photo ? photos.view(r.photo, { cls: '.pd-thumb' }) : null)));
       });
     }
     return h('section.plan-day' + (isToday ? '.today' : ''), { dataset: { day } }, head, h('ul.group.pd-list', null, rows));
@@ -167,5 +172,5 @@ export function render(main, params, ctx) {
     h('div.plan-nav', null, prev, title, next, todayBtn));
   main.append(head, body);
   draw();
-  return { onChange: () => draw(), cleanup: () => document.removeEventListener('keydown', onShortcut) };
+  return { onChange: () => draw(), cleanup: () => { document.removeEventListener('keydown', onShortcut); photos.revoke(); } };
 }

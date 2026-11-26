@@ -1,6 +1,6 @@
 // 设置 → 多设备同步（#/settings/sync）。
 // 没开：粘贴同步码（马上填好仓库、令牌，带着到期日的话也填上）、第一次设置的步骤（建私有仓库、建 Fine-grained 令牌）、仓库 + 令牌 + 令牌到期日（可选）、「连接」。
-// 开着：仓库、状态（上次同步、有没传的修改、离线、出错的说明）、令牌到期日（两周内到期提醒；没填过可以补上，点「保存」才算）、
+// 开着：仓库、状态（上次同步、有没传的修改、成品图还有几张没传 / 在下载、离线、出错的说明）、令牌到期日（两周内到期提醒；没填过可以补上，点「保存」才算）、
 //   「立即同步」「复制同步码」（带着到期日：用它连上的设备也会提醒）「换令牌」（粘贴新令牌，或者别的设备复制来的新同步码，不用停止同步）、
 //   怎么同步的说明、「停止同步」（先问）。
 // 连接 / 换令牌：先用 core 的 cleanRepo、tokenProblem 查仓库名和令牌（只收 Fine-grained 令牌，错误标在那一栏下面）、到期日填得对不对，
@@ -134,6 +134,10 @@ export function syncPage(main, params, ctx) {
         syncBadge(st, lang, { link: false }),
         h('p.small.muted', null, st.at ? t('sync.last', { time: fmtWhen(st.at, lang) }) : t('sync.never')),
         st.offline ? h('p.small', null, t('sync.offlineLine')) : st.dirty ? h('p.small', null, t('sync.pendingLine')) : null,
+        // 成品图（第 12 步）：还有几张没传 / 在下载，最近一次没传上、没下载成的（不算同步出错，文字照常同步）
+        st.pendingUp ? h('p.small', null, t('sync.imgUp', { n: st.pendingUp })) : null,
+        st.downloading && st.pendingDown ? h('p.small.muted', null, t('sync.imgDown', { n: st.pendingDown })) : null,
+        st.blobErr ? h('p.small.sy-warn', null, syncErrText(st.blobErr, lang)) : null,
         statusErr(st),
         expLine,
         h('div.row.sy-btns', null,
@@ -184,7 +188,7 @@ export function syncPage(main, params, ctx) {
         h('a.btn.ghost', { href: TOKEN_URL, target: '_blank', rel: 'noopener' }, t('sync.tokenLink'))));
   }
   const notes = () => h('section.set-sec', null, h('h2.group-h', null, t('sync.howH')),
-    h('ul.group-foot.sy-notes', null, [1, 2, 3, 4].map(n => h('li', null, t('sync.note' + n)))));
+    h('ul.group-foot.sy-notes', null, [1, 2, 3, 4, 5].map(n => h('li', null, t('sync.note' + n)))));
 
   // ---------- 操作 ----------
   async function connect(repo0, token0, exp) {

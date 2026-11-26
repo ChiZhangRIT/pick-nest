@@ -1,6 +1,6 @@
 # 数据模型（V1 + 第二版的食谱和计划）
 
-所有数据是一份 JSON（和 babble、房屋账本同一个形状），存在本机，开了同步时另存一份到私有仓库 `pick-nest-data/picknest.json`：
+所有数据是一份 JSON（和 babble、房屋账本同一个形状），存在本机，开了同步时另存一份到私有仓库 `pick-nest-data/picknest.json`（食谱的成品图不在里面：本机在 IndexedDB `picknest-blobs`，仓库在 `images/`，见下面 recipes 的「成品图」和「同步」）：
 
 ```js
 {
@@ -66,11 +66,15 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 - 同一时间只跑一轮。切到后台时（`pushFirst`）：知道云端版本、有改动就直接上传（不先拉取），请求体小于 60 KB 时用 `fetch` 的 `keepalive`。页面随时会被挂起，所以：「仓库是私有的」30 分钟内确认过就不再先问（平常的一轮还是 5 分钟）；正在跑一轮（比如刚切回来时的拉取）就先打断它（它的请求作废，算 `aborted`：不算出错、不标离线），不排在它后面
 - 出错：`SyncError` 的 `code`——`net`（断网，只标离线）、`auth`（401）、`perm`（403）、`notfound`（404）、`public`、`classic`（经典令牌）、`notFine`（不是 `github_pat_` 开头的别的格式）、`noToken`（没填令牌）、`badToken`（令牌中间有空白）、`badRepo`（仓库名不对，`checkRepo`）、`badFile`（不是这个 App 的 / 读不出来，不覆盖）、`newer`（新版写的）、`mergeFail`、`rate`（429，或 403 + 剩余 0，或 403 + `Retry-After`：带着能再试的时刻 `until`，app 在那之前不自动同步）、`http`（别的状态码）；只读的 `readRemote` 还有 `off`（没开同步）、`nofile`（云端没有文件）。`net`、`rate`、`mergeFail`、`http` 5xx 是暂时的，状态标签显示「稍后重试」，别的要用户处理。`aborted`（被切到后台的直接上传打断）不存、不显示
 - 本机数据读不出来（恢复页）时 `getConfig` 返回 null：一律不同步。「从云端恢复」另开一个只读的（`readRemote`，raw 格式），只读不写
-- 以后有图片：照 babble 的录音，在拉取之后、上传 `picknest.json` 之前传本机还没上传的图片（按内容的 sha256 命名，只增不改），`core/sha256.js` 到那时再移植
+- **成品图**（第 12 步，照 babble 的录音；`createSync` 的 `blobs`（`core/blobStore.js`）、`onBlob`）：仓库里 `images/<sha256>.<扩展名>`（`core/photo.js` 的 `photoPath`，扩展名按 `photo.mime`：JPEG 是 `jpg`，认不出的是 `bin`——babble 的 `extForMime` 把不认识的都写成 `m4a`，这里没照抄），按内容命名、只增不改
+  - 上传：每一轮在拉取、合并之后、上传 `picknest.json` 之前（切到后台的直接上传 `pushFirst` 也是先传图再传 JSON：图大，用不了 keepalive，页面被挂起的话这次 JSON 也不传，宁可晚一点，也不让别的设备拿到指着不存在的图的记录）。传的是 `recipePhotos(state, { includeDeleted: true })`（有食谱用着的，删掉的食谱也算：别的设备可能从最近删除里恢复）∩ 本机图片库里还没传到这个仓库的（`pendingUploads(repo)`）；没有食谱用着的（编辑页里加了又放弃的）不传。这一轮还没问过仓库是不是私有的就先问一次（`ensurePrivate(cfg, true)`）。传图的时候、409 以后等一下重新拉取的时候又存了带新图的食谱：上传 `picknest.json` 之前再看一眼这时的数据里有没有这一轮还没看过的图（`upSeen`），有就先传它们（最多再来 3 趟），看完到取数据、编进请求之间不再等别的——传上去的那份里的图一定都看过了（传不上的照上面跳过）。一张：本机这份先核对 sha256（坏了 → `shaMismatch`，不传）→ GET（object 格式），git blob sha 一样就只记下「在这个仓库里」→ 不在才 PUT（云端那份内容不对就带着它的 sha 覆盖）；PUT 返回 409 / 422 不当成功，回到 GET 再定，最多 3 次（还不行 `blobUp`）。一张没传上（不是断网、令牌、权限、仓库不在 / 公开、请求太多、这一轮被打断）先跳过，文字照常同步，`status().blobErr` 记着、下一轮再试（每一轮从头算：没传上的那张后来没有食谱用了，`pendingUp` 和上传的错就清掉）；断网只停这一轮的图，上传 JSON 时照常报离线；本机的图片库打不开（无痕浏览、存储出错）也只是不传图
+  - 下载：一轮成功以后（不是切到后台的直接上传）在后台一张一张下载本机缺的（`recipePhotos(state)`：没删除的食谱，改得晚的食谱在前），raw 格式取原文，下载下来再核对 sha256（对不上 → `shaMismatch`，不存）；存进本机时记下在这个仓库里（不再传回去），调 `onBlob(sha)`（app 发 `'photo'`，页面上空着的那张换成图）。云端还没有（404）的 5 分钟内不再问（后台、页面都是：每次打开都问一遍的话，大图一会儿占一大块一会儿缩成一条）；页面正看着的那张（大图、编辑页的预览，`getBlob(sha)`）马上下载，同一张同时只下载一次；「食谱」页、计划里的小图只用本机的，等后台下载好了的 `'photo'`（一页几十张同时下载会挤掉正看着的那张）。`pendingDown` 是后台这一趟还要下载的那几张（页面先下好了的也拿掉，不减两次）。存进本机失败（存储空间满了、存储出错）：这张留在内存里（这次打开期间页面照样看得到，不再重下），`blobErr` 是 `blobFull`，后台不再下载新的；之后每一趟拿内存里的一张试着存（不联网），存上了就清掉 `blobFull`、接着下载。下载不属于一轮同步（切到后台的直接上传不打断它），一张最多等 2 分钟
+  - `status()` 多了 `uploading`、`downloading`、`pendingUp`、`pendingDown`、`blobErr`（`blobUp` / `blobDown` / `blobFull` / `shaMismatch`：不算同步出错，状态标签照常，设置 → 多设备同步里写一句；上传、下载的各记各的，先说上传的，谁也不清掉对方的；有图的食谱都没了时下载的也清掉）
+  - 删图 = 记录上的 `photo` 换掉 / 变成 `null`；仓库里的文件和提交历史还在，本机上传过的也留着（没有 babble 的永久删除、清理云端历史）
 
 ## 备份（core/backup.js）
 
-`picknest-backup-YYYYMMDD.json` = `{ app: 'picknest', v: 1, kind: 'backup', exportedAt, state }`。`state` 就是整份同步的数据（软删除的记录、不认识的集合和设置都在），没有令牌和本机设置。
+`picknest-backup-YYYYMMDD.json` = `{ app: 'picknest', v: 1, kind: 'backup', exportedAt, state }`。`state` 就是整份同步的数据（软删除的记录、不认识的集合和设置都在），没有令牌和本机设置，也没有食谱的成品图（只有 `recipes.photo` 这条记录；图片在 IndexedDB 和同步仓库的 `images/` 里，第 12 步）。
 
 从备份恢复 = `state.mergeIn`：逐条合并、较新的为准（各自从头建的同一条也和同步一样补字段）、补预置记录，备份里没有的不删（备份里更晚的删除照样合并进来），算本机修改（开着同步时 app 马上传，不等两秒的防抖）。读的时候认所有 `{ app: 'picknest', v: 1, state }` 形状的文件，读不出来按 `fileProblem` 说原因（`notJson`、`notApp`、`newer`、`bad`）。
 
@@ -109,7 +113,7 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
   - 都空的：按 `kind` 的默认（`LIST_DEFAULTS`：食材 → 菜篮、一般 → 购物袋）。预置的两张清单一直是空的，换了默认样子不用改数据
   - 为什么画好的不放在 `icon` 里：旧版（v15 和更早的）保存编辑面板时总会交回 `icon`、再截成第一个字，`i:saw` 这样的写法在旧设备上改个名字就变成字母「i」。旧版不认识 `glyph`，原样留着（`{ ...旧的 }`），只是显示成它自己的默认 emoji；旧版在面板里选个 emoji 写进 `icon`，那就是这张清单最后一次换的图标，所以 `icon` 显示在前
 - `color`：色调名，`LIST_COLORS` 里的（`green` App 的绿、`teal`、`blue`、`indigo`、`rose`、`amber`、`clay` 陶土、`graphite`；只能加、不能改名），空的按 `kind` 的默认（食材 → 绿、一般 → 琥珀）。旧记录没有这个字段，读进来是空的。认不出的（新版才有的）按默认显示，记录里原样留着（旧版改名字不会冲掉）
-- 新建、编辑时经过 `lookFields(kind, { icon, glyph, color })`：图标是一个选择，`icon`、`glyph` 只留一样（自己写的优先），画好的只收认得的名字、自己写的照上面截、认不出的颜色存空的；**和这一类的默认一样的存成空的**（没改过的预置清单还是空的、`updatedAt` 还是 0）。编辑面板只交改了的：换了图标 `icon`、`glyph` 一起交（`editList` 两样一起存），只换颜色只交 `color`（认不出的图标、色调显示成默认，没动就不交）。还不能用照片当图标：要等图片能同步（ROADMAP「图片」）
+- 新建、编辑时经过 `lookFields(kind, { icon, glyph, color })`：图标是一个选择，`icon`、`glyph` 只留一样（自己写的优先），画好的只收认得的名字、自己写的照上面截、认不出的颜色存空的；**和这一类的默认一样的存成空的**（没改过的预置清单还是空的、`updatedAt` 还是 0）。编辑面板只交改了的：换了图标 `icon`、`glyph` 一起交（`editList` 两样一起存），只换颜色只交 `color`（认不出的图标、色调显示成默认，没动就不交）。还不能用照片当图标（第 12 步的图片只给食谱的成品图用，清单的图标以后再说：ROADMAP「以后 → 图片」）
 - 系统清单能改名、换图标和颜色、归档，不能删除；自建清单能删除（软删除，里面的东西不动、跟着隐藏，恢复清单时一起回来）
 - 新建的 `order` = 现有清单（没删除的）里最大的 + 1；`kind` 只在新建时选，以后不改（东西的分类、「以后再说」都跟着它）
 - `defaultStoreId` 只收没删除、没归档的商店；归档了的照样留着，只是新加东西时不再当默认
@@ -226,7 +230,10 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 - **食材的默认顺序**（第 11 步）`ingredientGroup(state, name)` → `ING_GROUPS` 的一个：肉类海鲜 `meat` → 蔬果 `produce` → 蛋奶豆制品 `dairy` → 粮油干货 `pantry` → 调料酱料 `condiments` → 其他 `other`。依次看：清单上自己选过的分类（`memory` 的 `categorySet`，选的是没删除的预置分类：分错了改一次就记住了）→ 几个做菜常见、对照表会分错的（小米辣里有「小米」、干辣椒里有「辣椒」、蒸鱼豉油结尾是「油」）→ 豆制品（豆腐、腐竹……，对照表里豆腐在蔬果）→ `core/catalog.js` 的对照（和清单上的分类同一张表；面包烘焙算粮油干货，冷冻、零食饮料、日用算其他）→ 中文名字的结尾（「…鱼」「…排」「…油」「…酱」）、开头（「葱花」「姜片」「蒜末」）→ 其他。`sortIngredients(state, ings)` 按组排、同组里保持原来的先后（稳定排序）。`placeIngredients(state, ings, 新的 key, keep)`：`keep` 不是 `true` 就整张按组排；是 `true` 就别的不动，只把新的插到它那一组的最后（这一组还没有的，放在前面几组的最后；前面也没有就放最前）。`keep` 是 `ordered`（手动 ↑↓ 过）**或者这道食谱已经存过**：第 11 步以前存的食谱没有 `ordered`，可能是以前用 ↑↓ 排好的，加一样就悄悄整张重排、又没法撤销，排好的就找不回来了——所以已经存过的食谱原来的几行从不自己挪，整张排只在新建的（还没存、没手动排过）和点「按类别重新排」时。编辑页：粘贴进来的马上放；「加一样」写的保存时放（`saveRecipe` 的 `place`：写着名字时行不能跳走——iPhone 上点同一行的数量框，名字框就失去焦点，这时挪走就点空了），新建的也是这样整张排好；↑↓ 了就是 `ordered: true`；「按类别重新排」整张排一次并把 `ordered` 去掉
 - **重复的食材**（第 11 步）：同一道食谱里 `normName` 一样算重复。`duplicateOf(recipe, name, skipKey)` 给出已有的那一行（跳过 `skipKey` 那一行自己）；编辑页里一行的名字写好（离开输入框）时问。「合并」`mergeIngredient(into, add)`：原来那一行的数量、单位一直留着——两边都写了数量、单位一样（`normName` 比）就相加；这次没写数量（多半是刚写了名字就点「合并」）只接上这次的备注；单位不一样、原来那一行没写数量、加起来超过 9999（`QTY_MAX`：保存时会报错，报在一行自己没改过的上面）时，把这次的数量和单位写进那一行的备注（不悄悄丢掉）；这次的备注接在后面（已经写着的不重复写；有汉字用「；」）；能撤销。「仍然加一行」照常加，同一个名字不再问。粘贴的预览里，这道菜里已经有的、这次贴的上面已经有的都标「重复」、默认不加（「仍然加一行」勾上才加）
 - **食材替换**（第 11 步）`replaceIngredient(state, from, to)`：所有没删除的食谱里 `normName(from)` 一样的那几行改名成 `to`（数量、单位、备注、`key` 不动；包含它的「生抽王」不算），一次 `ctx.mutate`、带撤销；`memory` 里 `from` 是常备品的，`to` 也标上、`from` 的去掉（只换写法、`normName` 一样的是同一条，不动）；清单上的东西、计划里已经加进清单的用量不改。先 `ingredientNames(state, 搜索词)` 找（食谱里用到的食材，`normName` 一样的算一样，写着几道食谱用到；名字开头就是搜索词的在前（回车选第一个），再按几道食谱用到），再 `replacePreview(state, from)` 列出哪几道食谱、哪几行；新名字空着、和每一行原来的都一样时不换。`replaceDuplicates(state, from, to)`：哪几道食谱里本来就有一行叫 `to` 的（换了会有两行）——面板上说一句，不拦着（腌料、调味各一份盐本来就可以两行），只换写法的不算
-- **成品图**（第 12 步）`photo`：`sha256` 是 JPEG 内容的哈希（小写 64 位十六进制），图片在 IndexedDB `picknest-blobs` 里按 sha256 存，开了同步时传到 `pick-nest-data/images/<sha256>.jpg`（只增不改：同一张图只传一次，换图是新的 sha256；先传图、再传 JSON，别的设备拿到 JSON 时图已经在了）；本机没有时按需下载。删图 = `photo: null`（仓库里的文件和提交历史还在）。备份 JSON 不含图片
+- **成品图**（第 12 步）`photo`：`sha256` 是 JPEG 内容的哈希（小写 64 位十六进制），`w` / `h` 是压缩后的像素，`bytes` 是 JPEG 的大小。整理（`store.js` 的 `normalizePhoto`）：没有、不是对象、`sha256` 不是 64 位十六进制 → `null`（第 12 步以前的食谱整理后是 `photo: null`）；`sha256` 转小写；`mime` 去参数、小写，没写是 `image/jpeg`；宽高、字节数不是正整数 → `null`；别的字段原样留着。`saveRecipe` 给了 `photo` 才改（`null` = 删掉图；没给的照原来的：旧版的编辑页、草稿不会冲掉图）。合并：跟着整条食谱记录取较新的（不是逐个字段：一台换了图、另一台后来改了名字，以后改的那条为准，图跟着它）
+  - 图片本身不在数据里：本机在 IndexedDB `picknest-blobs`（`core/blobStore.js`，从 babble 的 `audioStore.js` 移植、只留按内容存的文件）的 `blobs` 表，`sha256 → { sha256, blob, mime, bytes, addedAt, uploaded }`；`uploaded` 是已经确认在哪个同步仓库里（仓库全名，`null` = 还没传；换了仓库就都算还没传，不另存「上次的仓库」）。同样内容只存一份；Safari 无痕浏览这种不收 Blob 的存成 ArrayBuffer。只删从来没上传过的（`deleteBlob`）：编辑页这次加的图，保存、取消、放弃时没有食谱用着（`photoInUse`：删掉的食谱也算）、也不在别的编辑草稿里的。开了同步时传到 `pick-nest-data/images/<sha256>.jpg`（见上面「同步」），本机没有的按需下载
+  - 压缩（`core/photo.js` 的 `fitSize`、`resizeSteps`；画在 `ui/photo.js` 的 `encodePhoto`）：长边最多 1600 px（`PHOTO_MAX`，不放大），JPEG 质量 0.82；一次最多缩一半（Safari 一次缩太多会有锯齿），第一步就比原图小一半（iOS 的 canvas 有大小上限）；透明的底铺白。解码先用 `<img>`（Safari 认得的 HEIC 也行，EXIF 的方向浏览器自己摆正），不行再试 `createImageBitmap`；超过 1 亿像素（`PHOTO_MAX_PIXELS`）的不画（`encode` 错「可能太大了」：`<img>` 的 onload 只读了文件头，第一次 drawImage 才整张解码，iPhone 上会把页面弄崩）。编辑页「正在处理图片…」时点保存（⌘S）：等这张处理好了一起存，没处理成就不存、留在这一页
+  - 备份 JSON 不含图片（只有 `photo` 这条记录）；设置 → 备份与恢复里说一句，写着这台设备上存了几张、多大（`usage`、`fmtBytes`）
 
 - `servings`：几人份，`null` = 没写（加到清单时就不能按人数换算，用量原样）；整理时不是正数的当 `null`，编辑页只收空着或 0 < n ≤ 99（`SERVINGS_MAX`）
 - `ings`：食材，按顺序；`key` 在这道食谱里不重复（新行 `newId('g_')`），排顺序、改名都不变。`qty` 是 `null` 时是「适量」「少许」这种，原话放在 `note` 里；`optional: true` 是可选（加到清单时默认不勾）。整理（`normalizeRecipe`）：不是对象的食材扔掉；`key` 缺了、不符合 `safeKey`、重了的按位置补 `'g_' + 第几样`（被占了再加 `_1`、`_2`……；要每台设备算得一样，不能随机）；`qty` 不是正数的当 `null`；食材里不认识的字段原样留着

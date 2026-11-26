@@ -67,13 +67,14 @@ test('CORE 里的每个文件都存在，没有重复', () => {
   assert.match(CACHE, /^picknest-v\d+$/);
 });
 
-test('index.html 引用的文件都存在，都在 CORE 里；CSP 只允许连自己和 api.github.com', () => {
+test('index.html 引用的文件都存在，都在 CORE 里；CSP 只允许连自己和 api.github.com，图片只有自己的和 blob:', () => {
   const refs = htmlRefs();
   for (const want of ['./src/start.js', './src/boot.js', './styles.css', './manifest.webmanifest', './icons/icon-180.png']) assert.ok(refs.includes(want), `index.html 应该引用 ${want}`);
   for (const f of refs) { assert.ok(exists(f), `index.html 引用的 ${f} 不存在`); inCore(f, 'index.html'); }
   const csp = read('index.html').match(/Content-Security-Policy" content="([^"]+)"/)[1];
   assert.match(csp, /connect-src 'self' https:\/\/api\.github\.com;/);
   assert.match(csp, /script-src 'self';/);
+  assert.match(csp, /img-src 'self' data: blob:;/, '成品图用 object URL 显示（第 12 步），别的网站的图不加载');
   assert.doesNotMatch(csp, /https?:\/\/(?!api\.github\.com)/, '不加载任何 CDN');
   assert.match(read('index.html'), /<title>PickNest<\/title>/);
   assert.match(read('index.html'), /name="apple-mobile-web-app-capable" content="yes"/);

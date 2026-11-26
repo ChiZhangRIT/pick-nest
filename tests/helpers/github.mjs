@@ -2,6 +2,7 @@
 // GET /repos/me/data（private 可以改成公开的）、contents API（文件、git blob sha、ETag / 304、409（sha 过期）、
 // 422（文件已经有了却没给 sha）、带 sha 却没有文件 → 404、超过 gh.big 字节只给 sha 不给内容（要 raw 才给原文））；
 // gh.faults 让某个请求出错一次（断网、某个状态码、带响应头），gh.onPut 在 PUT 落地之前插一手（模拟上传期间别的设备、本机又改了）。
+// 成品图（第 12 步）也走 contents API：images/<sha256>.jpg 和 picknest.json 一样存在 gh.files 里，raw 格式给原文（arrayBuffer）。
 // 认的令牌只有编出来的 github_pat_test。
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -21,6 +22,7 @@ export function mockGitHub({ big = Infinity } = {}) {
       status, ok: status >= 200 && status < 300, headers: { get: k => hs[k.toLowerCase()] ?? null },
       json: async () => (bytes ? JSON.parse(dec(bytes)) : body),
       text: async () => (bytes ? dec(bytes) : JSON.stringify(body)),
+      arrayBuffer: async () => (bytes || enc(JSON.stringify(body))).slice().buffer,   // 图片的原文（raw）
     };
   };
   /** 有人（网页上、别的设备）直接写了文件 */
