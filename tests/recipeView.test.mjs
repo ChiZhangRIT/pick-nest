@@ -7,7 +7,7 @@ import * as recipeView from '../src/views/recipe.js';
 import * as editView from '../src/views/recipeEdit.js';
 import * as listView from '../src/views/list.js';
 import * as state from '../src/core/state.js';
-import { deletedRecord, itemId, normalizeRecord } from '../src/core/store.js';
+import { deletedRecord, itemId, normalizeRecord, hash64, normName } from '../src/core/store.js';
 import { saveRecipe, addRecipeToList, liveRecipe } from '../src/core/recipes.js';
 import { addFromInput, totalLabel } from '../src/core/items.js';
 import { setStaple, isStaple } from '../src/core/memory.js';
@@ -412,7 +412,7 @@ test('粘贴食材：贴一整段 → 先看拆成什么样（能改、能去掉
     fid(sh.el, 'paste-go').click();
     assert.equal(sh.open, false);
     assert.deepEqual(allCls(main, 're-row').map(r => [byCls(r, 're-name').value, byCls(r, 're-qty').value, byCls(r, 're-unit').value, byCls(r, 're-note').value]),
-      [['五花肉', '500', 'g', ''], ['黄冰糖', '20', 'g', ''], ['葱', '', '', '适量'], ['姜', '', '', '适量']], '空的那一行换掉了');
+      [['五花肉', '500', 'g', ''], ['葱', '', '', '适量'], ['姜', '', '', '适量'], ['黄冰糖', '20', 'g', '']], '空的那一行换掉了；粘贴进来的按类别放好（肉类、蔬果、调料）');
     assert.equal(env.toasts.at(-1).msg, '加了 4 样食材');
     assert.equal(document.activeElement, fid(main, 're-paste'), '焦点回到「粘贴食材」，不弹键盘');
     assert.equal(Object.keys(S().data.recipes).length, 0, '还没保存');
@@ -432,7 +432,7 @@ test('粘贴食材：贴一整段 → 先看拆成什么样（能改、能去掉
     fid(main, 're-save').click();
     await settle();
     const [r] = Object.values(S().data.recipes);
-    assert.deepEqual(r.ings.map(g => [g.name, g.qty, g.unit, g.note]), [['五花肉', 500, 'g', ''], ['黄冰糖', 20, 'g', ''], ['葱', null, '', '适量'], ['姜', null, '', '适量']]);
+    assert.deepEqual(r.ings.map(g => [g.name, g.qty, g.unit, g.note]), [['五花肉', 500, 'g', ''], ['葱', null, '', '适量'], ['姜', null, '', '适量'], ['黄冰糖', 20, 'g', '']]);
   } finally { env.done(); }
 });
 
@@ -669,5 +669,286 @@ test('快速添加：食材清单上打字时联想「用到它的食谱」（�
     const m2 = env.mount(listView, { name: 'list', id: 'l_tobuy' });
     await type(byCls(m2, 'add-input'), '五花');
     assert.equal(byCls(byCls(m2, 'sugs'), 'sug-recipe'), undefined);
+  } finally { env.done(); }
+});
+
+// ---------- 第 11 步：标签、卡片上的「加到清单」、食材替换、编辑页的标签 / 排序 / 重复、粘贴预览里的重复 ----------
+/** 三道带标签的：水煮鱼（川菜 · 下饭）、剁椒鱼头（湘菜 · 宴客）、番茄炒蛋（快手 · 下饭）；再加 seedRecipes 的三道（没标签） */
+function seedTagged(s) {
+  const ids = seedRecipes(s);
+  const id = (name, tags) => saveRecipe(s, null, { name, ings: [{ name: '鱼', qty: '1', unit: '条' }], tags }, now()).id;
+  return { ...ids, fish: id('水煮鱼', { cuisine: ['川菜'], style: ['下饭'] }), head: id('剁椒鱼头', { cuisine: ['湘菜'], style: ['宴客'] }),
+    quick: id('快手番茄蛋', { cuisine: [], style: ['快手', '下饭'] }) };
+}
+
+test('「食谱」页：卡片上写着标签；按标签筛选（一组里任一、两组之间都要），点了焦点还在那个标签上；没符合的说一句、能清除；选的标签没人用了自己去掉', async () => {
+  const env = setup({ seed: seedTagged });
+  try {
+    const main = env.mount(recipesView, { name: 'recipes' });
+    const names = () => allCls(env.main, 'rcp-row').map(r => byCls(r, 'rcp-name').textContent);
+    const tagsOf = (name) => allCls(allCls(env.main, 'rcp-li').find(li => byCls(li, 'rcp-name').textContent === name), 'rcp-tag').map(x => x.textContent);
+    assert.deepEqual(tagsOf('水煮鱼'), ['川菜', '下饭']);
+    assert.deepEqual(tagsOf('红烧肉'), [], '没标签的不画');
+    const rows = allCls(main, 'rcp-frow');
+    assert.deepEqual(rows.map(r => r.attrs['aria-label']), ['菜系', '风格']);
+    assert.deepEqual(allCls(rows[1], 'rcp-fchip').map(c => c.textContent), ['下饭', '快手', '宴客'], '用得多的在前，一样多按名字（拼音）');
+    const chip = (g, name) => fid(env.main, `rcp-f-${g}-${hash64(normName(name))}`);
+    chip('cuisine', '川菜').click();
+    chip('cuisine', '湘菜').click();
+    assert.deepEqual(names(), ['剁椒鱼头', '水煮鱼'], '一组里任一');
+    assert.equal(document.activeElement, chip('cuisine', '湘菜'), '焦点还在刚点的标签上');
+    assert.equal(chip('cuisine', '湘菜').attrs['aria-pressed'], 'true');
+    chip('style', '下饭').click();
+    assert.deepEqual(names(), ['水煮鱼'], '两组之间都要');
+    assert.equal(main.querySelector('[role="status"]').textContent, '找到 1 道食谱');
+    chip('style', '下饭').click();
+    chip('style', '快手').click();
+    assert.equal(byCls(env.main, 'lp-empty').textContent, '没有符合筛选的食谱' + t('rcp.filterNoneHint') + '清除筛选');
+    fid(env.main, 'rcp-fclear2').click();
+    assert.equal(names().length, 6, '清除筛选');
+    assert.equal(document.activeElement, byCls(env.main, 'rcp-search'));
+    assert.equal(fid(env.main, 'rcp-fclear'), null, '没筛的时候没有「清除筛选」');
+    assert.ok(!byCls(env.main, 'rcp-filter').textContent.includes('null'), '没有写成字的 null');
+    // 选了湘菜，然后那道菜的标签被改掉了（别的设备）：不再筛着一个看不见的标签
+    chip('cuisine', '湘菜').click();
+    assert.deepEqual(names(), ['剁椒鱼头']);
+    state.mutate(s => saveRecipe(s, env.ids.head, { name: '剁椒鱼头', tags: { cuisine: [], style: [] } }, now()));
+    await settle();
+    assert.equal(names().length, 6);
+    assert.equal(chip('cuisine', '湘菜'), null);
+  } finally { env.done(); }
+});
+
+test('「食谱」页：每张卡片右边的购物车直接打开「加到清单」（点卡片别的地方照旧去那道食谱）；加完不重画卡片，焦点不丢；没有食谱时没有「食材替换」', async () => {
+  let env = setup();
+  try {
+    const main = env.mount(recipesView, { name: 'recipes' });
+    assert.equal(fid(main, 'rcp-replace').hidden, true, '没有食谱：不画「食材替换」');
+  } finally { env.done(); }
+  env = setup({ seed: seedRecipes });
+  try {
+    const main = env.mount(recipesView, { name: 'recipes' });
+    assert.equal(fid(main, 'rcp-replace').hidden, false);
+    const cart = fid(main, 'rcp-cart-' + env.ids.hsr);
+    assert.equal(cart.tag, 'button');
+    assert.equal(cart.attrs['aria-label'], '把「红烧肉」加到清单');
+    assert.ok(cls(cart, 'icon-btn'), '44px 的点按区域（.icon-btn）');
+    assert.equal(fid(main, 'rcp-open-' + env.ids.hsr).attrs.href, '#/r/' + env.ids.hsr);
+    assert.ok(!fid(main, 'rcp-open-' + env.ids.hsr).contains(cart), '按钮不在链接里面');
+    cart.focus();
+    cart.click();
+    const sh = env.sheet();
+    assert.equal(sh.title, '红烧肉');
+    fid(sh.el, 'atl-go').click();
+    assert.equal(sh.open, false);
+    await settle();
+    assert.equal(Object.values(S().data.items).filter(i => i.needs && Object.keys(i.needs).length).length, 3, '五花肉、洋葱、盐加进清单');
+    assert.equal(fid(env.main, 'rcp-cart-' + env.ids.hsr), cart, '和食谱无关的修改：卡片不重画');
+    assert.equal(document.activeElement, cart);
+  } finally { env.done(); }
+});
+
+test('食材替换：搜一样 → 看用到它的食谱和那几行 → 写新名字 → 一次改完（常备品跟着换）、能撤销；空的、一样的不让换；「返回」回到搜索', async () => {
+  const env = setup({ seed: (s) => {
+    const ids = seedRecipes(s);
+    saveRecipe(s, null, { name: '凉拌黄瓜', ings: [{ name: '黄瓜', qty: '2', unit: '根' }, { name: '生抽', qty: '1', unit: '勺', note: '最后淋' }] }, now());
+    return ids;
+  } });
+  try {
+    const main = env.mount(recipesView, { name: 'recipes' });
+    fid(main, 'rcp-replace').click();
+    const sh = env.sheet();
+    assert.equal(sh.title, '食材替换');
+    assert.equal(document.activeElement, fid(sh.el, 'rep-q'));
+    assert.equal(fid(sh.el, 'rep-go').hidden, true, '先选一样');
+    await type(fid(sh.el, 'rep-q'), '抽');
+    assert.deepEqual(allCls(sh.el, 'rep-hit').map(b => [byCls(b, 'rep-name').textContent, byCls(b, 'rep-n').textContent]), [['生抽', '2 道食谱']]);
+    await type(fid(sh.el, 'rep-q'), '佛跳墙');
+    assert.equal(byCls(sh.el, 'rep-none').textContent, '食谱里没有「佛跳墙」');
+    await type(fid(sh.el, 'rep-q'), '生抽');
+    fid(sh.el, 'rep-hit-0').click();
+    assert.equal(sh.title, '替换「生抽」');
+    assert.deepEqual(allCls(sh.el, 'rep-rec').map(r => [byCls(r, 'rep-rec-name').textContent, allCls(r, 'rep-row').map(x => x.textContent)]),
+      [['红烧肉', ['生抽 · 2 勺']], ['凉拌黄瓜', ['生抽 · 1 勺 · 最后淋']]]);
+    assert.equal(byCls(sh.el, 'rep-staple').textContent, '「生抽」是常备品，新名字也会标上。');
+    const to = fid(sh.el, 'rep-to');
+    assert.equal(to.value, '生抽');
+    assert.equal(document.activeElement, to);
+    fid(sh.el, 'rep-go').click();
+    assert.equal(byCls(sh.el, 'f-err').textContent, '和原来的一样');
+    await type(to, '  ');
+    fid(sh.el, 'rep-go').click();
+    assert.equal(byCls(sh.el, 'f-err').textContent, '写一个新名字');
+    // 返回：回到搜索，字还在
+    fid(sh.el, 'rep-back').click();
+    assert.deepEqual([byCls(sh.el, 'rep-1').hidden, fid(sh.el, 'rep-q').value, sh.title], [false, '生抽', '食材替换']);
+    fid(sh.el, 'rep-hit-0').click();
+    // 「换成」在食谱列表上面（几十道食谱用到时输入框、出错的提示不会在屏幕外面）
+    const step2 = byCls(sh.el, 'rep-2').children;
+    const at = (el) => step2.indexOf(el);
+    assert.ok(at(byCls(sh.el, 'rep-to').parent) >= 0 && at(byCls(sh.el, 'rep-to').parent) < at(byCls(sh.el, 'rep-in')), '「换成」在前');
+    // 新名字这道菜里已经有了：说一句会有两行（不拦着）
+    const dup = byCls(sh.el, 'rep-dup');
+    assert.equal(dup.hidden, true);
+    await type(fid(sh.el, 'rep-to'), '盐');
+    assert.deepEqual([dup.hidden, dup.textContent], [false, '「红烧肉」里已经有「盐」，换了以后会有两行。']);
+    await type(fid(sh.el, 'rep-to'), '酱油');
+    assert.equal(dup.hidden, true);
+    key(fid(sh.el, 'rep-to'), 'Enter');
+    assert.equal(sh.open, false);
+    const all = () => Object.values(S().data.recipes).flatMap(r => r.ings.map(g => g.name));
+    assert.equal(all().filter(n => n === '酱油').length, 2);
+    assert.equal(all().includes('生抽'), false);
+    assert.ok(isStaple(S(), '酱油') && !isStaple(S(), '生抽'));
+    assert.equal(state.peekUndo(), '已在 2 道食谱里换掉「生抽」');
+    state.undo();
+    assert.equal(all().filter(n => n === '生抽').length, 2, '撤销：全回来');
+    assert.ok(isStaple(S(), '生抽') && !isStaple(S(), '酱油'));
+  } finally { env.done(); }
+});
+
+const tagFid = (g, name) => `re-tag-${g}-${hash64(normName(name))}`;
+test('编辑食谱：标签——预设（界面语言）和别的食谱用过的都列出来，点一下选上、再点取消；「自己加」开名字面板；保存进食谱，食谱页上看得到', async () => {
+  const env = setup({ seed: seedTagged });
+  try {
+    let main = env.mount(editView, { name: 'recipeEdit', id: env.ids.hsr }, { storage: env.storage });
+    const chips = (g) => allCls(find(main, el => el.dataset && el.dataset.group === g), 're-tag').map(c => c.textContent);
+    assert.deepEqual(chips('cuisine').slice(0, 3), ['川菜', '粤菜', '湘菜']);
+    assert.equal(chips('cuisine').length, 14, '预设 14 个（别的食谱用过的川菜、湘菜就是预设）');
+    assert.ok(chips('style').includes('下饭') && chips('style').includes('宴客'));
+    fid(main, tagFid('cuisine', '川菜')).click();
+    assert.equal(fid(main, tagFid('cuisine', '川菜')).attrs['aria-pressed'], 'true');
+    fid(main, tagFid('style', '快手')).click();
+    fid(main, tagFid('style', '快手')).click();
+    assert.equal(fid(main, tagFid('style', '快手')).attrs['aria-pressed'], 'false', '再点一下取消');
+    fid(main, 're-tag-add-style').click();
+    const sh = env.sheet();
+    assert.equal(sh.title, '加一个风格');
+    const nameIn = find(sh.el, el => el.tag === 'input');
+    btn(sh.el, '添加').click();
+    assert.equal(sh.open, true, '空的不加');
+    assert.equal(byCls(sh.el, 'f-err').textContent, '名字不能空着');
+    nameIn.value = ' 空气炸锅 ';
+    btn(sh.el, '添加').click();
+    assert.equal(sh.open, false);
+    assert.equal(fid(main, tagFid('style', '空气炸锅')).attrs['aria-pressed'], 'true', '自己加的列在最后、选上了');
+    fid(main, 're-save').click();
+    await settle();
+    assert.deepEqual(liveRecipe(S(), env.ids.hsr).tags, { cuisine: ['川菜'], style: ['空气炸锅'] });
+    main = env.mount(recipeView, { name: 'recipe', id: env.ids.hsr });
+    assert.deepEqual(allCls(byCls(main, 'rcp-page-tags'), 'rcp-tag').map(x => x.textContent), ['川菜', '空气炸锅']);
+    // 别的食谱的编辑页：「空气炸锅」是用过的，也列出来（没选上）
+    main = env.mount(editView, { name: 'recipeEdit', id: env.ids.egg }, { storage: env.storage });
+    assert.equal(fid(main, tagFid('style', '空气炸锅')).attrs['aria-pressed'], 'false');
+  } finally { env.done(); }
+});
+
+test('编辑食谱：「按类别重新排」整张按组排；↑↓ 排过以后「加一样」写的保存时只放进它那一组的最后；新建的「加一样」写的保存时整张按组排', async () => {
+  const env = setup({ seed: seedRecipes });
+  try {
+    let main = env.mount(editView, { name: 'recipeEdit', id: env.ids.hsr }, { storage: env.storage });
+    const rowNames = () => allCls(env.main, 're-row').map(r => byCls(r, 're-name').value);
+    assert.deepEqual(rowNames(), ['五花肉', '洋葱', '生抽', '香菜', '盐'], '以前存的顺序不动');
+    fid(main, 're-sort').click();
+    assert.deepEqual(rowNames(), ['五花肉', '洋葱', '香菜', '生抽', '盐']);
+    assert.equal(document.activeElement, fid(main, 're-sort'));
+    assert.match(env.toasts.at(-1).msg, /^已按类别排好/);
+    const salt = allCls(main, 're-row')[4].dataset.key;
+    fid(main, 're-up-' + salt).click();                             // 盐挪到生抽前面：手动排过
+    assert.deepEqual(rowNames(), ['五花肉', '洋葱', '香菜', '盐', '生抽']);
+    fid(main, 're-add').click();
+    await type(allCls(main, 're-name').at(-1), '排骨');
+    assert.equal(rowNames().at(-1), '排骨', '写着的时候不挪');
+    fid(main, 're-save').click();
+    await settle();
+    const r = liveRecipe(S(), env.ids.hsr);
+    assert.deepEqual(r.ings.map(g => g.name), ['五花肉', '排骨', '洋葱', '香菜', '盐', '生抽'], '排过：别的不动，排骨放进肉那一组的最后');
+    assert.equal(r.ordered, true);
+    // 再「按类别重新排」：去掉 ordered
+    main = env.mount(editView, { name: 'recipeEdit', id: env.ids.hsr }, { storage: env.storage });
+    fid(main, 're-sort').click();
+    fid(main, 're-save').click();
+    await settle();
+    assert.equal('ordered' in liveRecipe(S(), env.ids.hsr), false);
+    // 新建：一样一样加的，保存时按类别排
+    main = env.mount(editView, { name: 'recipeEdit', sub: 'new' }, { storage: env.storage });
+    await type(fid(main, 're-name'), '炒青菜');
+    for (const n of ['盐', '青菜', '蒜']) { fid(main, 're-add').click(); await type(allCls(main, 're-name').at(-1), n); }
+    fid(main, 're-save').click();
+    await settle();
+    const made = Object.values(S().data.recipes).find(x => x.name === '炒青菜');
+    assert.deepEqual(made.ings.map(g => g.name), ['青菜', '蒜', '盐']);
+  } finally { env.done(); }
+});
+
+test('编辑食谱：手动加的这道菜里已经有 → 那一行下面提醒（就地插进去，不重画）；「合并」单位一样数量相加、能撤销；「仍然加一行」不再提醒', async () => {
+  const env = setup({ seed: seedRecipes });
+  try {
+    const main = env.mount(editView, { name: 'recipeEdit', id: env.ids.hsr }, { storage: env.storage });
+    fid(main, 're-add').click();
+    const row = () => allCls(main, 're-row').at(-1);
+    const k = row().dataset.key;
+    await type(fid(main, 're-name-' + k), '生抽');
+    await type(fid(main, 're-qty-' + k), '1');
+    await type(fid(main, 're-unit-' + k), '勺');
+    const qtyIn = fid(main, 're-qty-' + k);
+    await fid(main, 're-name-' + k).fire('change');
+    assert.equal(byCls(row(), 're-dup-msg').textContent, '这道菜里已经有「生抽」了');
+    assert.equal(fid(main, 're-qty-' + k), qtyIn, '提醒是插进去的：这一行的输入框还是原来的（刚点的下一个框不丢）');
+    fid(main, 're-merge-' + k).click();
+    const rows = () => allCls(main, 're-row').map(r => [byCls(r, 're-name').value, byCls(r, 're-qty').value, byCls(r, 're-unit').value]);
+    assert.deepEqual(rows().find(r => r[0] === '生抽'), ['生抽', '3', '勺'], '2 勺 + 1 勺');
+    assert.equal(rows().length, 5, '这一行并进去了');
+    const soy = allCls(main, 're-row').find(r => byCls(r, 're-name').value === '生抽').dataset.key;
+    assert.equal(document.activeElement, fid(main, 're-qty-' + soy), '焦点给合并到的那一行的数量');
+    assert.equal(env.toasts.at(-1).msg, '已合并到「生抽」');
+    env.toasts.at(-1).action.run();
+    assert.deepEqual(rows().slice(2), [['生抽', '2', '勺'], ['香菜', '', ''], ['盐', '', ''], ['生抽', '1', '勺']], '撤销：两行都回来，原样');
+    assert.ok(!byCls(allCls(main, 're-row').at(-1), 're-dup-msg'), '撤销回来的不再提醒');
+    // 「仍然加一行」：腌料、调味各一份盐
+    fid(main, 're-add').click();
+    const k2 = row().dataset.key;
+    await type(fid(main, 're-name-' + k2), '鹽');
+    await fid(main, 're-name-' + k2).fire('change');
+    assert.equal(byCls(row(), 're-dup-msg').textContent, '这道菜里已经有「盐」了', '简繁一样算重复');
+    fid(main, 're-keep-' + k2).click();
+    assert.ok(!byCls(row(), 're-dup-msg'));
+    assert.equal(document.activeElement, fid(main, 're-qty-' + k2));
+    await fid(main, 're-name-' + k2).fire('change');
+    assert.ok(!byCls(row(), 're-dup-msg'), '同一个名字不再提醒');
+    await type(fid(main, 're-name-' + k2), '冰糖');
+    await fid(main, 're-name-' + k2).fire('change');
+    assert.ok(!byCls(row(), 're-dup-msg'), '不重复了');
+    fid(main, 're-save').click();
+    await settle();
+    assert.equal(liveRecipe(S(), env.ids.hsr).ings.filter(g => g.name === '生抽').length, 2);
+  } finally { env.done(); }
+});
+
+test('粘贴食材：这道菜里已经有的、这次贴的上面已经有的标「重复」、默认不加，「仍然加一行」勾上才加；改了名字就地重新认', async () => {
+  const env = setup({ seed: seedRecipes });
+  try {
+    const main = env.mount(editView, { name: 'recipeEdit', id: env.ids.hsr }, { storage: env.storage });
+    fid(main, 're-paste').click();
+    const sh = env.sheet();
+    await type(byCls(sh.el, 'paste-in'), '生抽 1勺、蚝油 1勺、冰糖 20g、蚝油 2勺');
+    fid(sh.el, 'paste-go').click();
+    const dups = () => allCls(sh.el, 'paste-row').map(r => { const d = byCls(r, 'paste-dup'); return d.hidden ? null : byCls(d, 'paste-dup-msg').textContent; });
+    assert.deepEqual(dups(), ['这道菜里已经有「生抽」了', null, null, '上面已经有「蚝油」了']);
+    assert.equal(byCls(sh.el, 'paste-duphelp').hidden, false);
+    assert.deepEqual([!!fid(sh.el, 'paste-keep-0').checked, !!fid(sh.el, 'paste-keep-3').checked], [false, false], '重复的默认不加');
+    // 第一样改成老抽：不重复了（就地认，不重画）
+    const first = byCls(allCls(sh.el, 'paste-row')[0], 'paste-name');
+    await type(first, '老抽');
+    await first.fire('change');
+    assert.equal(byCls(allCls(sh.el, 'paste-row')[0], 'paste-name'), first, '输入框还是原来的');
+    assert.deepEqual(dups(), [null, null, null, '上面已经有「蚝油」了']);
+    // 第二份蚝油也要
+    fid(sh.el, 'paste-keep-3').checked = true;
+    await fid(sh.el, 'paste-keep-3').fire('change');
+    fid(sh.el, 'paste-go').click();
+    assert.equal(sh.open, false);
+    const names = allCls(main, 're-row').map(r => byCls(r, 're-name').value);
+    assert.deepEqual(names, ['五花肉', '洋葱', '生抽', '香菜', '盐', '老抽', '蚝油', '冰糖', '蚝油'], '已经存过的食谱：原来的几行不挪（香菜还在生抽后面），粘贴的放进各自那一组的最后');
   } finally { env.done(); }
 });

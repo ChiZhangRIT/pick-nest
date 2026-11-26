@@ -49,8 +49,13 @@ import { toSimplified } from './hanzi.js';
  * 食谱里的一样食材。key 在这道食谱里不重复（排顺序、改名都不变）；qty 是 null 时是「适量」「少许」这种（原话在 note 里）
  */
 /**
- * @typedef {Base & { name: string, servings: number | null, steps: string, source: string, note: string, ings: Ingredient[] }} Recipe
- * 食谱（第二版）。servings：几人份，null = 没写（加到清单时不能按人数换算）；steps 做法、source 来源（链接或一句话）、note 备注
+ * @typedef {{ cuisine: string[], style: string[] }} RecipeTags
+ * 食谱的标签（第 11 步）：菜系、风格两组，存的是写出来的字（预设的也是），同一组里 normName 一样的只有一个
+ */
+/**
+ * @typedef {Base & { name: string, servings: number | null, steps: string, source: string, note: string, ings: Ingredient[], tags: RecipeTags, ordered?: true }} Recipe
+ * 食谱（第二版）。servings：几人份，null = 没写（加到清单时不能按人数换算）；steps 做法、source 来源（链接或一句话）、note 备注；
+ * ordered：食材手动 ↑↓ 排过（第 11 步：新加的只放进它那一组的最后，不再整张按类别排），没排过的记录上没有这个键
  */
 /** @typedef {'breakfast' | 'lunch' | 'dinner' | 'snack'} Meal */
 /**
@@ -251,6 +256,8 @@ export function normalizeMemory(rec, id = rec && rec.id) {
 export function normalizeRecipe(rec, id = rec && rec.id) {
   const r = base(rec, /** @type {string} */ (id));
   r.name = str(r.name);
+  r.tags = normalizeTags(r.tags);
+  if (r.ordered !== true) delete r.ordered;          // 只有 true 有意思；没排过的记录上不放这个键（以前的食谱和原来一模一样）
   const sv = numOrNull(r.servings);
   r.servings = sv != null && sv > 0 ? sv : null;
   r.steps = str(r.steps);
@@ -271,6 +278,27 @@ export function normalizeRecipe(rec, id = rec && rec.id) {
     return { ...x, key, name: str(x.name), qty: q != null && q > 0 ? q : null, unit: str(x.unit), note: str(x.note), optional: x.optional === true };
   });
   return /** @type {Recipe} */ (r);
+}
+
+/** 食谱标签的两组（第 11 步） */
+export const TAG_GROUPS = /** @type {const} */ (['cuisine', 'style']);
+/**
+ * 整理标签：两组都是字符串数组（不是数组的当空的），空白的、不是字符串的扔掉，同一组里 normName 一样的只留第一个（「粵菜」「粤菜」是一个）；
+ * 字本身原样（不做简繁转换、不截）。别的组（新版才有的）原样留着
+ * @param {unknown} tags @returns {RecipeTags}
+ */
+export function normalizeTags(tags) {
+  const out = isObj(tags) ? copySafe(tags) : {};
+  for (const g of TAG_GROUPS) {
+    const seen = new Set();
+    out[g] = (Array.isArray(out[g]) ? out[g] : []).filter(x => {
+      const k = typeof x === 'string' ? normName(x) : '';
+      if (!k || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  }
+  return /** @type {RecipeTags} */ (out);
 }
 
 /**

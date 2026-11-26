@@ -4,7 +4,7 @@
      --line 分隔线  --fill 浅填充（分段控件底、输入框底）  --seg-on 分段控件选中的那段  --side-bg 侧栏底  --tile 购物模式里商店图标的底
      --accent 主色（按钮底）  --accent-text 主色文字和线条图标（深色下更亮）  --on-accent 主色上的文字
      --accent-soft 浅主色底  --accent-line 输入框聚焦边  --accent-ring 聚焦光圈
-     --danger / --danger-soft  --warn 提醒（令牌快到期）  --tabbar-bg 底栏（半透明，后面模糊）  --toast-* 提示条  --scrim 面板后面的遮罩
+     --danger / --danger-soft  --warn / --warn-soft 提醒（令牌快到期、食谱里重复的食材）  --tabbar-bg 底栏（半透明，后面模糊）  --toast-* 提示条  --scrim 面板后面的遮罩
      --shadow-card 卡片阴影  --shadow-pop 浮层阴影  --pop 浮层底（输入联想；深色下比卡片亮一级，不然和下面的行连成一片）  --radius 12px  --radius-btn 10px  --sans 系统字体（苹方）
      --hl 搜索命中的字的底色  --sel 双栏时左栏选中的那一行的底色
    外壳给的钩子：body[data-layout=phone|side|two]、body[data-route=<页面名>]、body[data-tabs=1|0]、#main[data-panes=1|2]；
@@ -21,7 +21,7 @@
   --line: #e4e4dc; --fill: #eeede6; --seg-on: #ffffff; --side-bg: #efeee7; --tile: #eef3ea;
   --accent: #2b7a47; --accent-text: #2b7a47; --on-accent: #fff; --accent-soft: #e3f0e5;
   --accent-line: #a7d2b2; --accent-ring: rgba(43, 122, 71, .14);
-  --danger: #b3261e; --danger-soft: #fbe7e5; --warn: #9a5b00;
+  --danger: #b3261e; --danger-soft: #fbe7e5; --warn: #9a5b00; --warn-soft: #fbf1df;
   --tabbar-bg: rgba(250, 250, 247, .86); --toast-bg: #1f2420; --toast-ink: #f6f5f0; --toast-action: #8fd6a4; --scrim: rgba(20, 24, 20, .36);
   --shadow-card: 0 0 0 .5px rgba(31, 36, 32, .07), 0 1px 2px rgba(31, 36, 32, .04), 0 6px 16px -12px rgba(31, 36, 32, .16);
   --shadow-pop: 0 0 0 .5px rgba(31, 36, 32, .10), 0 10px 26px -10px rgba(31, 36, 32, .28); --pop: #ffffff;
@@ -40,7 +40,7 @@
   --line: #2b302b; --fill: #262a26; --seg-on: #3d433d; --side-bg: #161916; --tile: #243026;
   --accent: #2a7f4b; --accent-text: #7fcf98; --on-accent: #fff; --accent-soft: #1e3326;
   --accent-line: #33654a; --accent-ring: rgba(127, 207, 152, .18);
-  --danger: #ff8a80; --danger-soft: #3d1f1c; --warn: #f0b860;
+  --danger: #ff8a80; --danger-soft: #3d1f1c; --warn: #f0b860; --warn-soft: #3a2c14;
   --tabbar-bg: rgba(28, 31, 28, .86); --toast-bg: #2f342f; --toast-ink: #eef1ec; --toast-action: #8fd6a4; --scrim: rgba(0, 0, 0, .55);
   --shadow-card: 0 0 0 .5px rgba(255, 255, 255, .06), 0 6px 16px -10px rgba(0, 0, 0, .6);
   --shadow-pop: 0 0 0 .5px rgba(255, 255, 255, .08), 0 12px 30px -10px rgba(0, 0, 0, .7); --pop: #272b27;
@@ -685,8 +685,30 @@ select.f-in { width: 100%; }
 /* 「食谱」页：大标题下面的搜索框（和快速添加一个样子；不吸顶：一页卡片不多） */
 .rcp-search-wrap { margin: 12px -4px 2px; }
 .rcp-search-wrap .add-input { min-height: 44px; font-size: 16px; }
-.rcp-list > li + li > .rcp-row::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: .5px; background: var(--line); }
+/* 一张卡片 = 打开这道食谱的链接 + 右边的购物车（「加到清单」，在链接外面：按钮不能套在 <a> 里）；分隔线画在整行上 */
+.rcp-li { position: relative; display: flex; align-items: center; }
+.rcp-list > li + li::before { content: ""; position: absolute; z-index: 1; top: 0; left: 16px; right: 0; height: .5px; background: var(--line); }
+.rcp-li > .rcp-row { flex: 1; min-width: 0; padding-right: 6px; }
+.rcp-li.sel { background: var(--sel); }
+.rcp-cart { flex: none; margin-right: 8px; }
+.rcp-cart .ic { width: 22px; height: 22px; }
 .rcp-row { min-height: 62px; }
+.rcp-tags { display: flex; flex-wrap: wrap; gap: 4px; margin: 2px 0 0; padding: 0; list-style: none; }
+.rcp-tag { max-width: 12em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.rcp-row .rcp-tags { flex-wrap: nowrap; overflow: hidden; }
+.rcp-page-tags { margin: 10px 4px 0; }
+/* 食谱页上写全：卡片、筛选里省略了的长标签，在这里要能看全（不然只有编辑页里看得到） */
+.rcp-page-tags .rcp-tag { font-size: 13px; padding: 2px 9px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+/* 按标签筛选：每组一排，横着滑（标签多了不把卡片挤下去）；组名在最前 */
+.rcp-filter { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 0; }
+.rcp-frow { display: flex; align-items: center; gap: 6px; margin: 0 -16px; padding: 4px 16px; overflow-x: auto; scrollbar-width: none; }
+.rcp-frow::-webkit-scrollbar { display: none; }
+.rcp-flabel { flex: none; min-width: 2.6em; color: var(--muted); font-size: 13px; font-weight: 600; }
+.rcp-fchip { flex: none; max-width: 14em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rcp-fclear { align-self: flex-start; min-height: 36px; padding: 4px 2px; font-size: 14px; }
+.lp-empty .rcp-fclear { margin-top: 14px; }
+/* 没有食谱时左边的「食材替换」不画：右边的「新建食谱」照样靠右 */
+.rcp-replace[hidden] + .tb-btn { margin-left: auto; }
 .rcp-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .rcp-name { font-size: 17px; font-weight: 550; line-height: 1.35; overflow-wrap: anywhere; }
 .rcp-meta { font-size: 13px; line-height: 1.35; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -738,6 +760,20 @@ p.rcp-source { color: var(--ink-2); overflow-wrap: anywhere; }
 .re-ing-acts .btn { flex: 1 1 140px; }
 .re-ing-acts .ic { width: 20px; height: 20px; }
 .re-steps { min-height: 140px; }
+/* 第 11 步：食材的标题右边「按类别重新排」；重复的提醒插在那一行里；标签两组开关 */
+.re-ings-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 2px 8px; }
+.re-ings-head .group-h { margin: 0; }
+.re-sort { min-height: 36px; padding: 4px 2px; font-size: 14px; }
+.re-dup-slot[hidden] { display: none; }
+.re-dup { margin-top: 8px; padding: 10px 12px; border-radius: 10px; background: var(--warn-soft); }
+.re-dup-msg { margin: 0 0 8px; color: var(--warn); font-size: 14px; font-weight: 550; overflow-wrap: anywhere; }
+.re-dup-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.re-tags > .group-h { margin: 0 2px 8px; }
+.re-tag-group + .re-tag-group { margin-top: 12px; }
+.re-tag-chips { gap: 8px 6px; }
+.re-tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.re-tag-add { display: inline-flex; align-items: center; gap: 3px; border-style: dashed; color: var(--accent-text); }
+.re-tag-add .ic { width: 16px; height: 16px; }
 /* 粘贴食材：先贴字，再看拆成的每一样（能改、能去掉） */
 .paste-in { min-height: 170px; font-size: 15px; }
 .paste-help { margin: 0 2px 10px; }
@@ -747,6 +783,29 @@ p.rcp-source { color: var(--ink-2); overflow-wrap: anywhere; }
 .paste-sub { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
 .paste-row .f-in { min-height: 40px; padding: 8px 10px; font-size: 15px; }
 .paste-x { width: 44px; height: 44px; color: var(--muted); }
+/* 重复的：「重复」标签、和谁重复、「仍然加一行」的勾；没勾的这一行淡一点 */
+.paste-duphelp { margin: -4px 2px 10px; }
+.paste-dup { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 6px; font-size: 13px; color: var(--warn); }
+.paste-dup[hidden] { display: none; }
+.paste-dup-tag { background: var(--warn-soft); color: var(--warn); }
+.paste-dup-msg { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.paste-keep { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: var(--ink-2); font-size: 14px; cursor: pointer; }
+.paste-keep-box { width: 20px; height: 20px; margin: 0; accent-color: var(--accent); }
+.paste-row:has(.paste-keep-box:not(:checked)) .paste-main .f-in { color: var(--muted); }
+/* 食材替换：先搜一样（一行一个，右边几道食谱），再看用到它的食谱和那几行 */
+.rep-search { margin-bottom: 10px; }
+.rep-search .rep-q { padding-left: 40px; }
+.rep-none { margin: 4px 2px 0; }
+.rep-hit { min-height: 48px; }
+.rep-hits > li + li > .rep-hit::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: .5px; background: var(--line); }
+.rep-name { flex: 1; min-width: 0; font-size: 16px; overflow-wrap: anywhere; }
+.rep-n { flex: none; color: var(--muted); font-size: 13px; }
+.rep-rec { align-items: flex-start; }
+.rep-rec-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.rep-rec-name { font-size: 16px; font-weight: 550; overflow-wrap: anywhere; }
+.rep-row { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.rep-2 .rep-in { margin-top: 16px; }
+.rep-staple, .rep-dup { margin-top: 10px; }
 /* 窄手机（< 360）：名字一整行（不然「郫县豆瓣酱」只露出三个字），数量、单位、× 在下一行 */
 @media (max-width: 359px) {
   .paste-main { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 44px; }

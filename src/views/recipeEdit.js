@@ -8,14 +8,24 @@
 // 下次打开同一个编辑页时接着改（上面说一句，可以「放弃修改」）；保存、放弃时删掉。打字时 0.4 秒后存，切到后台（app 调 flush）、页面被收起（pagehide）
 // 马上存：iOS 页面一隐藏就停掉计时器，最后 0.4 秒里打的、贴的字等不到。
 // 自己管更新（返回 onChange）：别的设备同步来的改动不重画这一页（正在打的字不能被冲掉）；这道食谱在别的设备上删掉了，保存时问要不要存成新的。
+// 第 11 步：
+//   - 标签：「菜系」「风格」两组开关（预设按界面语言写出来、别的食谱用过的、自己加的：core/recipes.js 的 tagChoices），「自己加」开一个名字面板
+//   - 食材的默认顺序：粘贴进来的马上按类别放好（placeIngredients），「加一样」写的保存时再放（写着名字的时候行不能跳走：iPhone 上点同一行的数量框
+//     名字框就失去焦点，这时挪走就点空了）；↑↓ 排过（ordered）、已经存过的食谱，新加的只放进它那一组的最后（原来的几行不自己挪）；
+//     「按类别重新排」整张排一次、去掉 ordered
+//   - 重复的食材：名字写好（change）时这道菜里已经有同一样（duplicateOf）→ 这一行下面提醒「这道菜里已经有「生抽」了」[合并] [仍然加一行]；
+//     提醒是就地插进这一行的，不重画（不然刚点的下一个输入框就没了）
 import { h, icon, keepUnderFinger } from '../ui/dom.js';
 import { t } from '../i18n.js';
 import { field, showErr, onEnter } from '../ui/form.js';
-import { liveRecipe, validateRecipe, saveRecipe } from '../core/recipes.js';
+import { liveRecipe, validateRecipe, saveRecipe, sortIngredients, placeIngredients, duplicateOf, mergeIngredient, tagChoices, addTag, removeTag, hasTag,
+  RECIPE_TAG_PRESETS } from '../core/recipes.js';
 import { formatQty, readQty, stepQty } from '../core/parse.js';
-import { canon, newId } from '../core/store.js';
+import { canon, newId, normName, hash64, normalizeTags, TAG_GROUPS } from '../core/store.js';
+import { collatorFor } from '../core/group.js';
 import { isObj } from '../core/util.js';
 import { pasteSheet } from '../ui/pasteIngredients.js';
+import { nameSheet } from '../ui/nameSheet.js';
 
 export const DRAFT_PREFIX = 'picknest.draft.recipe.';
 const defaultStorage = () => { try { return globalThis.localStorage || null; } catch (e) { return null; } };
@@ -25,6 +35,7 @@ export function workingCopy(r) {
   return {
     name: r ? r.name : '', servings: r && r.servings ? formatQty(r.servings) : '', steps: r ? r.steps : '', source: r ? r.source : '', note: r ? r.note : '',
     ings: r ? r.ings.map(g => ({ key: g.key, name: g.name, qty: formatQty(g.qty), unit: g.unit, note: g.note, optional: g.optional })) : [],
+    tags: normalizeTags(r && r.tags), ordered: !!(r && r.ordered),
   };
 }
 
@@ -44,18 +55,23 @@ export function render(main, params, ctx, deps = {}) {
 
   // ---------- 另存的草稿 ----------
   function readDraft() {
-    try { const d = storage && JSON.parse(storage.getItem(draftKey) || 'null'); return isObj(d) && isObj(d.w) && Array.isArray(d.w.ings) ? d.w : null; } catch (e) { return null; }
+    try { const d = storage && JSON.parse(storage.getItem(draftKey) || 'null'); return isObj(d) && isObj(d.w) && Array.isArray(d.w.ings) ? d : null; } catch (e) { return null; }
   }
   let persistTimer = null;
   function persist() {
     clearTimeout(persistTimer); persistTimer = null;
-    try { if (!storage) return; if (dirty()) storage.setItem(draftKey, JSON.stringify({ w, at: Date.now() })); else storage.removeItem(draftKey); } catch (e) { /* 存不下就算了：只是保险 */ }
+    try { if (!storage) return; if (dirty()) storage.setItem(draftKey, JSON.stringify({ w, place: [...fresh], at: Date.now() })); else storage.removeItem(draftKey); } catch (e) { /* 存不下就算了：只是保险 */ }
   }
   const persistSoon = () => { clearTimeout(persistTimer); persistTimer = setTimeout(persist, 400); };
   function dropDraft() { clearTimeout(persistTimer); persistTimer = null; try { if (storage) storage.removeItem(draftKey); } catch (e) { /* 同上 */ } }
 
-  const draft = readDraft();
+  const saved = readDraft(), draft = saved && saved.w;
   const w = draft ? { ...workingCopy(src), ...draft, ings: draft.ings.map(g => ({ key: String(g.key || newId('g_')), name: String(g.name ?? ''), qty: String(g.qty ?? ''), unit: String(g.unit ?? ''), note: String(g.note ?? ''), optional: g.optional === true })) } : workingCopy(src);
+  // 旧版存的草稿没有标签、ordered：用这道食谱现在的；坏了的整理一下
+  w.tags = normalizeTags(draft && draft.tags !== undefined ? draft.tags : w.tags);
+  w.ordered = w.ordered === true;
+  // 「加一样」写的、还没按类别放好的那几行（保存时放：saveRecipe 的 place）；草稿里也记着，接着改时照样放
+  const fresh = new Set(saved && Array.isArray(saved.place) ? saved.place.filter(k => typeof k === 'string') : []);
   if (draft && canon(w) === base) dropDraft();
   const dirty = () => canon(w) !== base;
   let done = false;                   // 存好了 / 放弃了：离开时不再问、不再另存
@@ -87,26 +103,36 @@ export function render(main, params, ctx, deps = {}) {
   // ---------- 食材 ----------
   const rowsEl = h('ul.re-rows');
   const rowErr = new Map();           // key → 文案的键（保存时标的错）
+  const prompts = new Map();          // key → 和它重复的那一行的 key（名字写好时提醒「这道菜里已经有…」）
+  const dismissed = new Map();        // key → 点了「仍然加一行」时的名字（normName）：同一个名字不再提醒
+  const dupSlots = new Map();         // key → 这一行里放提醒的地方（就地改，不重画）
   const emptyNote = h('p.group-foot.re-empty', null, t('rcp.rowsEmpty'));
   const nameOf = (g, i) => g.name.trim() || t('rcp.rowN', { n: i + 1 });
+  const focusFid = (fid) => { const el = fid ? main.querySelector(`[data-fid="${fid}"]`) : null; if (el) el.focus({ preventScroll: true }); return el; };
   function drawRows() {
     emptyNote.hidden = w.ings.length > 0;
     rowsEl.hidden = !w.ings.length;
+    sortBtn.hidden = w.ings.length < 2;
+    dupSlots.clear();
     rowsEl.replaceChildren(...w.ings.map((g, i) => {
       const inp = (cls, key, label, extra = {}) => h('input.f-in.' + cls, { type: 'text', value: g[key], 'aria-label': t(label, { n: i + 1 }), autocomplete: 'off',
         dataset: { fid: `re-${key}-${g.key}` }, oninput: (e) => { g[key] = e.target.value; touched(); }, ...extra });
       const mv = (dir) => {
         const j = i + dir, edge = j < 0 || j >= w.ings.length, fid = `re-${dir < 0 ? 'up' : 'down'}-${g.key}`;
+        // 手动排过：以后新加的只放进它那一组的最后，不再整张按类别排（ordered）；挪过的这一行自己也不用再放了
         return h('button.icon-btn.mv-btn', { type: 'button', 'aria-label': t(dir < 0 ? 'rcp.moveUp' : 'rcp.moveDown', { name: nameOf(g, i) }), 'aria-disabled': String(edge), dataset: { fid },
-          onclick: () => { if (!edge) keepUnderFinger(ctx, main, fid, () => { const [x] = w.ings.splice(i, 1); w.ings.splice(j, 0, x); touched(); redrawRows(fid); }); } },
+          onclick: () => { if (!edge) keepUnderFinger(ctx, main, fid, () => { const [x] = w.ings.splice(i, 1); w.ings.splice(j, 0, x); w.ordered = true; fresh.delete(x.key); touched(); redrawRows(fid); }); } },
         icon(dir < 0 ? 'up' : 'down'));
       };
       const opt = h('button.chip.re-opt', { type: 'button', 'aria-pressed': String(g.optional), 'aria-label': t('rcp.rowOptional', { name: nameOf(g, i) }), dataset: { fid: 're-opt-' + g.key },
         onclick: () => { g.optional = !g.optional; opt.setAttribute('aria-pressed', String(g.optional)); touched(); } }, t('rcp.optional'));
       const err = h('p.f-err', { role: 'alert', hidden: !rowErr.has(g.key) }, rowErr.has(g.key) ? t(rowErr.get(g.key)) : '');
+      const slot = h('div.re-dup-slot');
+      dupSlots.set(g.key, slot);
+      paintDup(g);
       return h('li.re-row', { dataset: { key: g.key } },
         h('div.re-main', null,
-          inp('re-name', 'name', 'rcp.rowName', { placeholder: t('rcp.ingName'), maxlength: 200, enterkeyhint: 'next' }),
+          inp('re-name', 'name', 'rcp.rowName', { placeholder: t('rcp.ingName'), maxlength: 200, enterkeyhint: 'next', onchange: () => checkDup(g) }),
           inp('re-qty', 'qty', 'rcp.rowQty', { placeholder: t('rcp.ingQty'), inputmode: 'decimal', 'aria-invalid': rowErr.get(g.key) === 'rcp.err.ingQty' ? 'true' : null }),
           inp('re-unit', 'unit', 'rcp.rowUnit', { placeholder: t('rcp.ingUnit'), maxlength: 20 })),
         h('div.re-sub', null,
@@ -115,14 +141,63 @@ export function render(main, params, ctx, deps = {}) {
           h('span.re-acts', null, mv(-1), mv(1),
             h('button.icon-btn.re-del', { type: 'button', 'aria-label': t('rcp.removeRow', { name: nameOf(g, i) }), dataset: { fid: 're-del-' + g.key },
               onclick: () => removeRow(i) }, icon('trash')))),
+        slot,
         err);
     }));
   }
   /** 重画食材以后焦点放回同一个按钮（↑↓ 连着按挪的还是同一样） */
   function redrawRows(fid) {
     drawRows();
-    const el = fid ? main.querySelector(`[data-fid="${fid}"]`) : null;
-    if (el) el.focus({ preventScroll: true });
+    focusFid(fid);
+  }
+  // ---------- 重复的食材 ----------
+  /** 名字写好了（change：离开这个输入框）：这道菜里已经有同一样、又没点过「仍然加一行」→ 提醒；不重复了 → 拿掉提醒 */
+  function checkDup(g) {
+    const k = normName(g.name);
+    const d = k && dismissed.get(g.key) !== k ? duplicateOf(w, g.name, g.key) : null;
+    if (d) prompts.set(g.key, d.key); else prompts.delete(g.key);
+    paintDup(g);
+  }
+  function paintDup(g) {
+    const slot = dupSlots.get(g.key);
+    if (!slot) return;
+    const other = prompts.has(g.key) ? w.ings.find(x => x.key === prompts.get(g.key)) : null;
+    if (!other) { prompts.delete(g.key); slot.replaceChildren(); slot.hidden = true; return; }
+    slot.hidden = false;
+    slot.replaceChildren(h('div.re-dup', { role: 'group', 'aria-label': t('rcp.dupHave', { name: other.name.trim() }) },
+      h('p.re-dup-msg', { role: 'status' }, t('rcp.dupHave', { name: other.name.trim() })),
+      h('div.re-dup-acts', null,
+        h('button.btn.small.re-merge', { type: 'button', dataset: { fid: 're-merge-' + g.key }, onclick: () => mergeRow(g, other) }, t('rcp.dupMerge')),
+        h('button.btn.small.re-keep', { type: 'button', dataset: { fid: 're-keep-' + g.key }, onclick: () => keepRow(g) }, t('rcp.dupKeep')))));
+  }
+  /** 输入框里的数量 → 数字；空的、写错了的当没写（合并时写错的不当成数） */
+  const num = (x) => { const q = readQty(x); return q != null && Number.isFinite(q) ? q : null; };
+  /** 「合并」：这一行并进已经有的那一行（core/recipes.js 的 mergeIngredient：单位一样数量相加，不一样写进备注），这一行去掉；10 秒内能撤销 */
+  function mergeRow(g, into) {
+    const at = w.ings.indexOf(g);
+    if (at < 0 || !w.ings.includes(into)) return;
+    const before = { qty: into.qty, unit: into.unit, note: into.note };
+    const m = mergeIngredient({ qty: num(into.qty), unit: into.unit, note: into.note }, { qty: num(g.qty), unit: g.unit, note: g.note });
+    into.qty = formatQty(m.qty); into.unit = m.unit; into.note = m.note;
+    w.ings.splice(at, 1);
+    prompts.delete(g.key); fresh.delete(g.key);
+    touched();
+    redrawRows(`re-qty-${into.key}`);
+    ctx.toast(t('rcp.merged', { name: into.name.trim() }), { ms: 10000, action: { label: t('common.undo'), run: () => {
+      if (done || unmounted || w.ings.some(x => x.key === g.key) || !w.ings.includes(into)) return;
+      Object.assign(into, before);
+      w.ings.splice(Math.min(at, w.ings.length), 0, g);
+      dismissed.set(g.key, normName(g.name));
+      touched();
+      redrawRows(`re-name-${g.key}`);
+    } } });
+  }
+  /** 「仍然加一行」（腌料、调味各一份盐）：这个名字不再提醒，接着写数量 */
+  function keepRow(g) {
+    dismissed.set(g.key, normName(g.name));
+    prompts.delete(g.key);
+    paintDup(g);
+    focusFid(`re-qty-${g.key}`);
   }
   function removeRow(i) {
     const [gone] = w.ings.splice(i, 1);
@@ -143,18 +218,25 @@ export function render(main, params, ctx, deps = {}) {
     }
   }
   const blank = (x = {}) => ({ key: newId('g_'), name: '', qty: '', unit: '', note: '', optional: false, ...x });
+  // 「加一样」：先接在最后（写着名字时不挪），保存时再按类别放好（fresh → saveRecipe 的 place）
   const addBtn = h('button.btn.re-add', { type: 'button', dataset: { fid: 're-add' }, onclick: () => {
-    w.ings.push(blank());
+    const row = blank();
+    w.ings.push(row);
+    fresh.add(row.key);
     touched();
     drawRows();
-    const el = main.querySelector(`[data-fid="re-name-${w.ings[w.ings.length - 1].key}"]`);
+    const el = main.querySelector(`[data-fid="re-name-${row.key}"]`);
     if (el) el.focus();
   } }, icon('plus'), t('rcp.addRow'));
   const pasteBtn = h('button.btn.re-paste', { type: 'button', dataset: { fid: 're-paste' }, onclick: () => pasteSheet(ctx, (got) => {
     // 只有一行空的（刚点了「加一样」还没写）：换掉它，不留一个空行在中间
-    if (w.ings.length && w.ings.every(g => !g.name.trim() && !g.qty.trim() && !g.unit.trim() && !g.note.trim())) w.ings = [];
+    if (w.ings.length && w.ings.every(g => !g.name.trim() && !g.qty.trim() && !g.unit.trim() && !g.note.trim())) { w.ings = []; fresh.clear(); }
     const added = got.map(g => blank(g));
-    w.ings.push(...added);
+    // 粘贴进来的马上按类别放好：新建的、没手动排过的整张排；排过的、已经存过的食谱放进各自那一组的最后（原来的几行不自己挪，
+    // 和保存时一样：第 11 步以前存的食谱可能是以前用 ↑↓ 排好的）
+    const keep = w.ordered || !isNew;
+    w.ings = placeIngredients(ctx.state, [...w.ings, ...added], added.map(g => g.key), keep);
+    if (!keep) fresh.clear();
     touched();
     drawRows();
     ctx.toast(t('rcp.pasted', { n: added.length }));
@@ -162,7 +244,54 @@ export function render(main, params, ctx, deps = {}) {
     const first = main.querySelector(`[data-fid="re-name-${added[0].key}"]`);
     if (first && first.scrollIntoView) first.scrollIntoView({ block: 'nearest' });
     pasteBtn.focus({ preventScroll: true });
-  }) }, icon('paste'), t('rcp.paste'));
+  }, { have: () => w.ings.map(g => g.name) }) }, icon('paste'), t('rcp.paste'));
+  // 「按类别重新排」：整张按组排一次（同一组里先后不变），以后新加的也照组放（去掉 ordered）
+  const sortBtn = h('button.link-btn.re-sort', { type: 'button', dataset: { fid: 're-sort' }, onclick: () => {
+    w.ings = sortIngredients(ctx.state, w.ings);
+    w.ordered = false;
+    fresh.clear();
+    touched();
+    redrawRows('re-sort');
+    ctx.toast(t('rcp.sorted'));
+  } }, t('rcp.sortGroups'));
+
+  // ---------- 标签 ----------
+  const collator = collatorFor(ctx.lang());
+  // 标签开关的 fid 用名字的哈希：自己加的标签里可能有引号，不能直接放进选择器
+  const tagFid = (g, name) => `re-tag-${g}-${hash64(normName(name))}`;
+  const tagEls = Object.fromEntries(TAG_GROUPS.map(g => [g, h('div.chips.re-tag-chips', { role: 'group', 'aria-label': t('rcp.tag.' + g), dataset: { group: g } })]));
+  /** 一组的开关：预设（界面语言）→ 别的食谱用过的 → 这一道自己加的（tagChoices），最后「自己加」 */
+  function drawTags(g) {
+    const presets = RECIPE_TAG_PRESETS[g].map(k => t(`rcp.tag.${g}.${k}`));
+    tagEls[g].replaceChildren(...tagChoices(ctx.state, g, presets, w.tags[g], collator).map(name => {
+      const chip = h('button.chip.re-tag', { type: 'button', 'aria-pressed': String(hasTag(w.tags, g, name)), dataset: { fid: tagFid(g, name) },
+        onclick: () => {
+          const on = !hasTag(w.tags, g, name);
+          w.tags = on ? /** @type {any} */ (addTag(w.tags, g, name)).tags : removeTag(w.tags, g, name);
+          chip.setAttribute('aria-pressed', String(on));
+          touched();
+        } }, name);
+      return chip;
+    }), h('button.chip.re-tag-add', { type: 'button', dataset: { fid: 're-tag-add-' + g }, onclick: () => customTag(g) }, icon('plus'), t('rcp.tagAdd')));
+  }
+  function customTag(g) {
+    const cu = g === 'cuisine';
+    nameSheet(ctx, { title: t(cu ? 'rcp.tagAddCuisine' : 'rcp.tagAddStyle'), label: t('rcp.tagName'), placeholder: t(cu ? 'rcp.tagPhCuisine' : 'rcp.tagPhStyle'),
+      submitLabel: t('rcp.tagAddGo'), focus: true,
+      save: ({ name }) => {
+        const r = addTag(w.tags, g, name);
+        if (!r.ok) return { ok: false, errors: { name: r.error } };
+        w.tags = r.tags;
+        touched();
+        drawTags(g);
+        // 面板关上以后焦点给刚加的（选上了的）那个
+        setTimeout(() => focusFid(tagFid(g, name)), 0);
+        return { ok: true };
+      } });
+  }
+  const tagsRow = h('div.f-row.re-tags', null, h('h2.group-h', null, t('rcp.tags')),
+    TAG_GROUPS.map(g => h('div.re-tag-group', null, h('div.f-label', { 'aria-hidden': 'true' }, t('rcp.tag.' + g)), tagEls[g])),
+    h('p.f-help', null, t('rcp.tagHelp')));
 
   const stepsIn = h('textarea.f-in.re-steps', { rows: 6, value: w.steps, placeholder: t('rcp.stepsPh'), dataset: { fid: 're-steps' }, oninput: () => { w.steps = stepsIn.value; touched(); } });
   const sourceIn = h('input.f-in', { type: 'text', value: w.source, placeholder: t('rcp.sourcePh'), autocomplete: 'off', autocapitalize: 'none', spellcheck: 'false', enterkeyhint: 'done',
@@ -176,11 +305,13 @@ export function render(main, params, ctx, deps = {}) {
     banner,
     nameRow,
     svRow,
-    h('div.f-row.re-ings', null, h('h2.group-h', null, t('rcp.ings')), emptyNote, rowsEl, h('div.re-ing-acts', null, addBtn, pasteBtn)),
+    h('div.f-row.re-ings', null, h('div.re-ings-head', null, h('h2.group-h', null, t('rcp.ings')), sortBtn), emptyNote, rowsEl, h('div.re-ing-acts', null, addBtn, pasteBtn)),
+    tagsRow,
     field(t('rcp.steps'), stepsIn),
     field(t('rcp.source'), sourceIn),
     field(t('rcp.note'), noteIn)));
   drawRows();
+  for (const g of TAG_GROUPS) drawTags(g);
   if (isNew && !draft) nameIn.focus({ preventScroll: true });
 
   // ---------- 保存、取消 ----------
@@ -210,7 +341,8 @@ export function render(main, params, ctx, deps = {}) {
       if (!ok) return;
       target = null;
     }
-    const res = ctx.mutate(s => saveRecipe(s, target, w, Date.now()));
+    // 「加一样」写的那几行这时按类别放好（place）：写着的时候没挪，免得点空
+    const res = ctx.mutate(s => saveRecipe(s, target, { ...w, place: [...fresh] }, Date.now()));
     if (!res.ok) { if (res.errors.recipe) ctx.toast(t(res.errors.recipe)); return; }
     done = true;
     dropDraft();
@@ -231,8 +363,9 @@ export function render(main, params, ctx, deps = {}) {
     Object.assign(w, workingCopy(src && liveRecipe(ctx.state, id)));
     base = canon(w);
     nameIn.value = w.name; svIn.value = w.servings; stepsIn.value = w.steps; sourceIn.value = w.source; noteIn.value = w.note;
-    rowErr.clear();
+    rowErr.clear(); prompts.clear(); dismissed.clear(); fresh.clear();
     drawRows();
+    for (const g of TAG_GROUPS) drawTags(g);
     if (banner) banner.remove();
     nameIn.focus({ preventScroll: true });
   }

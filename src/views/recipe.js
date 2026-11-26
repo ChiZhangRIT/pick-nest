@@ -6,7 +6,7 @@
 // 自己管更新（返回 onChange）：数据变了就地重画（焦点按 data-fid 放回）；删除时先离开再删，不然重画时会当成「不在了」再提示一次。
 import { h, icon, backText } from '../ui/dom.js';
 import { t } from '../i18n.js';
-import { liveRecipe, recipeName, deleteRecipe } from '../core/recipes.js';
+import { liveRecipe, recipeName, deleteRecipe, recipeTags } from '../core/recipes.js';
 import { isStaple } from '../core/memory.js';
 import { qtyLabel } from '../core/parse.js';
 import { cleanUrl } from '../core/items.js';
@@ -31,6 +31,11 @@ export function render(main, params, ctx) {
     h('div.nav-acts', null, h('button.tb-btn', { type: 'button', dataset: { fid: 'rcp-edit' }, onclick: () => ctx.navigate('/r/' + encodeURIComponent(id) + '/edit') }, icon('pencil'), t('rcp.edit'))));
   const content = h('div.rcp-page');
 
+  // 标签（第 11 步）：菜系在前、风格在后，读屏先念「标签」
+  function tagsOf(r) {
+    const tg = recipeTags(r), all = [...tg.cuisine, ...tg.style];
+    return all.length ? h('ul.rcp-tags.rcp-page-tags', { 'aria-label': t('rcp.tags') }, all.map(x => h('li.tag.rcp-tag', null, x))) : null;
+  }
   function draw() {
     const r = rec();
     const url = r.source ? cleanUrl(r.source) : '';
@@ -41,6 +46,7 @@ export function render(main, params, ctx) {
       h('div.page.lp-head.rcp-head', null,
         h('h1.lp-name', { tabindex: -1, dataset: { fid: 'lp-title' } }, recipeName(r, t)),
         h('p.rcp-sub', null, recipeMeta(r)),
+        tagsOf(r),
         // 来源：链接只当 http / https 打开（新标签页、不带来源），别的（「妈妈教的」、坏链接）照原文写
         r.source.trim() ? (url
           ? h('a.rcp-source', { href: url, target: '_blank', rel: 'noopener noreferrer' }, icon('open'), h('span', null, r.source.trim()))
