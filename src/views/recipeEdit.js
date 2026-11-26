@@ -19,13 +19,15 @@
 //   压缩成长边 1600 px 的 JPEG（ui/photo.js 的 encodePhoto）→ 存进本机的图片库（ctx.photos.put，按 sha256）→ 工作副本的 photo 换成它；
 //   有图时「换一张」「删除图片」（删了 10 秒内能撤销）。和别的修改一样点「保存」才算。这次加的图保存、取消、放弃时还没有食谱用着
 //  （也不在别的草稿里）的从本机删掉（只删从来没上传过的）：不然换几次图本机就多几张没用的
+// 第 13 步：食材下面「每人份营养」（热量千卡、蛋白质 / 碳水 / 脂肪克，手动填的，都能不填）：日历里「吃了」这道菜时用它；
+//   写错的（读不出来、负数、太大）保存时标在那一格下面（core/foods.js 的 readNutrition，validateRecipe 的 errors.nutrition）
 import { h, icon, keepUnderFinger } from '../ui/dom.js';
 import { t } from '../i18n.js';
 import { field, showErr, onEnter } from '../ui/form.js';
 import { liveRecipe, validateRecipe, saveRecipe, sortIngredients, placeIngredients, duplicateOf, mergeIngredient, tagChoices, addTag, removeTag, hasTag,
   RECIPE_TAG_PRESETS } from '../core/recipes.js';
 import { formatQty, readQty, stepQty } from '../core/parse.js';
-import { canon, newId, normName, hash64, normalizeTags, normalizePhoto, TAG_GROUPS } from '../core/store.js';
+import { canon, newId, normName, hash64, normalizeTags, normalizePhoto, TAG_GROUPS, NUTRIENTS } from '../core/store.js';
 import { photoInUse } from '../core/photo.js';
 import { photoPool, encodePhoto, PhotoError } from '../ui/photo.js';
 import { collatorFor } from '../core/group.js';
@@ -42,7 +44,12 @@ export function workingCopy(r) {
     name: r ? r.name : '', servings: r && r.servings ? formatQty(r.servings) : '', steps: r ? r.steps : '', source: r ? r.source : '', note: r ? r.note : '',
     ings: r ? r.ings.map(g => ({ key: g.key, name: g.name, qty: formatQty(g.qty), unit: g.unit, note: g.note, optional: g.optional })) : [],
     tags: normalizeTags(r && r.tags), ordered: !!(r && r.ordered), photo: normalizePhoto(r && r.photo),
+    nutrition: nutStrings(r && r.nutrition),
   };
+}
+/** 每人份营养 → 四个输入框里的字（没填的是空的；旧版的草稿、坏了的整理一下） @param {any} n */
+function nutStrings(n) {
+  return Object.fromEntries(NUTRIENTS.map(k => [k, isObj(n) && n[k] != null ? String(typeof n[k] === 'number' ? formatQty(n[k]) : n[k]) : '']));
 }
 
 /** 本机另存的编辑食谱草稿里用着的图（sha）：放弃这一页时不能删掉别的草稿里刚加的那张 @param {any} storage */
@@ -92,6 +99,7 @@ export function render(main, params, ctx, deps = {}) {
   w.tags = normalizeTags(draft && draft.tags !== undefined ? draft.tags : w.tags);
   w.ordered = w.ordered === true;
   w.photo = normalizePhoto(w.photo);       // 旧版存的草稿没有 photo：上面已经是这道食谱现在的
+  w.nutrition = nutStrings(w.nutrition);   // 旧版存的草稿没有 nutrition：上面已经是这道食谱现在的
   // 「加一样」写的、还没按类别放好的那几行（保存时放：saveRecipe 的 place）；草稿里也记着，接着改时照样放
   const fresh = new Set(saved && Array.isArray(saved.place) ? saved.place.filter(k => typeof k === 'string') : []);
   if (draft && canon(w) === base) dropDraft();
@@ -408,6 +416,19 @@ export function render(main, params, ctx, deps = {}) {
     dataset: { fid: 're-source' }, onkeydown: onEnter(() => sourceIn.blur()), oninput: () => { w.source = sourceIn.value; touched(); } });
   const noteIn = h('textarea.f-in', { rows: 3, value: w.note, dataset: { fid: 're-note' }, oninput: () => { w.note = noteIn.value; touched(); } });
 
+  // ---------- 每人份营养（第 13 步） ----------
+  const NUT_LABEL = { kcal: 'log.kcalField', protein: 'log.proteinField', carbs: 'log.carbsField', fat: 'log.fatField' };
+  /** @type {Record<string, any>} */
+  const nutIns = {}, nutRows = {};
+  for (const k of NUTRIENTS) {
+    // 热量存的是整数：整数的数字键盘（和记一样吃的面板、饮食目标一样）
+    nutIns[k] = h('input.f-in.nut-in', { type: 'text', inputmode: k === 'kcal' ? 'numeric' : 'decimal', value: w.nutrition[k], autocomplete: 'off', enterkeyhint: 'done', dataset: { fid: 're-nut-' + k },
+      onkeydown: onEnter(() => nutIns[k].blur()), oninput: () => { w.nutrition[k] = nutIns[k].value; showErr(nutRows[k], null); touched(); } });
+    nutRows[k] = field(t(NUT_LABEL[k]), nutIns[k]);
+  }
+  const nutRow = h('div.f-row.re-nut', null, h('h2.group-h', null, t('log.perServing')), h('div.lg-nut-grid', null, NUTRIENTS.map(k => nutRows[k])),
+    h('p.f-help', null, t('log.recipeNutHelp')));
+
   const banner = draft && dirty() ? h('div.lp-banner.re-draft', { role: 'status' }, h('span', null, t('rcp.draftBack')),
     h('button.btn.small', { type: 'button', dataset: { fid: 're-drop' }, onclick: () => discard() }, t('rcp.draftDrop'))) : null;
 
@@ -417,6 +438,7 @@ export function render(main, params, ctx, deps = {}) {
     svRow,
     photoRow,
     h('div.f-row.re-ings', null, h('div.re-ings-head', null, h('h2.group-h', null, t('rcp.ings')), sortBtn), emptyNote, rowsEl, h('div.re-ing-acts', null, addBtn, pasteBtn)),
+    nutRow,
     tagsRow,
     field(t('rcp.steps'), stepsIn),
     field(t('rcp.source'), sourceIn),
@@ -443,10 +465,14 @@ export function render(main, params, ctx, deps = {}) {
     showErr(svRow, v.errors.servings);
     rowErr.clear();
     for (const [i, key] of Object.entries(v.errors.ings || {})) rowErr.set(w.ings[Number(i)].key, key);
+    const nutErr = v.errors.nutrition || {};
+    for (const k of NUTRIENTS) showErr(nutRows[k], nutErr[k] || null);
     if (!v.ok) {
       drawRows();
-      const firstRow = Object.keys(v.errors.ings || {})[0];
+      // 焦点给页面上第一个错的：名字 → 几人份 → 食材 → 每人份营养
+      const firstRow = Object.keys(v.errors.ings || {})[0], firstNut = NUTRIENTS.find(k => nutErr[k]);
       const el = v.errors.name ? nameIn : v.errors.servings ? svIn
+        : firstRow === undefined ? (firstNut ? nutIns[firstNut] : null)
         : main.querySelector(`[data-fid="re-${rowErr.get(w.ings[Number(firstRow)].key) === 'rcp.err.ingQty' ? 'qty' : 'name'}-${w.ings[Number(firstRow)].key}"]`);
       if (el) el.focus();
       return;
@@ -486,6 +512,7 @@ export function render(main, params, ctx, deps = {}) {
     sweep();                            // 草稿里加的图（这道食谱没在用的）
     base = canon(w);
     nameIn.value = w.name; svIn.value = w.servings; stepsIn.value = w.steps; sourceIn.value = w.source; noteIn.value = w.note;
+    for (const k of NUTRIENTS) { nutIns[k].value = w.nutrition[k]; showErr(nutRows[k], null); }
     rowErr.clear(); prompts.clear(); dismissed.clear(); fresh.clear();
     photoErr = '';
     drawRows();

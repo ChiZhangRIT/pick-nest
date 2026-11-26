@@ -30,7 +30,7 @@ test('备份：文件名 picknest-backup-YYYYMMDD.json；内容是 { app, v, kin
   assert.equal(b.state.data.items.i_gone.deleted, true);
   assert.equal(b.state.data.future.x_1.shape, '新版才有的集合');
   assert.equal(b.exportedAt, Date.UTC(2026, 10, 21, 3));
-  assert.deepEqual(b.counts, { lists: 2, items: 1, recipes: 0, plan: 0, stores: 7, categories: 14 }, '只数看得见的：删掉的、清单不在了的不算');
+  assert.deepEqual(b.counts, { lists: 2, items: 1, recipes: 0, plan: 0, log: 0, stores: 7, categories: 14 }, '只数看得见的：删掉的、清单不在了的不算');
   assert.deepEqual(backupCounts(s), b.counts);
 });
 

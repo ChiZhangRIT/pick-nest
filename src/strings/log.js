@@ -1,0 +1,83 @@
+// 饮食记录（第三版）：日历里每天的「吃了什么」、合计和目标、一周的平均、月历上的千卡，记一样吃的 / 改一条的面板，食谱的每人份营养，
+// 设置 → 饮食目标（log.err.* 是 core/log.js、core/foods.js 返回的键）。
+// 繁體（台灣）用台灣用語：熱量的單位寫「大卡」、重量寫「公克」，行事曆、點心、新增、刪除、儲存……
+// 数和单位之间是不折行的空格 \u00a0（「620 千卡」放不下一行时不会折成「620 / 千卡」）。
+// 英文单复数：en(一个, 多个)，只换 {n} 和别的变量（i18n 测试用示例变量查得到的只有 n、name 这些）
+const en = (one, many) => (v) => (Number(v.n) === 1 ? one : many).replace(/\{(\w+)\}/g, (m, k) => (v[k] != null ? String(v[k]) : m));
+
+export const STRINGS = {
+  'zh-Hans': {
+    'log.eaten': '吃了什么', 'log.add': '记一样吃的', 'log.addTo': '给 {date} 记一样吃的', 'log.none': '还没记',
+    'log.ate': '吃了', 'log.ateLabel': '吃了「{name}」，记下来', 'log.logged': '已记',
+    'log.kcal': '{n}\u00a0千卡', 'log.kcalApprox': '约\u00a0{n}\u00a0千卡', 'log.kcalUnit': '千卡', 'log.noKcal': '没填热量',
+    'log.kcalName': '热量', 'log.protein': '蛋白质', 'log.carbs': '碳水', 'log.fat': '脂肪',
+    'log.servingsN': '{n} 份', 'log.total': '合计', 'log.totalIs': '合计：{name}',
+    'log.left': '还差 {n}', 'log.over': '超了 {n}', 'log.goalKcal': '目标 {n}\u00a0千卡', 'log.missingN': '{n} 样没填热量，没算进去',
+    'log.weekAvg': '这一周平均每天 {kcal}\u00a0千卡（记了 {n} 天）', 'log.cellKcal': '吃了 {n}\u00a0千卡',
+    // 记一样吃的 / 改一条
+    'log.namePh': '搜常吃的、食谱，或者直接写（比如 拿铁）', 'log.name': '吃了什么', 'log.frequent': '常吃的', 'log.change': '换一个',
+    'log.nameHelp': '常吃的点一下就填好；直接写的这一样会记进常吃的，下次输入时联想。',
+    'log.perFood': '每份 {n}\u00a0千卡',
+    'log.servings': '几份', 'log.svDec': '少半份', 'log.svInc': '多半份',
+    'log.per': '每份营养', 'log.perHelp': '可以不填，填了的算进这一天的合计。',
+    'log.perRecipeEmpty': '这道食谱还没填每人份营养，这次填的是一份的。', 'log.saveToRecipe': '也记到食谱里（下次「吃了」直接带上）',
+    'log.kcalField': '热量（千卡）', 'log.proteinField': '蛋白质（克）', 'log.carbsField': '碳水（克）', 'log.fatField': '脂肪（克）',
+    'log.delete': '删除这一条', 'log.added': '已记到 {date}的{meal}', 'log.moved': '已挪到 {date}的{meal}', 'log.deleted': '已删除「{name}」', 'log.gone': '这一条不在了',
+    'log.err.date': '选一个日子', 'log.err.title': '写一下吃了什么', 'log.err.servings': '份数要大于 0，最多 99', 'log.err.num': '写一个数（不能是负数）',
+    'log.err.kcalMax': '最多 9999 千卡', 'log.err.gramMax': '最多 999 克', 'log.err.gone': '这一条已经不在了',
+    // 食谱的每人份营养
+    'log.perServing': '每人份营养', 'log.recipeNutHelp': '可以不填。在日历里「吃了」这道菜时用它（一份的）。',
+    // 设置 → 饮食目标
+    'log.goalsH': '饮食', 'log.goals': '饮食目标', 'log.goalsFoot': '每天 {n}\u00a0千卡', 'log.goalsNone': '还没设目标',
+    'log.goalKcalField': '每天热量（千卡）', 'log.goalsHelp': '都可以不填。日历里每天的合计会和这里比：还差多少、超了多少。',
+    'log.goalsNote': '只是给自己看的参考：要吃多少因人而异，App 里的营养大多是自己填的或者估算的。', 'log.saved': '已保存',
+  },
+
+  'zh-Hant-TW': {
+    'log.eaten': '吃了什麼', 'log.add': '記一樣吃的', 'log.addTo': '為 {date} 記一樣吃的', 'log.none': '還沒記',
+    'log.ate': '吃了', 'log.ateLabel': '吃了「{name}」，記下來', 'log.logged': '已記',
+    'log.kcal': '{n}\u00a0大卡', 'log.kcalApprox': '約\u00a0{n}\u00a0大卡', 'log.kcalUnit': '大卡', 'log.noKcal': '沒填熱量',
+    'log.kcalName': '熱量', 'log.protein': '蛋白質', 'log.carbs': '碳水', 'log.fat': '脂肪',
+    'log.servingsN': '{n} 份', 'log.total': '合計', 'log.totalIs': '合計：{name}',
+    'log.left': '還差 {n}', 'log.over': '超過 {n}', 'log.goalKcal': '目標 {n}\u00a0大卡', 'log.missingN': '{n} 項沒填熱量，沒算進去',
+    'log.weekAvg': '這一週平均每天 {kcal}\u00a0大卡（記了 {n} 天）', 'log.cellKcal': '吃了 {n}\u00a0大卡',
+    'log.namePh': '搜尋常吃的、食譜，或直接寫（例如 拿鐵）', 'log.name': '吃了什麼', 'log.frequent': '常吃的', 'log.change': '換一個',
+    'log.nameHelp': '常吃的點一下就填好；直接寫的這一樣會記進常吃的，下次輸入時會建議。',
+    'log.perFood': '每份 {n}\u00a0大卡',
+    'log.servings': '幾份', 'log.svDec': '少半份', 'log.svInc': '多半份',
+    'log.per': '每份營養', 'log.perHelp': '可以不填，填了的會算進這一天的合計。',
+    'log.perRecipeEmpty': '這道食譜還沒填每人份營養，這次填的是一份的。', 'log.saveToRecipe': '也記到食譜裡（下次「吃了」直接帶入）',
+    'log.kcalField': '熱量（大卡）', 'log.proteinField': '蛋白質（公克）', 'log.carbsField': '碳水（公克）', 'log.fatField': '脂肪（公克）',
+    'log.delete': '刪除這一筆', 'log.added': '已記到 {date}的{meal}', 'log.moved': '已移到 {date}的{meal}', 'log.deleted': '已刪除「{name}」', 'log.gone': '這一筆不在了',
+    'log.err.date': '選一個日期', 'log.err.title': '寫一下吃了什麼', 'log.err.servings': '份數要大於 0，最多 99', 'log.err.num': '寫一個數字（不能是負數）',
+    'log.err.kcalMax': '最多 9999 大卡', 'log.err.gramMax': '最多 999 公克', 'log.err.gone': '這一筆已經不在了',
+    'log.perServing': '每人份營養', 'log.recipeNutHelp': '可以不填。在行事曆裡「吃了」這道菜時會用它（一份的）。',
+    'log.goalsH': '飲食', 'log.goals': '飲食目標', 'log.goalsFoot': '每天 {n}\u00a0大卡', 'log.goalsNone': '還沒設目標',
+    'log.goalKcalField': '每天熱量（大卡）', 'log.goalsHelp': '都可以不填。行事曆裡每天的合計會和這裡比：還差多少、超過多少。',
+    'log.goalsNote': '只是給自己看的參考：要吃多少因人而異，App 裡的營養大多是自己填的或估算的。', 'log.saved': '已儲存',
+  },
+
+  en: {
+    'log.eaten': 'What I Ate', 'log.add': 'Log Food', 'log.addTo': 'Log food for {date}', 'log.none': 'Nothing yet',
+    'log.ate': 'Ate', 'log.ateLabel': 'Log “{name}” as eaten', 'log.logged': 'Logged',
+    'log.kcal': '{n}\u00a0kcal', 'log.kcalApprox': '~{n}\u00a0kcal', 'log.kcalUnit': 'kcal', 'log.noKcal': 'No calories',
+    'log.kcalName': 'Calories', 'log.protein': 'Protein', 'log.carbs': 'Carbs', 'log.fat': 'Fat',
+    'log.servingsN': en('{n} serving', '{n} servings'), 'log.total': 'Total', 'log.totalIs': 'Total: {name}',
+    'log.left': '{n} left', 'log.over': '{n} over', 'log.goalKcal': 'Goal {n}\u00a0kcal', 'log.missingN': en('{n} item has no calories and isn’t counted', '{n} items have no calories and aren’t counted'),
+    'log.weekAvg': 'This week: {kcal}\u00a0kcal a day on average (logged {n} of 7 days)', 'log.cellKcal': '{n}\u00a0kcal eaten',
+    'log.namePh': 'Search foods and recipes, or type a name', 'log.name': 'Food', 'log.frequent': 'Frequent', 'log.change': 'Change',
+    'log.nameHelp': 'Tap a frequent food to fill it in. Anything you type is remembered and suggested next time.',
+    'log.perFood': '{n}\u00a0kcal per serving',
+    'log.servings': 'Servings', 'log.svDec': 'Half a serving less', 'log.svInc': 'Half a serving more',
+    'log.per': 'Nutrition per Serving', 'log.perHelp': 'Optional. Whatever you fill in counts toward the day’s total.',
+    'log.perRecipeEmpty': 'This recipe has no nutrition per serving yet. Enter one serving’s worth.', 'log.saveToRecipe': 'Also save to the recipe (filled in next time)',
+    'log.kcalField': 'Calories (kcal)', 'log.proteinField': 'Protein (g)', 'log.carbsField': 'Carbs (g)', 'log.fatField': 'Fat (g)',
+    'log.delete': 'Delete Entry', 'log.added': 'Logged for {meal}, {date}', 'log.moved': 'Moved to {meal}, {date}', 'log.deleted': 'Deleted “{name}”', 'log.gone': 'This entry is gone',
+    'log.err.date': 'Pick a date', 'log.err.title': 'Enter what you ate', 'log.err.servings': 'Servings must be more than 0 and at most 99', 'log.err.num': 'Enter a number (not negative)',
+    'log.err.kcalMax': 'At most 9,999 kcal', 'log.err.gramMax': 'At most 999 g', 'log.err.gone': 'This entry no longer exists',
+    'log.perServing': 'Nutrition per Serving', 'log.recipeNutHelp': 'Optional. Used when you log this dish as eaten from the calendar (one serving).',
+    'log.goalsH': 'Food Log', 'log.goals': 'Nutrition Goals', 'log.goalsFoot': '{n}\u00a0kcal a day', 'log.goalsNone': 'No goals set',
+    'log.goalKcalField': 'Calories per day (kcal)', 'log.goalsHelp': 'All optional. Each day in the calendar compares its total with these: how much is left or over.',
+    'log.goalsNote': 'Just a reference for yourself: how much to eat differs from person to person, and the numbers in the app are mostly your own or estimates.', 'log.saved': 'Saved',
+  },
+};

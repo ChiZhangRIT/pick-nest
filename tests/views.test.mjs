@@ -68,7 +68,7 @@ test('首页：所有清单都归档了 → 显示一句说明，不是空白', 
   } finally { dom.restore(); }
 });
 
-test('设置：语言是第一组的下拉框（没有组名，有读屏的名字）、同步 / 商店和分类 / 外观 / 数据 / 关于的顺序和组名、外观立即生效且保留按钮、版本号', () => {
+test('设置：语言是第一组的下拉框（没有组名，有读屏的名字）、同步 / 商店和分类 / 饮食 / 外观 / 数据 / 关于的顺序和组名、外观立即生效且保留按钮、版本号', () => {
   const dom = installDom();
   try {
     setLang('zh-Hans');
@@ -80,7 +80,7 @@ test('设置：语言是第一组的下拉框（没有组名，有读屏的名�
     assert.equal(text(main.querySelector('h1')), '设置');
     // 语言：和别的 App 一样是下拉框，在最上面、没有组名；那一行的字跟着界面写（简体界面「语言 / Language」）
     const secs = main.querySelectorAll('.set-sec');
-    assert.deepEqual(secs.map(s => text(s.querySelector('h2'))), [null, '同步', '商店和分类', '外观', '数据', '关于']);
+    assert.deepEqual(secs.map(s => text(s.querySelector('h2'))), [null, '同步', '商店和分类', '饮食', '外观', '数据', '关于']);
     const select = secs[0].querySelector('select');
     assert.equal(select.attrs['aria-label'], '语言 / Language', '读屏念得出这是什么');
     assert.equal(select.parent.tag, 'label', '整行是 <label>：点哪里都行');
@@ -102,10 +102,11 @@ test('设置：语言是第一组的下拉框（没有组名，有读屏的名�
     assert.ok(text(main.querySelector('.set-version')).includes('picknest-v7'));
     assert.ok(text(main).includes('PickNest'));
     assert.deepEqual(all(main, el => el.tag === 'a').map(a => [a.attrs.href, text(a.querySelector('.set-label'))]),
-      [['#/settings/sync', '多设备同步'], ['#/settings/stores', '商店'], ['#/settings/categories', '分类'], ['#/settings/data', '备份与恢复'], ['#/deleted', '最近删除']]);
+      [['#/settings/sync', '多设备同步'], ['#/settings/stores', '商店'], ['#/settings/categories', '分类'], ['#/settings/goals', '饮食目标'], ['#/settings/data', '备份与恢复'], ['#/deleted', '最近删除']]);
     // 同步没开：下面说是什么；数据下面说上次备份（还没备份过：琥珀色）
     assert.equal(text(secs[1].querySelector('.group-foot')), '用你自己的 GitHub 私有仓库，在 iPhone、iPad、Mac 之间同步。');
-    const foot = secs[4].querySelector('.group-foot');
+    assert.equal(text(secs[3].querySelector('.group-foot')), '还没设目标', '饮食目标下面写设了多少');
+    const foot = secs[5].querySelector('.group-foot');
     assert.deepEqual([text(foot), foot.classList.contains('set-warn')], ['上次备份：还没备份过', true]);
   } finally { dom.restore(); }
 });
@@ -126,7 +127,7 @@ test('设置首页：数据变了只改「最近删除」的数和下面那句�
     const deletedRow = find(main, el => el.tag === 'a' && el.attrs.href === '#/deleted');
     assert.equal(text(deletedRow.querySelector('.set-count')), '', '没有删掉的不写 0');
     assert.equal(text(secs[1].querySelector('.group-foot')), '仓库：someone/pick-nest-data');
-    const foot = secs[4].querySelector('.group-foot');
+    const foot = secs[5].querySelector('.group-foot');
     assert.deepEqual([text(foot), foot.classList.contains('set-warn')], ['上次备份：3 天前', false]);
     // 别的设备删了一家店：只改数，选项、链接都还是原来那几个元素
     const select = main.querySelector('select');
@@ -149,7 +150,7 @@ test('设置首页：数据变了只改「最近删除」的数和下面那句�
     const en = new Element('section');
     settings.render(en, { name: 'settings' }, { ...ctx, lang: () => 'en', local: { lastBackupAt: daysBack(1) } });
     assert.equal(text(en.querySelector('label').querySelector('.set-label')), 'Language / 语言');
-    assert.equal(text(en.querySelectorAll('.set-sec')[4].querySelector('.group-foot')), 'Last backup: 1 day ago');
+    assert.equal(text(en.querySelectorAll('.set-sec')[5].querySelector('.group-foot')), 'Last backup: 1 day ago');
   } finally { setLang('zh-Hans'); dom.restore(); }
 });
 

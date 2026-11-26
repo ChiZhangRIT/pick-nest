@@ -97,7 +97,7 @@ test('一周：周一到周日七张卡片，今天标出来；每天按早饭�
       addEntry(s, { date: TODAY, meal: 'breakfast', recipeId: env.ids.egg }, now());
     });
     const main = env.mount(planView, { name: 'plan' });
-    assert.equal(main.querySelector('h1').textContent, '计划');
+    assert.equal(main.querySelector('h1').textContent, '日历', '第 13 步改名「日历」');
     assert.equal(days(main).length, 7);
     assert.equal(days(main)[0], MON, '从周一开始');
     assert.equal(byCls(main, 'plan-range').textContent, fmtDayRange(MON, addDays(MON, 6), 'zh-Hans'));
@@ -108,7 +108,7 @@ test('一周：周一到周日七张卡片，今天标出来；每天按早饭�
     assert.ok(cls(allCls(td, 'pd-meal')[2], 'cont'), '同一顿的第二道：「晚饭」只给读屏念');
     const other = dayEl(main, TODAY === MON ? addDays(MON, 1) : MON);
     assert.equal(byCls(other, 'pd-empty').textContent, '还没安排');
-    assert.equal(fid(main, 'plan-today').attrs['aria-disabled'], 'true', '已经在这一周');
+    assert.equal(fid(main, 'plan-today').attrs['aria-disabled'], 'false', '已经在这一周也能点（滚到今天）');
     fid(main, 'plan-next').click();
     assert.equal(days(main)[0], addDays(MON, 7));
     assert.equal(fid(main, 'plan-today').attrs['aria-disabled'], 'false');
@@ -131,6 +131,34 @@ test('一周：周一到周日七张卡片，今天标出来；每天按早饭�
 });
 
 // ---------- 一个月 ----------
+
+test('一周：新打开（land）滚到今天的卡片（周一不滚）；「今天」滚到今天；数据变了的重画不滚；看的不是这一周不滚', async () => {
+  const scrolls = [];
+  Element.prototype.scrollIntoView = function (o) { scrolls.push([this, o]); };
+  const env = setup();
+  const last = () => { const [el, o] = scrolls.at(-1); return [el.dataset.day || el.tag, o.block]; };
+  try {
+    const main = env.mount(planView, { name: 'plan' });
+    assert.equal(scrolls.length, 0, 'render 里不滚：app 放好滚动位置以后才调 land（后退回来恢复位置的不调）');
+    env.handle.land();
+    if (TODAY === MON) assert.equal(scrolls.length, 0, '周一：卡片本来就在上面');
+    else assert.deepEqual(last(), [TODAY, 'start']);
+    const n = scrolls.length;
+    state.mutate(s => { addEntry(s, { date: TODAY, meal: 'lunch', title: '公司食堂' }); });
+    await settle();
+    assert.equal(scrolls.length, n, '数据变了的重画不滚');
+    fid(main, 'plan-today').click();
+    assert.deepEqual(last(), TODAY === MON ? ['header', 'start'] : [TODAY, 'start'], '「今天」：滚到今天（周一滚回顶上）');
+    fid(main, 'plan-next').click();
+    const m = scrolls.length;
+    env.mount(planView, { name: 'plan' });
+    env.handle.land();
+    assert.equal(scrolls.length, m, '看的是别的一周：不滚');
+    fid(env.main, 'plan-today').click();
+    assert.equal(days(env.main)[0], MON);
+    assert.equal(scrolls.length, m + 1, '从别的一周点「今天」：翻回来也滚到今天');
+  } finally { env.done(); delete Element.prototype.scrollIntoView; }
+});
 test('一个月：月历周一开头，每天几道菜几个点（最多 3 个），点一天在下面列出那天的菜；本机记住看法；别的月的日子点了翻过去；切回一周接着看选的那天', async () => {
   const env = setup();
   try {
@@ -450,7 +478,7 @@ test('食谱页「加到计划」：同一个面板，食谱已经选好、默�
   const env = setup();
   try {
     const main = env.mount(recipeView, { name: 'recipe', id: env.ids.hsr });
-    assert.equal(fid(main, 'rcp-plan').textContent, '加到计划');
+    assert.equal(fid(main, 'rcp-plan').textContent, '加到日历');
     fid(main, 'rcp-plan').click();
     const sh = env.sheet();
     assert.equal(sh.title, '加一道菜');
@@ -497,7 +525,7 @@ test('英文界面：日子、哪一顿、按钮都是英文', () => {
   const env = setup({ lang: 'en' });
   try {
     const main = env.mount(planView, { name: 'plan' });
-    assert.equal(main.querySelector('h1').textContent, 'Plan');
+    assert.equal(main.querySelector('h1').textContent, 'Calendar');
     assert.equal(byCls(main, 'plan-range').textContent, fmtDayRange(MON, addDays(MON, 6), 'en'));
     assert.equal(byCls(dayEl(main, MON), 'pd-wd').textContent, 'Mon');
     assert.deepEqual(['plan-v-week', 'plan-v-month', 'plan-today'].map(f => fid(main, f).textContent), ['Week', 'Month', 'Today']);

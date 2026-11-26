@@ -1,16 +1,23 @@
-// 「计划」（#/plan，第二版）：一周吃什么。两种看法（本机记住：picknest.local 的 planView，core/plan.js 的 planView）：
-//   一周：周一到周日七天，‹ › 换一周、「今天」回到这一周；每天一张卡片，按早饭、午饭、晚饭、加餐列出这一天的菜（连着食谱的写食谱名，
+// 「日历」（#/calendar，旧的 #/plan 照样打开；第二版叫「计划」，第 13 步改名）：一周吃什么、吃了什么。两种看法（本机记住：picknest.local 的 planView，core/plan.js 的 planView）：
+//   一周：周一到周日七天，‹ › 换一周、「今天」回到这一周（已经在这一周就滚到今天）；每天一张卡片，按早饭、午饭、晚饭、加餐列出这一天的菜（连着食谱的写食谱名，
 //         没连的写写的那句，比如「出去吃」；下面几人份、备注），右上角「+」给这一天加一道菜；
-//   一个月：月历（周一开头，每天有几道菜就几个点，最多 3 个），点一天在下面列出那一天的菜（和一周里的卡片一样）。
+//   一个月：月历（周一开头，每天有几道菜就几个点，最多 3 个，下面一行是那天吃了多少千卡，超过目标的琥珀色），点一天在下面列出那一天（和一周里的卡片一样）。
+// 第 13 步：每天的卡片下半是「吃了什么」（ui/dayLog.js：按顿列出、合计、和目标比、「+」记一样），计划里的每道菜右边一个「吃了」
+//   （ui/logSheet.js：那道菜的食谱已经选好、1 份）；一周最上面写这一周平均每天多少千卡（记了的日子）。
 // 点一道菜打开面板（ui/dishSheet.js）：打开食谱、改人数、挪到别的日子（页面翻过去、滚到那一天）、删除（10 秒内能撤销）。右上角「生成购物清单」（ui/planList.js），
 // 一开始是正在看的这一周（看一个月时是选中的那天所在的一周）。
 // 看到哪一周、选的哪一天记在这次打开 App 期间（ui，不放地址里）：点进一道食谱再返回，还是刚才那一周。
+// 新打开这一页（点底栏进来，不是后退回来）看的是这一周时滚到今天的卡片（land）：每天有计划、吃了什么、合计，周四的卡片在两屏半以下，
+// 一天记几次都要先往下翻。数据变了的重画（onChange）不滚。
 // 自己管更新（返回 onChange）：数据变了（同步来的、撤销、面板里存的）只重画下面的日子，焦点按 data-fid 放回去。
 // ⌘N 加一道菜。不管哪种布局都是一栏（双栏只给清单、商店、食谱三边）。日子是本地日期（core/dates.js：按日历算，夏令时不差一天）。
 // 第 12 步：连着的食谱有成品图时，这一行右边一张小图（ui/photo.js；这一页的 object URL 页面清理时放掉）。
 import { h, icon } from '../ui/dom.js';
 import { t } from '../i18n.js';
 import { entriesOn, dayCounts, dishName, planView, MEALS } from '../core/plan.js';
+import { loggedFrom, totalsByDay, goalsOf } from '../core/log.js';
+import { logSection, weekAvgLine } from '../ui/dayLog.js';
+import { logSheet } from '../ui/logSheet.js';
 import { liveRecipe } from '../core/recipes.js';
 import { formatQty } from '../core/parse.js';
 import { todayDay, addDays, weekStart, weekDays, addMonths, monthStart, monthGrid, weekdayName, weekdayLetters, fmtPlanDay, fmtDayRange, fmtMonth } from '../core/dates.js';
@@ -63,7 +70,20 @@ export function render(main, params, ctx) {
     }
     draw();
   }
-  function goToday() { ui.anchor = ui.sel = today(); draw(); }
+  function goToday() {
+    ui.anchor = ui.sel = today(); draw();
+    // 一周里：滚到今天的卡片（已经在这一周时不然点了什么也不动；从别的一周翻回来停在原来的位置也看不到今天）
+    toToday(reducedMotion() ? 'auto' : 'smooth', true);
+  }
+  /**
+   * 一周里今天的卡片滚到最上面。今天是周一：卡片本来就在上面，新打开时不滚（顶上的哪一周、平均也看得见），点「今天」滚回顶上
+   * @param {ScrollBehavior} [behavior] @param {boolean} [byButton]
+   */
+  function toToday(behavior = 'auto', byButton = false) {
+    if (view() !== 'week' || weekStart(ui.anchor) !== weekStart(today())) return;
+    const el = today() === weekStart(today()) ? (byButton ? head : null) : body.querySelector(`section[data-day="${today()}"]`);
+    if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior });
+  }
   const showsToday = () => (view() === 'week' ? weekStart(ui.anchor) === weekStart(today()) : monthStart(ui.anchor) === monthStart(today()));
 
   function drawHead() {
@@ -75,8 +95,8 @@ export function render(main, params, ctx) {
     if (title.textContent !== range) title.textContent = range;
     prev.setAttribute('aria-label', t(v === 'week' ? 'plan.prevWeek' : 'plan.prevMonth'));
     next.setAttribute('aria-label', t(v === 'week' ? 'plan.nextWeek' : 'plan.nextMonth'));
-    // 已经在今天这一周 / 这个月：「今天」点了也不动，灰掉（不藏：藏起来标题会左右跳）
-    todayBtn.setAttribute('aria-disabled', String(showsToday() && (v === 'week' || ui.sel === today())));
+    // 一个月里已经选着今天：「今天」点了也不动，灰掉（不藏：藏起来标题会左右跳）。一周里一直能点：已经在这一周就滚到今天
+    todayBtn.setAttribute('aria-disabled', String(v === 'month' && showsToday() && ui.sel === today()));
   }
 
   // ---------- 一天：卡片 ----------
@@ -89,7 +109,6 @@ export function render(main, params, ctx) {
       h('h3.pd-title', null, h('span.pd-wd', null, weekdayName(day, lang)), h('span.pd-date', null, fmtPlanDay(day, lang, { weekday: false })),
         isToday ? h('span.tag.pd-today', null, t('plan.today')) : null),
       add);
-    if (!list.length) return h('section.plan-day' + (isToday ? '.today' : ''), { dataset: { day } }, head, h('p.pd-empty', null, t('plan.empty')));
     const rows = [];
     for (const m of MEALS) {
       const mine = list.filter(e => e.meal === m);
@@ -98,14 +117,21 @@ export function render(main, params, ctx) {
         const name = dishName(ctx.state, e, t);
         const sub = [r && e.servings ? t('rcp.servingsN', { n: formatQty(e.servings) }) : null, e.note.trim().split('\n')[0] || null].filter(Boolean).join(' · ');
         // 同一顿的第二道起不再写「晚饭」（看着是一组），读屏照样念
-        rows.push(h('li', null, h('button.group-row.go.pd-dish', { type: 'button', dataset: { fid: 'pd-' + e.id, id: e.id }, onclick: () => dishSheet(ctx, { id: e.id, onSaved: follow }) },
+        rows.push(h('li.pd-li', null, h('button.group-row.go.pd-dish', { type: 'button', dataset: { fid: 'pd-' + e.id, id: e.id }, onclick: () => dishSheet(ctx, { id: e.id, onSaved: follow }) },
           i === 0 ? h('span.pd-meal', null, t('plan.meal.' + m)) : h('span.pd-meal.cont', null, h('span.sr-only', null, t('plan.meal.' + m))),
-          h('span.pd-text', null, h('span.pd-name' + (r ? '' : '.plain'), null, name), sub ? h('span.pd-sub', null, sub) : null),
+          h('span.pd-text', null, h('span.pd-name' + (r ? '' : '.plain'), null, name,
+            // 已经从这道菜记过「吃了」（可以再记：两个人分着吃、第二天吃剩的）
+            loggedFrom(ctx.state, e.id) ? h('span.tag.pd-logged', null, t('log.logged')) : null), sub ? h('span.pd-sub', null, sub) : null),
           // 连着的食谱有成品图：右边一张小图（第 12 步；看一眼就认得是哪道）
-          r && r.photo ? photos.view(r.photo, { cls: '.pd-thumb' }) : null)));
+          r && r.photo ? photos.view(r.photo, { cls: '.pd-thumb' }) : null),
+          // 「吃了」在这一行外面（不是点这道菜改它）：打开记一样吃的面板，食谱、那一天那一顿、1 份已经填好
+          h('button.btn.small.pd-eat', { type: 'button', 'aria-label': t('log.ateLabel', { name }), dataset: { fid: 'pd-eat-' + e.id },
+            onclick: () => logSheet(ctx, { planId: e.id, onSaved: follow }) }, t('log.ate'))));
       });
     }
-    return h('section.plan-day' + (isToday ? '.today' : ''), { dataset: { day } }, head, h('ul.group.pd-list', null, rows));
+    return h('section.plan-day' + (isToday ? '.today' : ''), { dataset: { day } }, head,
+      rows.length ? h('ul.group.pd-list', null, rows) : h('p.pd-empty', null, t('plan.empty')),
+      logSection(ctx, day, { lang, onSaved: follow }));
   }
   /**
    * 存好的菜在别的日子（挪过去了、加到了别的一周）：翻到那一天，并滚到看得见——停在原来的位置的话，周日挪到下周一，
@@ -124,22 +150,29 @@ export function render(main, params, ctx) {
 
   // ---------- 一周、一个月 ----------
   function drawWeek() {
-    body.replaceChildren(h('div.plan-week', null, weekDays(ui.anchor).map(dayCard)));
+    // 这一周平均每天吃了多少（只算记了的日子；还没记就不写）
+    body.replaceChildren(...[weekAvgLine(ctx, ui.anchor), h('div.plan-week', null, weekDays(ui.anchor).map(dayCard))].filter(Boolean));
   }
   function drawMonth() {
     const grid = monthGrid(ui.anchor);
     const counts = dayCounts(ctx.state, grid[0][0].day, grid.at(-1)[6].day);
+    const eaten = totalsByDay(ctx.state, grid[0][0].day, grid.at(-1)[6].day), goal = goalsOf(ctx.state).kcal;
     if (monthStart(ui.sel) !== monthStart(ui.anchor)) ui.sel = monthStart(today()) === monthStart(ui.anchor) ? today() : monthStart(ui.anchor);
     const cell = ({ day, inMonth }) => {
       const n = counts.get(day) || 0, on = day === ui.sel;
-      const label = n ? t('plan.cellN', { name: fmtPlanDay(day, lang), n }) : fmtPlanDay(day, lang);
+      // 那天吃了多少千卡（记了、至少一条写了热量的才有）
+      const tt = eaten.get(day), kc = tt && tt.missing.kcal < tt.n ? tt.kcal : null;
+      const label = [n ? t('plan.cellN', { name: fmtPlanDay(day, lang), n }) : fmtPlanDay(day, lang), kc != null ? t('log.cellKcal', { n: formatQty(kc) }) : null]
+        .filter(Boolean).join(lang === 'en' ? ', ' : '，');
       return h('button.pm-cell' + (inMonth ? '' : '.out') + (day === today() ? '.today' : '') + (on ? '.sel' : ''),
         { type: 'button', 'aria-label': label, 'aria-pressed': String(on), dataset: { fid: 'pm-' + day, day },
           // 别的月的日子（前后补上的）：翻到那个月再选上
           // 这个月里的：只换下面那天的卡片，顶上「今天」灰不灰也跟着变（选了别的一天，「今天」又能点了）
           onclick: () => { ui.sel = day; if (!inMonth) ui.anchor = monthStart(day); draw(); } },
         h('span.pm-num', null, String(+day.slice(8))),
-        h('span.pm-dots', { 'aria-hidden': 'true' }, Array.from({ length: Math.min(n, DOTS_MAX) }, () => h('span.pm-dot'))));
+        h('span.pm-dots', { 'aria-hidden': 'true' }, Array.from({ length: Math.min(n, DOTS_MAX) }, () => h('span.pm-dot'))),
+        // 一直画（空的也画）：每格一样高；超过目标的琥珀色
+        h('span.pm-kcal' + (goal != null && kc != null && kc > goal ? '.over' : ''), { 'aria-hidden': 'true' }, kc != null ? formatQty(kc) : ''));
     };
     const a = document.activeElement, fid = a && a.dataset && body.contains(a) ? a.dataset.fid : null;
     body.replaceChildren(
@@ -172,5 +205,5 @@ export function render(main, params, ctx) {
     h('div.plan-nav', null, prev, title, next, todayBtn));
   main.append(head, body);
   draw();
-  return { onChange: () => draw(), cleanup: () => { document.removeEventListener('keydown', onShortcut); photos.revoke(); } };
+  return { onChange: () => draw(), land: () => toToday(), cleanup: () => { document.removeEventListener('keydown', onShortcut); photos.revoke(); } };
 }

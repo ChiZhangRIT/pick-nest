@@ -6,6 +6,7 @@
 // 自己管更新（返回 onChange）：数据变了就地重画（焦点按 data-fid 放回）；删除时先离开再删，不然重画时会当成「不在了」再提示一次。
 // 第 12 步：有成品图的最上面一张大图（ui/photo.js：本机没有、开着同步时写「正在下载图片…」，拿不到写「这台设备上没有这张图」；
 // 这一页的 object URL 页面清理时放掉）。
+// 第 13 步：填了每人份营养的，食材下面一块「每人份营养」（520 千卡 · 蛋白质 25 g · …；在编辑里填）。
 import { h, icon, backText } from '../ui/dom.js';
 import { t } from '../i18n.js';
 import { liveRecipe, recipeName, deleteRecipe, recipeTags } from '../core/recipes.js';
@@ -17,6 +18,8 @@ import { dishSheet } from '../ui/dishSheet.js';
 import { todayDay } from '../core/dates.js';
 import { recipeMeta } from './recipes.js';
 import { photoPool } from '../ui/photo.js';
+import { nutritionLine, nowrapParts } from '../ui/logSheet.js';
+import { hasNutrition } from '../core/foods.js';
 
 export function render(main, params, ctx) {
   const id = params.id;
@@ -70,6 +73,7 @@ export function render(main, params, ctx) {
             g.note ? h('span.rcp-ing-note', null, g.note) : null),
           h('span.rcp-ing-qty', null, qtyLabel(g.qty, g.unit)))))
           : h('p.group-foot', null, t('rcp.ingsEmpty'))),
+      hasNutrition(r.nutrition) ? h('section.page.rcp-sec', null, h('h2.group-h', null, t('log.perServing')), text('.rcp-nut', nowrapParts(nutritionLine(r.nutrition)))) : null,
       r.steps.trim() ? h('section.page.rcp-sec', null, h('h2.group-h', null, t('rcp.steps')), text('.rcp-steps', r.steps.trim())) : null,
       r.note.trim() ? h('section.page.rcp-sec', null, h('h2.group-h', null, t('rcp.note')), text('.rcp-note', r.note.trim())) : null,
       h('div.page.rcp-foot', null, h('button.btn.block.danger', { type: 'button', dataset: { fid: 'rcp-del' }, onclick: () => remove() }, t('rcp.delete'))),

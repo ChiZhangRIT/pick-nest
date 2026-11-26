@@ -15,6 +15,7 @@ import { collatorFor } from './group.js';
 import { catalogSys } from './catalog.js';
 import { liveList, addNeeds, totalLabel, needsOf, NEED_MAX } from './items.js';
 import { isStaple, setStaple, memoryOf } from './memory.js';
+import { readNutrition, hasNutrition } from './foods.js';
 
 /** @typedef {import('./store.js').State} State */
 /** @typedef {import('./store.js').Recipe} Recipe */
@@ -582,22 +583,22 @@ export function replaceIngredient(state, from, to, now = Date.now()) {
 // ---------- 新建、改、删 ----------
 /**
  * @typedef {{ key?: unknown, name?: unknown, qty?: unknown, unit?: unknown, note?: unknown, optional?: unknown }} IngInput
- * @typedef {{ name?: unknown, servings?: unknown, steps?: unknown, source?: unknown, note?: unknown, ings?: IngInput[], tags?: unknown, ordered?: unknown, place?: unknown, photo?: unknown }} RecipeInput
+ * @typedef {{ name?: unknown, servings?: unknown, steps?: unknown, source?: unknown, note?: unknown, ings?: IngInput[], tags?: unknown, ordered?: unknown, place?: unknown, photo?: unknown, nutrition?: unknown }} RecipeInput
  * 编辑页交来的（数量、几人份可以是输入框里的字）。tags、ordered、photo 没给就不动原来的（别处调 saveRecipe、旧版的草稿不会冲掉成品图）；
- * photo: null 是删掉成品图；place：「加一样」新写的那几行的 key（保存时按类别放好，见 placeIngredients）
+ * photo: null 是删掉成品图；place：「加一样」新写的那几行的 key（保存时按类别放好，见 placeIngredients）；nutrition：每人份营养的输入框（第 13 步，给了才改）
  */
 const blankRow = (/** @type {IngInput} */ g) => !str(g.name).trim() && !str(g.qty).trim() && !str(g.unit).trim() && !str(g.note).trim();
 
 /**
  * 检查编辑页交来的食谱：名字不能空；几人份空着（没写）或 0 < n ≤ 99；食材一行一样：全空的行扔掉，有别的没名字的报错，
  * 数量空着（适量）或 0 < q ≤ 9999。返回整理好的（clean）或错误（文案的键；食材的错误按交来的第几行：errors.ings[i]）。
- * 给了 tags / ordered / photo 才放进 clean（没给的保存时照原来的）
+ * 给了 tags / ordered / photo / nutrition 才放进 clean（没给的保存时照原来的；每人份营养的错误按营养的键：errors.nutrition.kcal）
  * @param {RecipeInput} input
- * @returns {{ ok: boolean, clean: { name: string, servings: number | null, steps: string, source: string, note: string, ings: IngInput[], tags?: import('./store.js').RecipeTags, ordered?: boolean, photo?: import('./store.js').Photo | null },
- *   errors: { name?: string, servings?: string, ings?: Record<number, string> } }}
+ * @returns {{ ok: boolean, clean: { name: string, servings: number | null, steps: string, source: string, note: string, ings: IngInput[], tags?: import('./store.js').RecipeTags, ordered?: boolean, photo?: import('./store.js').Photo | null, nutrition?: import('./store.js').Nutrition | null },
+ *   errors: { name?: string, servings?: string, ings?: Record<number, string>, nutrition?: Record<string, string> } }}
  */
 export function validateRecipe(input) {
-  /** @type {{ name?: string, servings?: string, ings?: Record<number, string> }} */
+  /** @type {{ name?: string, servings?: string, ings?: Record<number, string>, nutrition?: Record<string, string> }} */
   const errors = {};
   const name = str(input.name).trim();
   if (!name) errors.name = 'rcp.err.name';
@@ -619,6 +620,12 @@ export function validateRecipe(input) {
   if (input.tags !== undefined) clean.tags = normalizeTags(input.tags);
   if (input.ordered !== undefined) clean.ordered = input.ordered === true;
   if (input.photo !== undefined) clean.photo = normalizePhoto(input.photo);
+  // 每人份营养（第 13 步，手动填的）：给了才改；一样也没填是 null（没填和填了 0 分得开）。错误按营养的键放在 errors.nutrition
+  if (input.nutrition !== undefined) {
+    const nut = readNutrition(input.nutrition);
+    if (!nut.ok) errors.nutrition = nut.errors;
+    clean.nutrition = hasNutrition(nut.value) ? nut.value : null;
+  }
   return { ok: !Object.keys(errors).length, clean, errors };
 }
 

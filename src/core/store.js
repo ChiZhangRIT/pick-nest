@@ -1,8 +1,9 @@
 // @ts-check
-// 数据层：state.data 下每个集合都是「id → 记录」——lists 清单、items 清单里的东西、stores 商店、categories 分类、memory 买过的东西、recipes 食谱、plan 计划（第二版）。
+// 数据层：state.data 下每个集合都是「id → 记录」——lists 清单、items 清单里的东西、stores 商店、categories 分类、memory 买过的东西、recipes 食谱、plan 计划（第二版）、
+// foods 常吃的、log 吃了什么（第三版）。
 // 每条记录有 updatedAt（毫秒）；删除只打 deleted 标记、内容保留（「最近删除」里能恢复，也照样同步）。
 // 多台设备合并时逐条比较 updatedAt 取较新的一整条；时间相同内容不同时按 canon() 排序取一份，保证每台设备结果一样。
-// 例外：items、memory 的 id 是算出来的，两台设备各自从头建的同一条（createdAt 不一样）要补上空着的字段（mergeRecord）。
+// 例外：items、memory、foods 的 id 是算出来的，两台设备各自从头建的同一条（createdAt 不一样）要补上空着的字段（mergeRecord）。
 // 设置按键合并，各键有自己的修改时间（settingsAt）。不认识的字段、集合原样保留：旧版 App 同步时不会弄丢新版的数据。
 // 预置的清单、商店、分类用固定 id、updatedAt 0，由 ensureSeeds() 补。细节见 docs/DATA_MODEL.md。
 import { isObj, str, own, safeKey } from './util.js';
@@ -57,9 +58,26 @@ import { toSimplified } from './hanzi.js';
  * 食谱的成品图（第 12 步）：sha256 是图片内容的哈希（小写 64 位十六进制），图片本身在本机的 IndexedDB（core/blobStore.js）和同步仓库的 images/ 里
  */
 /**
- * @typedef {Base & { name: string, servings: number | null, steps: string, source: string, note: string, ings: Ingredient[], tags: RecipeTags, photo: Photo | null, ordered?: true }} Recipe
+ * @typedef {Base & { name: string, servings: number | null, steps: string, source: string, note: string, ings: Ingredient[], tags: RecipeTags, photo: Photo | null,
+ *   nutrition: Nutrition | null, ordered?: true }} Recipe
  * 食谱（第二版）。servings：几人份，null = 没写（加到清单时不能按人数换算）；steps 做法、source 来源（链接或一句话）、note 备注；
- * ordered：食材手动 ↑↓ 排过（第 11 步：新加的只放进它那一组的最后，不再整张按类别排），没排过的记录上没有这个键；photo：成品图（第 12 步），没有是 null
+ * ordered：食材手动 ↑↓ 排过（第 11 步：新加的只放进它那一组的最后，不再整张按类别排），没排过的记录上没有这个键；photo：成品图（第 12 步），没有是 null；
+ * nutrition：每人份营养（第 13 步，手动填的），一个也没填是 null
+ */
+/**
+ * @typedef {{ kcal: number | null, protein: number | null, carbs: number | null, fat: number | null }} Nutrition
+ * 营养（第三版）：热量千卡（整数）、蛋白质 / 碳水 / 脂肪克（最多一位小数），没填的是 null，都不是负数
+ */
+/**
+ * @typedef {Base & { name: string, kind: 'food' | 'ingredient', per: Nutrition, perUnit: 'serving' | '100g', grams: Record<string, number>,
+ *   ref: string | null, uses: number, lastAt: number }} Food
+ * 常吃的和自己填的营养（第三版），每个 normName 一条，id = 'f_' + hash64(normName)（core/foods.js 的 foodId）。
+ * kind 'food'：记饮食时手动写过的（per 是每份）；'ingredient'：食材的营养（第 15 步，per 是每 100 g）
+ */
+/**
+ * @typedef {Base & { date: string, meal: Meal, title: string, servings: number, kcal: number | null, protein: number | null, carbs: number | null, fat: number | null,
+ *   recipeId: string | null, planId: string | null, foodId: string | null, estimated: boolean, note: string, order: number }} LogEntry
+ * 吃了什么（第三版）：某一天某一顿吃的一样。营养是记的时候抄下来的合计（已经乘过份数）：以后改了食谱、常吃的，过去的记录不变
  */
 /** @typedef {'breakfast' | 'lunch' | 'dinner' | 'snack'} Meal */
 /**
@@ -73,20 +91,20 @@ import { toSimplified } from './hanzi.js';
  * @property {1} v
  * @property {{ lists: Record<string, List>, items: Record<string, Item>, stores: Record<string, Store>,
  *   categories: Record<string, Category>, memory: Record<string, Memory>, recipes: Record<string, Recipe>, plan: Record<string, PlanEntry>,
- *   [collection: string]: Record<string, any> }} data
+ *   foods: Record<string, Food>, log: Record<string, LogEntry>, [collection: string]: Record<string, any> }} data
  * @property {Record<string, any>} settings     同步的设置（按键合并）
  * @property {Record<string, number>} settingsAt 各设置键的修改时间
  */
 /** @typedef {(key: string, vars?: Record<string, any>) => string} Translate */
 
-export const COLLECTIONS = ['lists', 'items', 'stores', 'categories', 'memory', 'recipes', 'plan'];
+export const COLLECTIONS = ['lists', 'items', 'stores', 'categories', 'memory', 'recipes', 'plan', 'foods', 'log'];
 // kind、status 认不出的取值按默认值读（下面的整理函数），改过以后会照默认值写回去。
 // 以后要加新的取值（比如「项目」清单）：用新字段表达，或者同时升 v（旧版会拒绝读、不会改坏），不要直接往这几个字段里塞新值
 /** @type {ListKind[]} */
 export const LIST_KINDS = ['grocery', 'general'];
 /** @type {ItemStatus[]} */
 export const ITEM_STATUS = ['need', 'done', 'later'];
-/** 计划里的几顿，也是一天里排的顺序；认不出的按晚饭读 @type {Meal[]} */
+/** 计划、饮食记录里的几顿，也是一天里排的顺序；认不出的按晚饭读 @type {Meal[]} */
 export const MEALS = ['breakfast', 'lunch', 'dinner', 'snack'];
 /** 计划里一道菜加进清单的那一份的来源前缀（'p:<计划里那一道的 id>'，core/plan.js 的 planSource）；同一张清单上不同单位的另记 'p:<id>#2'…… */
 export const PLAN_SOURCE = 'p:';
@@ -118,7 +136,7 @@ const collectionsOf = (...states) => [...new Set([...COLLECTIONS, ...states.flat
 
 /** @returns {State} */
 export function blankState() {
-  return { app: 'picknest', v: 1, data: { lists: {}, items: {}, stores: {}, categories: {}, memory: {}, recipes: {}, plan: {} }, settings: { ...DEFAULT_SETTINGS }, settingsAt: {} };
+  return { app: 'picknest', v: 1, data: { lists: {}, items: {}, stores: {}, categories: {}, memory: {}, recipes: {}, plan: {}, foods: {}, log: {} }, settings: { ...DEFAULT_SETTINGS }, settingsAt: {} };
 }
 
 /** 和键的顺序无关的序列化：判断两份数据是否一样，以及打平时决定取哪一份 @param {any} v @returns {string} */
@@ -262,6 +280,7 @@ export function normalizeRecipe(rec, id = rec && rec.id) {
   r.name = str(r.name);
   r.tags = normalizeTags(r.tags);
   r.photo = normalizePhoto(r.photo);
+  r.nutrition = normalizeNutrition(r.nutrition, true);
   if (r.ordered !== true) delete r.ordered;          // 只有 true 有意思；没排过的记录上不放这个键（以前的食谱和原来一模一样）
   const sv = numOrNull(r.servings);
   r.servings = sv != null && sv > 0 ? sv : null;
@@ -339,8 +358,76 @@ export function normalizePlan(rec, id = rec && rec.id) {
   return /** @type {PlanEntry} */ (r);
 }
 
+// ---------- 第三版：营养、常吃的、吃了什么 ----------
+/** 营养的几样，也是显示的顺序：热量（千卡）、蛋白质、碳水、脂肪（克） */
+export const NUTRIENTS = /** @type {const} */ (['kcal', 'protein', 'carbs', 'fat']);
+/**
+ * 一个营养数：热量取整数千卡、营养素最多一位小数克（再多的位数是假的精确：估算本来就是大概的）；不是数、负数 → null（没填）
+ * @param {string} k @param {unknown} v @returns {number | null}
+ */
+export function nutrValue(k, v) {
+  const n = numOrNull(v);
+  if (n == null || n < 0) return null;
+  return k === 'kcal' ? Math.round(n) : Math.round(n * 10) / 10;
+}
+/**
+ * 整理一组营养 { kcal, protein, carbs, fat }：每样是数或 null（nutrValue）；别的字段（新版也许有纤维、钠）原样留着。
+ * orNull：一样也没填时是 null（食谱的每人份：没填和填了 0 分得开——0 千卡的黑咖啡是填了的）
+ * @param {unknown} v @param {boolean} [orNull] @returns {Nutrition | null}
+ */
+export function normalizeNutrition(v, orNull = false) {
+  const src = isObj(v) ? copySafe(v) : {};
+  for (const k of NUTRIENTS) src[k] = nutrValue(k, src[k]);
+  if (orNull && (!isObj(v) || NUTRIENTS.every(k => src[k] == null))) return null;
+  return /** @type {Nutrition} */ (src);
+}
+/** 常吃的那一条是哪种：认不出的按 'food' 读（和 kind、status 一样） */
+export const FOOD_KINDS = ['food', 'ingredient'];
+/**
+ * 常吃的 / 食材的营养（第三版）。per 一直是四样都有的对象（没填的是 null）；perUnit 认不出的按 kind 定（每份 / 每 100 g）；
+ * grams（这一样的单位重量）只留正数；ref（第 15 步：指定成内置表的哪一样）不是字符串 → null
+ * @param {Record<string, any>} rec @param {string} [id] @returns {Food}
+ */
+export function normalizeFood(rec, id = rec && rec.id) {
+  const r = base(rec, /** @type {string} */ (id));
+  r.name = str(r.name);
+  r.kind = FOOD_KINDS.includes(r.kind) ? r.kind : 'food';
+  r.per = normalizeNutrition(r.per);
+  r.perUnit = r.perUnit === 'serving' || r.perUnit === '100g' ? r.perUnit : r.kind === 'ingredient' ? '100g' : 'serving';
+  /** @type {Record<string, number>} */
+  const grams = {};
+  if (isObj(r.grams)) for (const [u, g] of Object.entries(r.grams)) { const n = numOrNull(g); if (u && !DANGER.has(u) && n != null && n > 0) grams[u] = Math.round(n * 10) / 10; }
+  r.grams = grams;
+  r.ref = typeof r.ref === 'string' && r.ref ? r.ref : null;
+  r.uses = count(r.uses);
+  r.lastAt = time(r.lastAt);
+  return /** @type {Food} */ (r);
+}
+/**
+ * 吃了什么的一条（第三版）。date 认不出的原样留着（和计划一样：哪一天都不显示，不改用户的数据）；meal 认不出的按晚饭读；
+ * servings 不是正数的当 1 份；营养是合计（nutrValue：千卡整数、克一位小数、没填 null）
+ * @param {Record<string, any>} rec @param {string} [id] @returns {LogEntry}
+ */
+export function normalizeLog(rec, id = rec && rec.id) {
+  const r = base(rec, /** @type {string} */ (id));
+  r.date = str(r.date);
+  r.meal = MEALS.includes(r.meal) ? r.meal : 'dinner';
+  r.title = str(r.title);
+  const sv = numOrNull(r.servings);
+  r.servings = sv != null && sv > 0 ? sv : 1;
+  for (const k of NUTRIENTS) r[k] = nutrValue(k, r[k]);
+  r.recipeId = idOrNull(r.recipeId);
+  r.planId = idOrNull(r.planId);
+  r.foodId = idOrNull(r.foodId);
+  r.estimated = r.estimated === true;
+  r.note = str(r.note);
+  r.order = numOrNull(r.order) ?? 0;
+  return /** @type {LogEntry} */ (r);
+}
+
 /** @type {Record<string, (rec: Record<string, any>, id?: string) => any>} */
-const NORMALIZERS = { lists: normalizeList, items: normalizeItem, stores: normalizeStore, categories: normalizeCategory, memory: normalizeMemory, recipes: normalizeRecipe, plan: normalizePlan };
+const NORMALIZERS = { lists: normalizeList, items: normalizeItem, stores: normalizeStore, categories: normalizeCategory, memory: normalizeMemory, recipes: normalizeRecipe, plan: normalizePlan,
+  foods: normalizeFood, log: normalizeLog };
 
 /**
  * 按集合整理一条记录。不认识的集合（新版才有的）只修 id 和 updatedAt，别的原样保留
@@ -408,7 +495,7 @@ export function pick(a, b) {
 }
 
 // ---------- 各自从头建的同一条（固定 id） ----------
-// items（按清单 + 名字）和 memory（按名字）的 id 是算出来的：一台设备还没拉到云端那条（新 iPad 还没粘贴同步码、Safari 清掉了存储、
+// items（按清单 + 名字）和 memory、foods（按名字）的 id 是算出来的：一台设备还没拉到云端那条（新 iPad 还没粘贴同步码、Safari 清掉了存储、
 // 店里离线）就又加了同名的，建的是一条空白的新记录，时间更新。整条取较新的话，云端那条的备注、链接、价格、常去的商店、记住的单位
 // 就永远没了——云端那条可能是几个月前的，不是「两台设备同时改」。
 // 认法：createdAt 不一样（同一条记录改来改去、恢复、移动，createdAt 都不变）。这时以较新的为底，它空着的字段用另一条的补上
@@ -455,6 +542,20 @@ function blend(c, w, o) {
     // 合并出来的这一条两份都见过了：另一条后来勾成的已买也算见过（不然以后和还留着那一份的设备合并，boughtMeanwhile 会以为没见过、把买过的又标回已买）
     const sa = Math.max(time(w.statusAt), time(o.statusAt));
     if (sa) out.statusAt = sa;
+    return out;
+  }
+  if (c === 'foods') {
+    // 常吃的（第三版）和 memory 一样按名字算 id：新设备上又记了一次「拿铁」，云端那条（几个月前填好的蛋白质、脂肪）不能被一条只写了热量的盖掉。
+    // 次数、最近一次取大的；较新那条没填的营养用另一条的补——只在同一种、同一个「每多少」时补（每份的 190 千卡补到每 100 g 上就错了）；
+    // 单位重量两条的都留（同一个单位以较新的为准）；ref 空着就补
+    const out = { ...w, uses: Math.max(w.uses || 0, o.uses || 0), lastAt: Math.max(w.lastAt || 0, o.lastAt || 0) };
+    if (w.kind === o.kind && w.perUnit === o.perUnit && isObj(o.per)) {
+      const per = { ...(isObj(w.per) ? w.per : {}) };
+      for (const k of NUTRIENTS) if (per[k] == null && o.per[k] != null) per[k] = o.per[k];
+      out.per = per;
+    }
+    out.grams = { ...(isObj(o.grams) ? copySafe(o.grams) : {}), ...(isObj(w.grams) ? w.grams : {}) };
+    if (blank(out.ref) && !blank(o.ref)) out.ref = o.ref;
     return out;
   }
   const ws = isObj(w.stores) ? w.stores : {}, os = isObj(o.stores) ? o.stores : {};
@@ -542,13 +643,13 @@ function boughtMeanwhile(w, o, fresh = false) {
 }
 
 /**
- * 同一条记录的两份合并成一份（顺序无关）：一般是 pick（较新的一整条）；items、memory 里各自从头建的两条（createdAt 不一样）补上空着的字段，
+ * 同一条记录的两份合并成一份（顺序无关）：一般是 pick（较新的一整条）；items、memory、foods 里各自从头建的两条（createdAt 不一样）补上空着的字段，
  * items 的同一条（createdAt 一样）里一台设备勾成已买、另一台不知道又改了的，购买算数（boughtMeanwhile），见上面
  * @param {string} c @param {any} a @param {any} b
  */
 export function mergeRecord(c, a, b) {
   const w = pick(a, b);
-  if (!a || !b || (c !== 'items' && c !== 'memory')) return w;
+  if (!a || !b || (c !== 'items' && c !== 'memory' && c !== 'foods')) return w;
   const o = w === a ? b : a;
   const wc = Number(w.createdAt), oc = Number(o.createdAt);
   if (!(wc >= 0) || !(oc >= 0)) return w;

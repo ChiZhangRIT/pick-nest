@@ -1,16 +1,16 @@
-# 数据模型（V1 + 第二版的食谱和计划）
+# 数据模型（V1、第二版的食谱和计划、第三版的饮食记录）
 
 所有数据是一份 JSON（和 babble、房屋账本同一个形状），存在本机，开了同步时另存一份到私有仓库 `pick-nest-data/picknest.json`（食谱的成品图不在里面：本机在 IndexedDB `picknest-blobs`，仓库在 `images/`，见下面 recipes 的「成品图」和「同步」）：
 
 ```js
 {
   app: 'picknest', v: 1,
-  data: { lists: {}, items: {}, stores: {}, categories: {}, memory: {}, recipes: {}, plan: {} },   // 每个集合都是「id → 记录」（第二版：recipes 第 8 步、plan 第 9 步加的）
+  data: { lists: {}, items: {}, stores: {}, categories: {}, memory: {}, recipes: {}, plan: {}, foods: {}, log: {} },   // 每个集合都是「id → 记录」（第二版：recipes 第 8 步、plan 第 9 步；第三版：foods、log 第 13 步）
   settings: {}, settingsAt: {},                                            // 同步的设置（按键合并）
 }
 ```
 
-本机设置 `picknest.local`（语言、主题、设备名、同步令牌、各清单的显示方式、按商店看时只看哪张清单、计划看一周还是一个月……）不进数据、不同步、不进备份。编辑食谱时没保存的修改另存在 `picknest.draft.recipe.<食谱 id | new>`（见下面 recipes），也只在这台设备上。
+本机设置 `picknest.local`（语言、主题、设备名、同步令牌、各清单的显示方式、按商店看时只看哪张清单、日历看一周还是一个月……）不进数据、不同步、不进备份。编辑食谱时没保存的修改另存在 `picknest.draft.recipe.<食谱 id | new>`（见下面 recipes），也只在这台设备上。
 
 所有数据文件（同步仓库里的 `picknest.json`、备份、出错时下载的原始数据）外面都是 `{ app: 'picknest', v: 1, …, state }`，读之前由 `store.js` 的 `fileProblem` 检查：不是这个 App 的 → 不读；`v`（或 `state.v`）比 1 大 → 是新版写的，旧版不读、不合并、不上传（免得改坏）；缺了 `state` → 不读。
 
@@ -24,7 +24,7 @@
 
 不认识的字段、不认识的集合原样保留（旧版 App 同步时不会弄丢新版的数据）。读入本机、云端、备份时都经过 `normalizeState()`：坏记录丢掉，能修的修好，用户写的文字一个字都不改。
 
-例外：已知字段里认不出的**取值**（`lists.kind`、`items.status`、`categories.kind`、`memory.kind`、`plan.meal`）按默认值读，改过以后照默认值写回去。所以以后要加新的取值（比如「项目」清单），要么用新字段表达，要么同时升 `v`（旧版读到 `v` 不是 1 会拒绝读、进恢复页，不会把数据改坏），不要直接往这几个字段里塞新值。
+例外：已知字段里认不出的**取值**（`lists.kind`、`items.status`、`categories.kind`、`memory.kind`、`plan.meal`、`log.meal`、`foods.kind`）按默认值读，改过以后照默认值写回去。所以以后要加新的取值（比如「项目」清单），要么用新字段表达，要么同时升 `v`（旧版读到 `v` 不是 1 会拒绝读、进恢复页，不会把数据改坏），不要直接往这几个字段里塞新值。
 
 内容没有变的写入（同样的值再存一遍，或者整理后一样，比如 `order: '0'` → `0`）不算修改：不盖新时间、不保存、不进撤销。预置记录靠 `updatedAt: 0` 表示「没人改过」，白盖一个新时间会让它在合并时盖过别的设备上的删除。
 
@@ -32,7 +32,7 @@
 
 V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间相同按 `canon()` 序列化比较，保证每台设备结果一样。设置按键合并（`settingsAt`）。
 
-例外（`store.js` 的 `mergeRecord`）：`items`、`memory` 的 id 是算出来的（清单 + 名字、名字），一台设备还没拉到云端那条（新设备还没连同步、Safari 清掉了存储、店里离线）就又加了同名的，建的是同一个 id 上一条空白的新记录。整条取较新的话，云端那条（可能是几个月前的）的备注、链接、价格、常去的商店、记住的单位就永远没了。所以两条的 **`createdAt` 不一样**（同一条记录改来改去、恢复、移动，`createdAt` 都不变）时：
+例外（`store.js` 的 `mergeRecord`）：`items`、`memory`、`foods`（第三版）的 id 是算出来的（清单 + 名字、名字、名字），一台设备还没拉到云端那条（新设备还没连同步、Safari 清掉了存储、店里离线）就又加了同名的，建的是同一个 id 上一条空白的新记录。整条取较新的话，云端那条（可能是几个月前的）的备注、链接、价格、常去的商店、记住的单位就永远没了。所以两条的 **`createdAt` 不一样**（同一条记录改来改去、恢复、移动，`createdAt` 都不变）时：
 
 - 以较新的为底（状态、数量、名字的写法、删除标记都是它的；`items` 一条已买、一条还没买时状态、数量、删除标记照下面的规则定）
 - `items`（还要同一张清单、`normName` 一样；不然是另一样东西占了这个 id，照旧整条取较新的）：
@@ -44,6 +44,7 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
     - 两条上**买过的那几份都不要**（下面「哪几份算买过」，两边都查）：较新那条可能就是把另一条（或者带着同样几份的一份）合并进来、购买算数以后的结果，不跳过的话再合并一次买过的又回到清单上；反过来也一样，不然经过一次中间的合并，买过的会从另一份各自建的那条上回来（先合并哪两份，结果不一样）
   - **哪几份算买过**（`store.js` 的 `unseen`；上面两条都还没买时、下面购买算数时都用它，认法一样，先合并哪两份、买过的会不会回来才一样）：按来源算（`'p:x#2'` 就是 `'p:x'`）。另一条知道这个来源买过（`boughtFor` 记着的；购买算数时已买那条这一轮 `needs` 里的来源也算，时间是 `doneAt`），而且比这一条知道的那次晚（这一条没记着当最早）→ 这一条上的那几份是没见过那次购买时加的，算买过了；这一条自己记着一样晚或更晚的，是买过以后又自己加的，留着
   - `boughtFor` 两条的都留（同一个取晚的时间），另一条已买、已清除的那一轮计划的来源也记进去（见下面「来自食谱的数量」）；`statusAt` 取两条大的（合并出来的这一条两边都见过了，见下面）
+- `foods`（第三版，按名字算 id，和 `memory` 一样）：`uses`、`lastAt` 取大的；较新那条没填的营养用另一条的补（同一种、同一个 `perUnit` 时）；`grams` 两条的都留；`ref` 空着就补（见下面 foods）
 - `memory`：`stores` 两边合在一起，同一家店 `n`、`at` 取大的；`uses`、`lastAt` 取大的；较新的没选过分类（`categorySet`）就用另一条选过的；较新的没标常备品（`staple`）、另一条标了就留着；空着的 `unit`、`qty` 补上
 - `createdAt` 取早的（以后两边就是同一条，不再走这个例外）；结果和较新那条不一样（补到了东西、购买算数，或者只是 `createdAt` 换成了早的）`updatedAt` 就是较新那条 + 1（还拿着较新那条的设备合并时它赢；两条一样新时只换了 `createdAt` 的结果也要更新，不然再和另一条合并（`createdAt` 已经一样）按内容排可能取了另一条），完全一样就是较新的那条。顺序无关，再合并几次结果都一样
 - 同一条记录（`createdAt` 一样）照旧整条取较新的：清空的备注不会被旧的补回来，点错了减回去的购买次数也不会被旧的加回去。例外（`items`，`store.js` 的 `boughtMeanwhile`）：**一台勾成已买、另一台不知道又改了**。两个人一起：一个在店里勾掉洋葱，一个在家里还没拉到，加了一道菜、再生成一次购物清单，共用的几样一下全改写、时间更新，整条取较新的话买过的又回到「要买」、数量还是全部的。认法靠 `statusAt`（状态最后一次改的时间，见 items）：已买那份的 `statusAt` 比还没买那份的新 = 还没买那份写的时候没见过这次购买（见过了再改，`statusAt` 是抄过来的；自己取消勾选、撤销，`statusAt` 是更新的）；而且还没买那份是在勾掉以后写的（`updatedAt` 比已买那份的 `statusAt` 晚，不然它只是旧版本）。这时购买算数：还没买那份上买过的那几份（上面「哪几份算买过」：已买那份这一轮 `needs` 里的来源、`boughtFor` 里比它知道的晚的）、一样的自己加的数量算买过了；还没买那份上多出来的（新加的菜、新写的数量）还要买 → 新的一轮（`status` 是它的、`needs` 只剩多出来的、自己加的只留新写的（单位跟着它），已买那份 `needs` 里的来源都记进 `boughtFor`：计划的照 `boughtAfter`，别的来源（`a:` 这些）也记，只给合并认「这几份买过了」（上面「哪几份算买过」））；没多出来的 → 已买（`doneAt`、`needs` 是买的那一轮的；买完清除了的还是清除了）。别的字段照旧用较新的那份；结果 `statusAt` 是那次购买的，`updatedAt` 是较新那份 + 1，顺序无关、再合并结果一样
@@ -82,7 +83,7 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 
 ## 最近删除（core/deleted.js）
 
-列的是 `deleted` 的清单、东西、食谱、商店、分类，各自 `deletedAt` 新的在前（`DELETED_KINDS` 的顺序就是页面上分组的顺序）。计划里删掉的菜不列（见下面 plan）。东西只列所在的清单没删除的：删掉的清单里的东西没有删除标记，只是跟着隐藏，恢复清单时一起回来。「清除已买」清掉的东西 `status` 还是 `done`，恢复后回到「已买」。
+列的是 `deleted` 的清单、东西、食谱、商店、分类，各自 `deletedAt` 新的在前（`DELETED_KINDS` 的顺序就是页面上分组的顺序）。计划里删掉的菜、饮食记录里删掉的一条不列（见下面 plan、log：撤销靠提示条）。东西只列所在的清单没删除的：删掉的清单里的东西没有删除标记，只是跟着隐藏，恢复清单时一起回来。「清除已买」清掉的东西 `status` 还是 `done`，恢复后回到「已买」。
 
 恢复 = `store.js` 的 `restoredRecord`（去掉删除标记，修改时间晚于删除）。不能恢复（`restoreBlock`）：这张清单上已经有同名的（`normName`）没删除的东西（同一张清单里同名的只能有一条）、已经有同名的商店、已经有会一起出现的同名分类（规则和新增、改名一样）、所在的清单也删了（先恢复清单）。食谱可以同名，总能恢复；删除、恢复食谱都不动清单上从它加进来的东西。
 
@@ -223,7 +224,8 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
   ings: [ { key: 'g_…', name: '', qty: number|null, unit: '', note: '', optional: false } ],
   tags: { cuisine: ['川菜'], style: ['家常', '快手'] },          // 第 11 步；没有就是两个空数组
   photo: { sha256, mime: 'image/jpeg', w, h, bytes } | null,   // 第 12 步；图片本身在 IndexedDB 和同步仓库的 images/ 里
-  ordered: true }                                               // 第 11 步：手动 ↑↓ 排过以后为 true（不再整张按类别排；存过的食谱原来的几行本来就不自己挪，见下面）
+  ordered: true,                                                // 第 11 步：手动 ↑↓ 排过以后为 true（不再整张按类别排；存过的食谱原来的几行本来就不自己挪，见下面）
+  nutrition: { kcal, protein, carbs, fat } | null }             // 第 13 步：每人份营养（手动填的），见下面「recipes.nutrition 和饮食目标」
 ```
 
 - **标签**（第 11 步）`tags.cuisine`、`tags.style`：字符串数组，原样保存（不做简繁转换、不截），同一组里 `normName` 一样的只留一个（「粵菜」「粤菜」是一个）；整理（`store.js` 的 `normalizeTags`）：没有、不是对象的是两个空数组，不是字符串的、空白的扔掉，别的组（新版才有的）原样留着。预设（`RECIPE_TAG_PRESETS`：存的是文案的键，显示用 `t('rcp.tag.<组>.<键>')`，存进食谱的是显示出来的那个字，换界面语言不改已经存的；只能加、不能改名）：菜系——川菜、粤菜、湘菜、鲁菜、江浙菜、东北菜、台湾菜、家常中餐、日式、韩式、东南亚、西式、意式、墨西哥；风格——家常、快手、下饭、减脂、素食、汤、凉菜、早餐、便当、甜品、烘焙、宴客。`recipeTags(r)` 读（旧食谱也是两个数组），`addTag` / `removeTag` / `hasTag` 改和查（`normName` 比；空的 `rcp.err.tag`）。编辑页每组列 `tagChoices(state, 组, 预设写出来的字, 这一道的)`：预设 → 别的食谱用过的 → 这一道自己加的，`normName` 一样的列一个。食谱页按标签筛选：只列 `usedTags(state)`（没删除的食谱用到的，`normName` 一样算一个、写法用最多的，按用得多的、名字排），`searchRecipes` 的 `tags`（`matchesTags`：一组里选几个是「任一」，两组之间是「都要」，一组没选不管）；选了的标签没有食谱用了，页面自己去掉
@@ -256,7 +258,7 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 - **加到清单**：能加到首页上的食材清单（`groceryLists`：没删除、没归档的 `kind: 'grocery'`），默认 `defaultTarget(state, 给的)`：给的那张 → 预置的「食材」→ 第一张 → 都没有是 `null`（面板说先新建一张）。每一行 `recipeLines(state, recipe, { servings, listId })` → 换算过的用量 + `staple` + `have`（这张清单上同名的、要买或以后再说的那一条）+ `haveLabel`（它的 `totalLabel`）+ `added` / `addedLabel`（`have` 的 `needs` 里有这道食谱加的那几份（`recipeId` 是它）、一共多少）+ `checked`（常备品、可选的、这道菜已经加过的不勾：再打开面板多半是来看加了什么，一下点确认就把用量翻倍了；勾上就是再加一份）；面板上标常备品是按名字的，同名的几行（腌料、调味里各一个「盐」）一起取消勾；确认 `addRecipeToList(state, recipe, { listId, servings, keys, staples, source })`：先 `setStaple` 这次标 / 取消的，再把勾上的 `addNeeds`（来源由页面给 `a:<随机>`，`label` 抄食谱名字、`recipeId`），在一次 `ctx.mutate` 里
 - **编辑页的草稿**：`picknest.draft.recipe.<id | new>` = `{ w: 编辑页的工作副本, at }`，打字时随手存（0.4 秒防抖；切到后台（app 调页面的 `flush`）、`pagehide` 时马上存：iOS 页面一隐藏就停掉计时器），保存、取消、放弃（包括换页时问了点「放弃」）时删掉；下次打开同一个编辑页时接着用（说一句、可以放弃）。只在本机，不同步、不进备份
 
-## plan — 计划（第二版）
+## plan — 计划（第二版；第 13 步起在「日历」页里）
 
 ```js
 { id: 'p_…', date: 'YYYY-MM-DD', meal: 'breakfast' | 'lunch' | 'dinner' | 'snack',
@@ -302,34 +304,54 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 
 ```js
 { id: 'f_' + hash64(normName), name: '', kind: 'food' | 'ingredient',
-  per: { kcal: 0, protein: 0, carbs: 0, fat: 0 }, perUnit: 'serving' | '100g',
-  grams: { '个': 50, '勺': 15 },           // 这一样的单位重量（自己填的，比内置表优先）
+  per: { kcal: 190, protein: 9, carbs: null, fat: 7 }, perUnit: 'serving' | '100g',
+  grams: { '个': 50, '勺': 15 },           // 这一样的单位重量（自己填的，比内置表优先；第 15 步用）
   ref: null,                                // 第 15 步：「指定成表里的哪一样」时是内置表的 id
   uses: 0, lastAt: 0 }
 ```
 
-- 按名字（`normName`）一条，id 是算出来的（两台设备各自记同一样不会变成两条；合并照 `memory` 的「各自从头建的」补字段）
-- `kind: 'food'`：记饮食时手动写过的东西（「拿铁 一杯 190 千卡」），`per` 是每份；`'ingredient'`：食材的营养（自己填的或指定的），`per` 是每 100 g
-- 营养都是数字或 `null`（没填），不是负数；热量单位千卡，营养素单位克
+规则在 `core/foods.js`（第 13 步只用到 `kind: 'food'`）。
+
+- 按名字（`normName`，简繁、大小写、空白不同的是同一条）一条，id 是算出来的（`foodId`），两台设备各自记同一样不会变成两条
+- `kind: 'food'`：记饮食时手动写过的东西（「拿铁 190 千卡」「公司食堂的午饭」），`per` 是**每份**；`'ingredient'`：食材的营养（第 15 步，自己填的或指定的），`per` 是每 100 g。认不出的 `kind` 按 `'food'` 读；`perUnit` 认不出的按 `kind` 定（每份 / 每 100 g）
+- 营养都是数字或 `null`（没填），不是负数；热量千卡取整数，营养素克最多一位小数（`store.js` 的 `nutrValue` / `normalizeNutrition`，`per` 一直是四样都有的对象，别的字段原样留着）。`grams` 只留正数；`ref` 不是字符串 → `null`
+- **记住** `rememberFood(state, name, per, { use })`：记饮食时没连食谱的（手动写的、从常吃的选了的、计划里只写一句的「出去吃」）在 `addLogEntry` 里记一次：名字用这次的写法；每份营养**只改 `per` 里给了的那几样**（给了、是空的 = 清掉），没给的留着记住的。给哪几样：
+  - 面板的营养框是**从这个名字的那一条填好的**（`addLogEntry` 的 `fromFood` 是它的 id：点了它、写的名字正好是它时面板自动填上、计划里只写一句的「吃了」用了记住的）→ 四样都给（这时空着就是用户删掉了）
+  - 不是从它填的（写名字时它还没同步过来、别处调用、点了「拿铁」又把名字改成「冰拿铁」）→ 只给填了的（`filledOnly`），空着的是没填，不冲掉记住的——同一条记录，冲掉的那份更新，同步以后每台设备上都没了；名字是常吃的、一个数也没填 = 和点了它一样，这一条用记住的每份
+  - 改一条旧记录（`editLogEntry`，`use: false`，不算又吃了一次）：只改了营养的只给改了的那几样；改了名字的，这一条填了的每份（加上改了的）都记到新名字上
+  - `use` 是 `true` 时 `uses + 1`、`lastAt`。同名的是 `kind: 'ingredient'` 时不盖掉它（每 100 g 的数混进每份的就错了），这次就不记（记录的 `foodId` 是 `null`）。改的时候保留 `createdAt`
+- **联想** `foodSuggestions(state, 搜索词, { limit })`：只有 `kind: 'food'`、没删除的；名字开头对上的在中间对上的前面，再按 `uses` 多的、`lastAt` 新的；搜索词空着 → 「常吃的」：按 `uses`、`lastAt` 排的前几样（面板一打开就列出来）
+- **合并**（`store.js` 的 `mergeRecord`，和 `memory` 一样）：同一条（`createdAt` 一样）整条取较新的（清空的营养不会被旧的补回来）；各自从头建的（`createdAt` 不一样）以较新的为底，`uses`、`lastAt` 取大的，较新那条没填的营养用另一条的补上——只在同一种（`kind`）、同一个 `perUnit` 时补（每份的 190 千卡补到每 100 g 上就错了），`grams` 两条的都留（同一个单位以较新的为准），`ref` 空着就补；`createdAt` 取早的，结果和较新那条不一样时 `updatedAt` + 1。顺序无关、重复合并不变、会收敛（`tests/mergeConvergence.test.mjs` 也编了 foods）
+- 第 13 步没有删掉常吃的的地方（以后要加的话照软删除）
 
 ## log — 吃了什么（第三版）
 
 ```js
 { id: 'e_…', date: 'YYYY-MM-DD', meal: 'breakfast' | 'lunch' | 'dinner' | 'snack',
-  title: '', servings: 1, kcal: 520, protein: 25, carbs: 30, fat: 35,   // 合计（已经乘过份数），记的时候抄下来
-  recipeId: null, planId: null, foodId: null, estimated: true, note: '', order: 0 }
+  title: '', servings: 1, kcal: 520, protein: 25, carbs: 30, fat: 35,   // 合计（已经乘过份数），记的时候抄下来；没填的是 null
+  recipeId: null, planId: null, foodId: null, estimated: false, note: '', order: 0 }
 ```
 
-- 营养是**记的时候抄下来的合计**：以后改了食谱、常吃的、营养表，过去的记录不变（要改就改这一条）
-- `estimated`：来自估算（第 15 步）的为 `true`，界面上写「约」
-- 从计划「吃了」：`planId` 是那一道菜，默认 1 份；同一道菜可以记几次
-- 软删除，10 秒撤销（和计划一样，不进最近删除页面）
+规则在 `core/log.js`。
+
+- 一条是某一天某一顿吃的一样。`date`、`meal` 和 plan 一样（本地日期；认不出的 `date` 原样留着、哪一天都不显示；`meal` 认不出的按 `dinner` 读）。一天里按早饭、午饭、晚饭、加餐排，同一顿里按 `order`（加进来、挪过来的排在那一顿最后），再按 `createdAt`、`id`（`logOn` / `logIn`，两头的日子都算）
+- `servings`：几份，0 < n ≤ 99（`LOG_SERVINGS_MAX`），空着是 1；整理时不是正数的当 1
+- 营养是**记的时候抄下来的合计**：每份 × 份数，乘完再整理（千卡整数、克一位小数；每份是输入框读出来的，已经整理过），没填的是 `null`（合计时不算进去，写着几条没填）。以后改了食谱、常吃的、营养表，过去的记录不变（要改就改这一条）
+- `estimated`：来自估算（第 15 步）的为 `true`，界面上写「约」；自己改了营养就是 `false`
+- `recipeId`：从食谱记的（还在的食谱；已经删了的不再连着，名字照写的记）；`planId`：从计划里那一道菜「吃了」；`foodId`：没连食谱的记进了哪一条常吃的
+- **检查** `validateLogEntry(state, input)`：日子是真的日子（`log.err.date`）；名字不能空（连着食谱没写的用食谱的名字，`log.err.title`）；份数（`log.err.servings`）；营养（每份）照 `foods.js` 的 `readNutrition`：空的是没填，读不出来、负数 `log.err.num`，热量超过 9999（`KCAL_MAX`）`log.err.kcalMax`，营养素超过 999 g（`GRAM_MAX`）`log.err.gramMax`，错误按营养的键放
+- **记** `addLogEntry(state, input)`：有错什么也不改。没连食谱的记进常吃的（`rememberFood`，`input.fromFood` 见上面 foods）；连着食谱、食谱还没填每人份营养（一样也没填）、这次填了、`saveToRecipe` 是 `true`（面板上「也记到食谱里」，默认勾着）→ 这次的每份也写成食谱的 `nutrition`（已经填了的不改），在同一次修改里，一起撤销
+- 面板一开始的样子：`logFromPlan(state, planId)`（那一天那一顿、**1 份**——计划的人数是做几人份，吃的是其中一份；连着食谱的用食谱**现在**的每人份营养，没填的空着；只写一句的名字是那句话，记过这个名字的（常吃的）用记住的每份、`fromFood` 是它；菜不在了 → `null`）、`logFromRecipe`（1 份、每人份营养）、`logFromFood`（1 份、记住的每份、`fromFood`）；面板里写的名字正好是常吃的（没点它）、营养框还空着时也自动填上记住的（再改成别的名字、框没动过就拿掉）；新记的默认这一顿 `mealAt(本机时间)`：4 点前、14:30–17:00、21 点以后是加餐，10:30 前早饭，再到 14:30 午饭，17–21 点晚饭。同一道菜可以记几次（`loggedFrom` 数记过几次，日历上标「已记」）
+- **改** `editLogEntry(state, id, patch)`：patch 只放改了的（`date`、`meal`、`title`、`servings`、`per`、`note`），`per` 里也只放改了的那几样（每份；给了空的 = 清掉）。合计按 `editedTotals(原来的, 份数, per)`：`per` 里有的 = 新的每份 × 份数；没有的照原来的合计，份数变了按比例变（按没四舍五入的每份 = 合计 ÷ 份数：100 千卡 3 份改成 2 份是 67，不是 33 × 2）；都没给 → 合计不动。面板里的框是每份（合计 ÷ 份数，最多一位小数，四舍五入过），所以没动的框不能交上去重算（1.5 份 101 千卡改成 2 份是 203，再只改脂肪，热量拿框里的 101.5 乘回去就成了 204）；面板下面写的合计也用 `editedTotals` 算，和存的一样。换了日子或哪一顿 = 挪过去（排在那一顿的最后）。`recipeId`、`planId` 不改。没连食谱的改了名字或营养，常吃的跟着更新（不算又吃了一次，见上面 foods）
+- **删** `deleteLogEntry`：软删除，10 秒撤销（和计划一样，不进最近删除页面）
+- **合计** `sumEntries` / `dayTotals` / `totalsByDay`：每样加起来再整理（`0.1 + 0.2` 的零头不显示），`n` 几条，`missing` 每样有几条没填，`estimated` 有没有估算的。月历上每天的千卡只在至少一条写了热量时显示
+- **一周的平均** `weekAverage(state, 那一周里的一天)`：周一到周日，只算记了的日子（没记的那天不是吃了 0 千卡）；每样只算有这一样的日子（只写了蛋白质的那天不算进热量的平均）；`days` 是记了热量的天数。和日历一样按 `weekDays`（`Date.UTC`）算，夏令时不差一天
 - 合并照整条取较新的（id 随机）
 
 ## recipes.nutrition 和饮食目标（第三版）
 
-- `recipes.nutrition`：`{ kcal, protein, carbs, fat } | null`，**每人份**、手动填的；有就以它为准，没有用估算（第 15 步的 `estimateRecipe`）
-- 同步的设置 `settings.goals`：`{ kcal: 1800 | null, protein: null, carbs: null, fat: null }`（按 `settingsAt` 合并）
+- `recipes.nutrition`：`{ kcal, protein, carbs, fat } | null`，**每人份**、手动填的（编辑页「每人份营养」，`validateRecipe` 的 `nutrition`，错误在 `errors.nutrition.<营养>`，给了才改：别处调 `saveRecipe` 不冲掉它）；一样也没填是 `null`（填了 0 是填了：0 千卡的黑咖啡），整理（`normalizeNutrition(…, true)`）同上，第 13 步以前的食谱整理后是 `null`。有就以它为准，没有用估算（第 15 步的 `estimateRecipe`）。合并跟着整条食谱
+- 同步的设置 `settings.goals`：`{ kcal: 1800 | null, protein: null, carbs: null, fat: null }`（整个一份按 `settingsAt` 合并）。读一律经过 `goalsOf`（每样是正数或 `null`，认不出的当没设）；写 `setGoals(state, 给了的几样)`：只改给了的（设置页一格一格地存），空的和 0 是不设，读不出来、负数、太大（同 `readNutrition`）报错、什么也不改；**意思**没变（按 `goalsOf` 读出来比：没设的写 0、清空，1800 写成 1800.4）不写、不盖新时间——整份按 `settingsAt` 合并，空写一次就比别的设备刚设、还没同步过来的目标新，把它冲掉。不认识的字段（以后的版本加的纤维）原样留着。和目标比 `goalProgress(合计, 目标)`：每样 `{ value, goal, left（还差，到了是 0）, over（超了）, ratio（进度条 0–1，超了是 1）}`，没设目标的那一样都是 `null`
 - 单位换算和营养表（第 14、15 步）：内置表在 `src/data/nutrition.js`（来源 USDA FoodData Central SR Legacy，公共领域），每样 `{ id, zh: ['鸡蛋'], en: ['egg'], per100: { kcal, protein, carbs, fat }, grams: { '个': 50 }, density: 1.03 | null, note }`；通用单位：g、克、kg、斤 500 g、两 50 g、oz、lb；ml / L 乘密度（没有按 1）；勺 15 ml、汤匙 15 ml、小勺 / 茶匙 5 ml、杯 240 ml、碗 250 ml
 
 ## stores — 商店
@@ -403,7 +425,7 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
   view: { [listId]: { groupBy: 'category' | 'store', showDone: true, showLater: true } },   // 认不出的值按默认（core/group.js 的 listView）；购物模式只用 groupBy
   storeView: { [storeId | 'none']: { showDone: true } },                                     // 商店页「已买」折没折；'none' 是「未指定」（core/group.js 的 storeView）
   storeFilter: null | listId,                                                                  // 按商店看时只看哪张清单（core/stores.js 的 storeFilter）
-  planView: 'week' | 'month' }                                                                 // 「计划」页看一周还是一个月（core/plan.js 的 planView，认不出的按一周）
+  planView: 'week' | 'month' }                                                                 // 「日历」页看一周还是一个月（core/plan.js 的 planView，认不出的按一周）
 ```
 
 - `storeFilter`：「商店」页、每家店的页面、从商店进的购物模式共用一个（换一家店还是同一张）；`null` 是所有清单。读的时候一律经过 `stores.js` 的 `storeFilter(state, local)`：不是字符串、没有这张清单、删掉了、归档了 → 按所有清单显示（`null`），不提示，也不改记着的值（撤销删除、取消归档以后又按它筛）。改的时候用 `storeFilterPatch(listId)`；选清单的面板拿点的和**记着的**比（不是现在生效的）：记着的清单归档了、面板上勾着「所有清单」，再点「所有清单」也要记下来

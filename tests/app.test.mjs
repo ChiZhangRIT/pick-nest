@@ -5,7 +5,7 @@ import { readStoredState, STATE_KEY } from '../src/core/persistence.js';
 import { BUILD } from '../src/version.js';
 import { Element, all, find, fakeStorage, installDom } from './helpers/dom.mjs';
 
-test('冷启动：首页是预置的两张清单；底栏是清单、商店、食谱、计划、设置；改数据自动重画并保存；换页、换语言、换外观、撤销都生效', async () => {
+test('冷启动：首页是预置的两张清单；底栏是清单、商店、食谱、日历、设置；改数据自动重画并保存；换页、换语言、换外观、撤销都生效', async () => {
   const storage = fakeStorage();
   const loc = { hash: '', protocol: 'http:' };
   const media = {};
@@ -32,8 +32,8 @@ test('冷启动：首页是预置的两张清单；底栏是清单、商店、�
     assert.deepEqual(rows(), [['食材', '0'], ['想买', '0']]);
     assert.deepEqual([body.dataset.route, body.dataset.layout, body.dataset.tabs], ['lists', 'phone', '1']);
     assert.deepEqual([root.lang, root.dataset.theme, dom.doc.title], ['zh-Hans', 'light', 'PickNest']);
-    assert.deepEqual(tabs.children.map(a => [a.attrs.href, a.textContent, a.attrs['aria-current'] || null]), [['#/', '清单', 'page'], ['#/stores', '商店', null], ['#/recipes', '食谱', null], ['#/plan', '计划', null], ['#/settings', '设置', null]], '底栏五个');
-    assert.deepEqual(all(dom.doc.querySelector('#side'), el => el.tag === 'a').map(a => a.attrs.href), ['#/', '#/stores', '#/recipes', '#/plan', '#/search', '#/settings', '#/settings/sync'], '侧栏底部设置下面是同步状态，和 Babble 一样');
+    assert.deepEqual(tabs.children.map(a => [a.attrs.href, a.textContent, a.attrs['aria-current'] || null]), [['#/', '清单', 'page'], ['#/stores', '商店', null], ['#/recipes', '食谱', null], ['#/calendar', '日历', null], ['#/settings', '设置', null]], '底栏五个');
+    assert.deepEqual(all(dom.doc.querySelector('#side'), el => el.tag === 'a').map(a => a.attrs.href), ['#/', '#/stores', '#/recipes', '#/calendar', '#/search', '#/settings', '#/settings/sync'], '侧栏底部设置下面是同步状态，和 Babble 一样');
     assert.equal(dom.doc.querySelector('.side-foot').children[1].textContent, '未开同步');
     assert.equal(storage.m.size, 0, '只是打开看看，不写存储');
 
@@ -145,7 +145,7 @@ test('冷启动：首页是预置的两张清单；底栏是清单、商店、�
     assert.equal(root.lang, 'en');
     assert.equal(JSON.parse(storage.getItem('picknest.local')).lang, 'en');
     assert.ok(main.textContent.includes('Appearance'));
-    assert.deepEqual(tabs.children.map(a => a.textContent), ['Lists', 'Stores', 'Recipes', 'Plan', 'Settings']);
+    assert.deepEqual(tabs.children.map(a => a.textContent), ['Lists', 'Stores', 'Recipes', 'Calendar', 'Settings']);
     const current = select();
     ctx.setLang('en');
     assert.equal(select(), current, '重复选当前语言不用重画');

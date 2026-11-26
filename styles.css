@@ -880,7 +880,7 @@ p.rcp-source { color: var(--ink-2); overflow-wrap: anywhere; }
 /* 一栏要写明 minmax(0, 1fr)：默认的 auto 一栏会被不折行的「几人份 · 备注」撑宽，手机上整周横着溢出，每天的「+」被挤到屏幕外 */
 .plan-week { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
 /* 挪过去以后滚到那一天（views/plan.js 的 follow）：下面让开提示条（手机上还有底栏） */
-.plan-day { margin-top: 10px; scroll-margin: 8px 0 calc(84px + env(safe-area-inset-bottom)); }
+.plan-day { margin-top: 10px; scroll-margin: calc(8px + env(safe-area-inset-top)) 0 calc(84px + env(safe-area-inset-bottom)); }   /* 上面让开状态栏（滚到今天时） */
 body[data-layout="phone"][data-tabs="1"] .plan-day { scroll-margin-bottom: calc(148px + env(safe-area-inset-bottom)); }   /* 底栏 + 提示条（加了菜马上有）上面 */
 .pd-head { display: flex; align-items: center; gap: 8px; min-height: 44px; padding-left: 4px; }
 .pd-title { flex: 1; min-width: 0; display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; margin: 0; font-size: 16px; font-weight: 650; }
@@ -890,7 +890,8 @@ body[data-layout="phone"][data-tabs="1"] .plan-day { scroll-margin-bottom: calc(
 .pd-add { flex: none; margin-right: -8px; }
 .pd-empty { margin: 0 4px; padding: 10px 14px; border: 1px dashed var(--line); border-radius: var(--radius); color: var(--muted); font-size: 14px; }
 .pd-list > li { position: relative; }
-.pd-list > li + li > .pd-dish::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: .5px; background: var(--line); }
+/* 分隔线画在 li 上：一道菜的一行右边还有「吃了」（在按钮外面），线要一直画到头 */
+.pd-list > li + li::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: .5px; background: var(--line); z-index: 1; }
 .pd-dish { align-items: flex-start; min-height: 50px; }
 /* 哪一顿：左边一栏（同一顿的第二道起空着，看着是一组）；字数不一样（早饭 / Breakfast）也对齐 */
 .pd-meal { flex: none; width: 3.2em; padding-top: 2px; color: var(--muted); font-size: 13px; font-weight: 600; line-height: 1.5; }
@@ -899,11 +900,48 @@ body[data-layout="phone"][data-tabs="1"] .plan-day { scroll-margin-bottom: calc(
 .pd-name { font-size: 16px; line-height: 1.45; overflow-wrap: anywhere; }
 .pd-sub { font-size: 13px; line-height: 1.35; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pd-dish.go::after { align-self: center; }
+/* 第 13 步：计划里每道菜右边的「吃了」（不在这一行的按钮里：点这一行是改这道菜）；记过的名字后面一个「已记」 */
+.pd-li { display: flex; align-items: center; }
+.pd-li > .pd-dish { flex: 1; min-width: 0; }
+.pd-eat { flex: none; margin-right: 12px; }
+.pd-logged { margin-left: 6px; vertical-align: 1px; background: var(--accent-soft); color: var(--accent-text); }
+/* 「吃了什么」：标题一行（「还没记」淡淡的、右边「+」），下面按顿的分组列表，再下面合计和目标（细进度条） */
+.lg { margin-top: 8px; }
+.lg-head { display: flex; align-items: center; gap: 8px; min-height: 40px; padding-left: 4px; }
+.lg-title { margin: 0; color: var(--ink-2); font-size: 14px; font-weight: 600; }
+.lg-none { flex: 1; color: var(--faint); font-size: 13px; }
+.lg-title + .lg-add { margin-left: auto; }
+.lg-add { flex: none; display: inline-flex; align-items: center; gap: 4px; min-height: 40px; padding: 0 2px; font-size: 14px; }
+.lg-add .ic { width: 18px; height: 18px; }
+.lg-row .pd-sub { white-space: normal; }   /* 几份 · 三样营养素放不下一行：折行，不省略成「脂…」 */
+.lg-nw { white-space: nowrap; }
+.lg-list .lg-row { align-items: flex-start; min-height: 50px; }
+.lg-row.go::after { align-self: center; }
+.lg-kcal { flex: none; align-self: center; color: var(--ink-2); font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lg-kcal.none { color: var(--faint); font-weight: 500; font-size: 13px; }
+.lg-totals { margin-top: 8px; padding: 10px 14px 12px; border-radius: var(--radius); background: var(--card); box-shadow: var(--shadow-card); font-variant-numeric: tabular-nums; }
+.lg-tot-k { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 10px; }
+.lg-tot-label { color: var(--muted); font-size: 13px; font-weight: 600; }
+.lg-tot-val { font-size: 16px; font-weight: 650; }
+.lg-tot-goal { margin-left: auto; color: var(--accent-text); font-size: 13px; font-weight: 600; }
+.lg-tot-goal.over, .lg-mac.over .lg-mac-val { color: var(--warn); }
+.lg-bar { height: 4px; margin-top: 6px; border-radius: 2px; background: var(--fill); overflow: hidden; }
+.lg-bar > span { display: block; height: 100%; border-radius: 2px; background: var(--accent); }
+.lg-bar.over > span { background: var(--warn); }
+.lg-macs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+.lg-mac { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.lg-mac-label { color: var(--muted); font-size: 12px; font-weight: 600; }
+.lg-mac-val { font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lg-mac .lg-bar { height: 3px; margin-top: 4px; }
+.lg-missing { margin: 8px 0 0; color: var(--muted); font-size: 12.5px; }
+/* 一周最上面：这一周平均每天多少 */
+.lg-week { margin: 4px 4px 0; color: var(--ink-2); font-size: 13.5px; line-height: 1.5; font-variant-numeric: tabular-nums; }
+.lg-week-goal { color: var(--muted); }
 /* 一个月：周一开头的月历，每天一格（数字 + 最多 3 个点），选中的那天底色、今天的数字是绿底白字；下面是选中那天的卡片 */
 .pm { margin-top: 6px; padding: 8px 6px 10px; border-radius: var(--radius); background: var(--card); box-shadow: var(--shadow-card); }
 .pm-head, .pm-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
 .pm-head span { padding: 2px 0 6px; color: var(--muted); font-size: 12px; font-weight: 600; text-align: center; }
-.pm-cell { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 3px; min-height: 52px; padding: 6px 0 4px; border: 0; border-radius: 10px;
+.pm-cell { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 3px; min-height: 64px; padding: 6px 0 4px; border: 0; border-radius: 10px;
   background: none; color: var(--ink); font-variant-numeric: tabular-nums; }
 .pm-cell:hover { background: var(--fill); }
 .pm-num { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; font-size: 16px; line-height: 1; }
@@ -914,6 +952,10 @@ body[data-layout="phone"][data-tabs="1"] .plan-day { scroll-margin-bottom: calc(
 .pm-dots { display: flex; gap: 3px; height: 6px; }
 .pm-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent-text); }
 .pm-cell.out .pm-dot { background: var(--faint); }
+/* 那天吃了多少千卡（第 13 步）：小字只写数，超过目标的琥珀色；空的也占着一行，每格一样高 */
+.pm-kcal { min-height: 13px; color: var(--muted); font-size: 10.5px; font-weight: 600; line-height: 1.2; letter-spacing: -.01em; }
+.pm-kcal.over { color: var(--warn); }
+.pm-cell.out .pm-kcal { color: var(--faint); }
 /* 加一道菜：选好的那道（「换一道」），或者搜索框 + 搜到的食谱（框里能滚，日子、哪一顿不会被挤到很下面） */
 /* 几人份那一项和「没写几人份」的那句只出现一个（另一个 hidden 也还在中间）：.f-row + .f-row 接不上，按「前面有东西」留空 */
 .dish-form > * + .f-row, .dish-form > * + .f-help { margin-top: 16px; }
@@ -933,6 +975,18 @@ body[data-layout="phone"][data-tabs="1"] .plan-day { scroll-margin-bottom: calc(
 .dish-opt-name { font-size: 16px; line-height: 1.35; overflow-wrap: anywhere; }
 .dish-opt-meta { font-size: 13px; line-height: 1.35; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .meal-seg { display: flex; }
+/* 记一样吃的 / 食谱的每人份营养 / 饮食目标：营养的几个框两个一排（窄的手机上也放得下「蛋白质（克）」） */
+.lg-nut-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px 10px; margin-top: 8px; }
+.form .lg-nut-grid .f-row + .f-row { margin-top: 0; }
+.nut-in { font-variant-numeric: tabular-nums; }
+.lg-per .group-h, .re-nut .group-h { margin: 0 2px; }
+.lg-sum { color: var(--ink-2); font-weight: 600; }
+.lg-recipe-empty { color: var(--warn); }
+.lg-save-to { gap: 10px; min-height: 44px; padding: 4px 0; font-size: 14.5px; }
+.gl-form > * + .lg-nut-grid { margin-top: 16px; }
+.gl-status { min-height: 1.5em; margin: 10px 2px 0; }
+.gl-note { margin-top: 18px; }
+.rcp-nut { font-variant-numeric: tabular-nums; }
 .meal-seg > button { flex: 1; padding-left: 4px; padding-right: 4px; }
 /* 生成购物清单：从 · 到 并排；每行「来自 红烧肉（周一）」 */
 .pl-range { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }

@@ -17,12 +17,12 @@ const fnvRef = s => {
 };
 
 // ---------- 整理 ----------
-test('blankState：七个集合（第二版加了 recipes、plan）、app 标识 picknest', () => {
+test('blankState：九个集合（第二版加了 recipes、plan，第三版加了 foods、log）、app 标识 picknest', () => {
   const s = blankState();
   assert.equal(s.app, 'picknest');
   assert.equal(s.v, 1);
   assert.deepEqual(Object.keys(s.data), COLLECTIONS);
-  assert.deepEqual(COLLECTIONS, ['lists', 'items', 'stores', 'categories', 'memory', 'recipes', 'plan']);
+  assert.deepEqual(COLLECTIONS, ['lists', 'items', 'stores', 'categories', 'memory', 'recipes', 'plan', 'foods', 'log']);
 });
 
 test('整理 items：用户写的文字一个字不改，needs 和不认识的字段原样保留，字段补齐，可重复整理', () => {

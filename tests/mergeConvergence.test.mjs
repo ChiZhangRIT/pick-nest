@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mergeStates, normalizeState, canon, ensureSeeds } from '../src/core/store.js';
 
-// 合并规则的整体性质（见 docs/DATA_MODEL.md「合并」）：items、memory 各自从头建的同一条要补字段，这让合并不满足结合律，
+// 合并规则的整体性质（见 docs/DATA_MODEL.md「合并」）：items、memory、foods 各自从头建的同一条要补字段，这让合并不满足结合律，
 // 所以这里不查结合律，查真正要紧的：顺序无关、重复合并不变，以及三台设备经过同一个仓库轮流同步时会收敛、不来回上传、不丢补过来的字段。
 // 随机数据用固定种子（每次跑一样），只用编出来的内容。
 
@@ -216,4 +216,51 @@ test('买过的按来源、按谁知道的那次购买晚来认：同一道菜�
   const dk = merged(D2, Pk);
   assert.deepEqual([it(dk).status, Object.keys(it(dk).needs)], ['need', ['p:z']]);
   stable(dk, D2, Pk);
+});
+
+// ---------- foods（第三版：常吃的，按名字算 id，和 memory 一样各自从头建的补字段）----------
+// 照实际的样子编：每份的营养有的填了有的没填，偶尔是食材的营养（每 100 g，和每份的不互相补），单位重量、次数、最近一次
+function foodMaker(rnd) {
+  const pickOf = a => a[Math.floor(rnd() * a.length)];
+  const per = () => Object.fromEntries(['kcal', 'protein', 'carbs', 'fat'].map(k => [k, pickOf([null, null, 5, 190, 7.5])]));
+  return (created = pickOf([1000, 2000, 3000])) => ensureSeeds(normalizeState({ app: 'picknest', v: 1, data: { foods: { f_x: {
+    id: 'f_x', name: pickOf(['拿铁', '拿鐵']), kind: rnd() < 0.15 ? 'ingredient' : 'food', per: per(),
+    grams: Object.fromEntries(pickOf([[], [['杯', 350]], [['杯', 400], ['小杯', 240]]])), ref: pickOf([null, null, 'usda:1']),
+    uses: Math.floor(rnd() * 5), lastAt: Math.floor(rnd() * 5000), createdAt: created, updatedAt: created + 100 * Math.floor(rnd() * 30),
+    ...(rnd() < 0.1 ? { deleted: true, deletedAt: created + 50 } : {}),
+  } } } }));
+}
+
+test('合并 foods：顺序无关、重复合并结果不变（随机数据）', () => {
+  const make = foodMaker(prng(41));
+  for (let k = 0; k < 500; k++) {
+    const a = make(), b = make();
+    const ab = merged(a, b);
+    assert.equal(canon(ab), canon(merged(b, a)), `第 ${k} 组：merge(a,b) ≠ merge(b,a)`);
+    assert.equal(canon(merged(ab, a)), canon(ab), `第 ${k} 组：再合并 a 变了`);
+    assert.equal(canon(merged(ab, b)), canon(ab), `第 ${k} 组：再合并 b 变了`);
+    assert.equal(canon(merged(ab, ab)), canon(ab), `第 ${k} 组：和自己合并变了`);
+  }
+});
+
+test('合并 foods：三台设备经过同一个仓库轮流同步会收敛，最多上传 6 次，填过的营养不丢', () => {
+  const rnd = prng(43), make = foodMaker(rnd);
+  for (let k = 0; k < 400; k++) {
+    const devs = (k % 2 === 0 ? [1000, 2000, 3000] : [undefined, undefined, undefined]).map(c => make(c));
+    const kinds = new Set(devs.map(d => d.data.foods.f_x.kind));
+    const kcalSomewhere = devs.some(d => d.data.foods.f_x.per.kcal != null);
+    let remote = null, pushes = 0, quiet = 0, rounds = 0, last = 0;
+    while (quiet < 3 && rounds < 300) {
+      rounds++;
+      const i = quiet > 0 ? (last + 1) % 3 : Math.floor(rnd() * 3);
+      last = i;
+      const next = remote ? merged(devs[i], remote) : devs[i];
+      devs[i] = next;
+      if (!remote || canon(next) !== canon(remote)) { remote = next; pushes++; quiet = 0; } else quiet++;
+    }
+    assert.ok(rounds < 300, `第 ${k} 组没有收敛`);
+    assert.ok(pushes <= 6, `第 ${k} 组上传了 ${pushes} 次`);
+    for (const d of devs) assert.equal(canon(d), canon(remote), `第 ${k} 组：设备和云端不一样`);
+    if (k % 2 === 0 && kinds.size === 1 && kcalSomewhere) assert.ok(remote.data.foods.f_x.per.kcal != null, `第 ${k} 组：各自记的热量丢了`);
+  }
 });
