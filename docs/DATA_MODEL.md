@@ -298,6 +298,40 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 - **挪到别的日子 / 别的一顿**：还是同一道菜，清单不动
 - 食谱改了食材、人数：不自动跟着变，再生成一次就是新的
 
+## foods — 常吃的和自己填的营养（第三版）
+
+```js
+{ id: 'f_' + hash64(normName), name: '', kind: 'food' | 'ingredient',
+  per: { kcal: 0, protein: 0, carbs: 0, fat: 0 }, perUnit: 'serving' | '100g',
+  grams: { '个': 50, '勺': 15 },           // 这一样的单位重量（自己填的，比内置表优先）
+  ref: null,                                // 第 15 步：「指定成表里的哪一样」时是内置表的 id
+  uses: 0, lastAt: 0 }
+```
+
+- 按名字（`normName`）一条，id 是算出来的（两台设备各自记同一样不会变成两条；合并照 `memory` 的「各自从头建的」补字段）
+- `kind: 'food'`：记饮食时手动写过的东西（「拿铁 一杯 190 千卡」），`per` 是每份；`'ingredient'`：食材的营养（自己填的或指定的），`per` 是每 100 g
+- 营养都是数字或 `null`（没填），不是负数；热量单位千卡，营养素单位克
+
+## log — 吃了什么（第三版）
+
+```js
+{ id: 'e_…', date: 'YYYY-MM-DD', meal: 'breakfast' | 'lunch' | 'dinner' | 'snack',
+  title: '', servings: 1, kcal: 520, protein: 25, carbs: 30, fat: 35,   // 合计（已经乘过份数），记的时候抄下来
+  recipeId: null, planId: null, foodId: null, estimated: true, note: '', order: 0 }
+```
+
+- 营养是**记的时候抄下来的合计**：以后改了食谱、常吃的、营养表，过去的记录不变（要改就改这一条）
+- `estimated`：来自估算（第 15 步）的为 `true`，界面上写「约」
+- 从计划「吃了」：`planId` 是那一道菜，默认 1 份；同一道菜可以记几次
+- 软删除，10 秒撤销（和计划一样，不进最近删除页面）
+- 合并照整条取较新的（id 随机）
+
+## recipes.nutrition 和饮食目标（第三版）
+
+- `recipes.nutrition`：`{ kcal, protein, carbs, fat } | null`，**每人份**、手动填的；有就以它为准，没有用估算（第 15 步的 `estimateRecipe`）
+- 同步的设置 `settings.goals`：`{ kcal: 1800 | null, protein: null, carbs: null, fat: null }`（按 `settingsAt` 合并）
+- 单位换算和营养表（第 14、15 步）：内置表在 `src/data/nutrition.js`（来源 USDA FoodData Central SR Legacy，公共领域），每样 `{ id, zh: ['鸡蛋'], en: ['egg'], per100: { kcal, protein, carbs, fat }, grams: { '个': 50 }, density: 1.03 | null, note }`；通用单位：g、克、kg、斤 500 g、两 50 g、oz、lb；ml / L 乘密度（没有按 1）；勺 15 ml、汤匙 15 ml、小勺 / 茶匙 5 ml、杯 240 ml、碗 250 ml
+
 ## stores — 商店
 
 ```js
