@@ -216,8 +216,17 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 
 ```js
 { id: 'r_…', name: '', servings: 2 | null, steps: '', source: '', note: '',
-  ings: [ { key: 'g_…', name: '', qty: number|null, unit: '', note: '', optional: false } ] }
+  ings: [ { key: 'g_…', name: '', qty: number|null, unit: '', note: '', optional: false } ],
+  tags: { cuisine: ['川菜'], style: ['家常', '快手'] },          // 第 11 步；没有就是两个空数组
+  photo: { sha256, mime: 'image/jpeg', w, h, bytes } | null,   // 第 12 步；图片本身在 IndexedDB 和同步仓库的 images/ 里
+  ordered: true }                                               // 第 11 步：手动 ↑↓ 排过以后为 true，新加的食材不再自动归组
 ```
+
+- **标签**（第 11 步）`tags.cuisine`、`tags.style`：字符串数组，原样保存（不做简繁转换），同一组里 `normName` 一样的只留一个；预设（`RECIPE_TAG_PRESETS`，显示用 `t()`，存的是显示出来的那个字，换界面语言不改已经存的）：菜系——川菜、粤菜、湘菜、鲁菜、江浙菜、东北菜、台湾菜、家常中餐、日式、韩式、东南亚、西式、意式、墨西哥；风格——家常、快手、下饭、减脂、素食、汤、凉菜、早餐、便当、甜品、烘焙、宴客。食谱页按标签筛选（一组里选几个是「任一」，两组之间是「都要」）
+- **食材的默认顺序**（第 11 步）`ingredientGroup(state, name)`：用 `core/catalog.js` 的对照（和清单上的分类同一张表）分成 肉类海鲜 → 蔬果 → 蛋奶豆制品 → 粮油干货 → 调料酱料 → 其他；`sortIngredients(ings)` 按组排、同组里保持原来的先后（稳定排序）。新建、粘贴、手动加一行时：`ordered` 不是 `true` 就整张按组排；是 `true`（手动 ↑↓ 过）就只把新的插到它那一组的最后。「按类别重新排」整张排一次并把 `ordered` 去掉
+- **重复的食材**（第 11 步）：同一道食谱里 `normName` 一样算重复。`duplicateOf(recipe, name)` 给出已有的那一行；「合并」：单位一样数量相加（有一边是 `null` 就是 `null`），不一样把这次的写进那一行的备注；「仍然加一行」照常加
+- **食材替换**（第 11 步）`replaceIngredient(state, from, to)`：所有没删除的食谱里 `normName(from)` 一样的那几行改名成 `to`（数量、单位、备注不动），一次 `ctx.mutate`、带撤销；`memory` 里 `from` 是常备品的，`to` 也标上、`from` 的去掉；清单上的东西、计划里已经加进清单的用量不改。先 `replacePreview(state, from)` 列出哪几道食谱、哪几行
+- **成品图**（第 12 步）`photo`：`sha256` 是 JPEG 内容的哈希（小写 64 位十六进制），图片在 IndexedDB `picknest-blobs` 里按 sha256 存，开了同步时传到 `pick-nest-data/images/<sha256>.jpg`（只增不改：同一张图只传一次，换图是新的 sha256；先传图、再传 JSON，别的设备拿到 JSON 时图已经在了）；本机没有时按需下载。删图 = `photo: null`（仓库里的文件和提交历史还在）。备份 JSON 不含图片
 
 - `servings`：几人份，`null` = 没写（加到清单时就不能按人数换算，用量原样）；整理时不是正数的当 `null`，编辑页只收空着或 0 < n ≤ 99（`SERVINGS_MAX`）
 - `ings`：食材，按顺序；`key` 在这道食谱里不重复（新行 `newId('g_')`），排顺序、改名都不变。`qty` 是 `null` 时是「适量」「少许」这种，原话放在 `note` 里；`optional: true` 是可选（加到清单时默认不勾）。整理（`normalizeRecipe`）：不是对象的食材扔掉；`key` 缺了、不符合 `safeKey`、重了的按位置补 `'g_' + 第几样`（被占了再加 `_1`、`_2`……；要每台设备算得一样，不能随机）；`qty` 不是正数的当 `null`；食材里不认识的字段原样留着
