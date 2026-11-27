@@ -3,6 +3,7 @@ export class Element {
   constructor(tag) { this.tag = tag; this.tagName = tag.toUpperCase(); this.children = []; this.attrs = {}; this.style = {}; this.dataset = {}; this.events = {}; this.hidden = false; this.isConnected = true; }
   setAttribute(key, value) { this.attrs[key] = String(value); if (key === 'id') this.id = value; }
   getAttribute(key) { return this.attrs[key] ?? null; }
+  get parentNode() { return this.parent || null; }
   removeAttribute(key) { delete this.attrs[key]; }
   appendChild(child) { child.remove(); this.children.push(child); child.parent = this; return child; }
   insertBefore(child, ref) { if (!ref) return this.appendChild(child); child.remove(); this.children.splice(this.children.indexOf(ref), 0, child); child.parent = this; return child; }

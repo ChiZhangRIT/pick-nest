@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ensureSeeds, blankState, normalizeRecord, normalizeState, mergeStates, canon, deletedRecord, normalizeTags, itemId } from '../src/core/store.js';
 import { saveRecipe, searchRecipes, addTag, removeTag, hasTag, usedTags, tagChoices, matchesTags, recipeTags, RECIPE_TAG_PRESETS,
+  tagLabel, recipeTagLabels, presetTagKey, tagId, tagOverview, checkTagRename, renameTag, deleteTag, setTagHidden, isTagHidden, hiddenTagKey,
   ingredientGroup, sortIngredients, placeIngredients, ING_GROUPS, duplicateOf, mergeIngredient,
   ingredientNames, replacePreview, replaceIngredient, replaceDuplicates, liveRecipe } from '../src/core/recipes.js';
 import fs from 'node:fs';
@@ -12,6 +13,7 @@ import { addFromInput, editItem } from '../src/core/items.js';
 import { setStaple, isStaple, memoryId } from '../src/core/memory.js';
 import * as state from '../src/core/state.js';
 import { STRINGS } from '../src/strings/recipes.js';
+import { STRINGS as ALL } from '../src/i18n.js';
 
 const T0 = 1_700_000_000_000;
 let clock = T0;
@@ -23,14 +25,61 @@ let seq = 0;
 const ing = (name, extra = {}) => ({ key: 'k' + (++seq), name, qty: null, unit: '', note: '', optional: false, ...extra });
 
 // ---------- 标签 ----------
-test('整理标签：没有就是两个空数组；不是字符串、空白的扔掉，同一组里 normName 一样的留第一个（简繁一样）；字原样；别的组原样留着；可重复整理', () => {
+test('整理标签：没有就是两个空数组；不是字符串、空白的扔掉；预设存成键；同一组里同一个（简繁一样）留第一个；自己写的字原样；别的组原样留着；可重复整理', () => {
   const r = normalizeRecord('recipes', { id: 'r_1', name: '红烧肉', updatedAt: 1 });
   assert.deepEqual(r.tags, { cuisine: [], style: [] });
-  const t = normalizeTags({ cuisine: ['川菜', ' 川菜 ', '粵菜', '粤菜', 3, '', '  ', null], style: 'nope', diet: ['低碳'] });
-  assert.deepEqual(t, { cuisine: ['川菜', '粵菜'], style: [], diet: ['低碳'] });
+  const t = normalizeTags({ cuisine: ['川菜', ' 川菜 ', '粵菜', '粤菜', 3, '', '  ', null, ' 云南菜', '雲南菜'], style: 'nope', diet: ['低碳'] });
+  assert.deepEqual(t, { cuisine: ['#sichuan', '#cantonese', ' 云南菜'], style: [], diet: ['低碳'] });
   const r2 = normalizeRecord('recipes', { id: 'r_2', tags: t, updatedAt: 1 });
   assert.equal(canon(normalizeRecord('recipes', r2)), canon(r2));
   assert.deepEqual(normalizeTags(['川菜']), { cuisine: [], style: [] }, '数组不是标签');
+});
+
+test('预设存成键：任何一种语言写出来的字（也认以前繁体的「義式」）都换成键，几种语言的写法重复的只留一个；组不对的不认；认不出的 # 开头原样留着', () => {
+  assert.deepEqual(normalizeTags({ cuisine: ['義式', '意式', 'Italian', 'italian ', 'ＩＴＡＬＩＡＮ'] }).cuisine, ['#italian'], '繁体以前的写法、简体、英文、大小写全角都是一个');
+  assert.deepEqual(normalizeTags({ cuisine: ['Cantonese', '粵菜', '粤菜', '川菜', 'Sichuan'], style: ['快速上桌', '快手', 'Quick', '湯品', '汤', 'Soup'] }),
+    { cuisine: ['#cantonese', '#sichuan'], style: ['#quick', '#soup'] }, '繁体、简体、英文混着存的');
+  assert.deepEqual(normalizeTags({ cuisine: ['快手', '#quick'], style: ['川菜', '#sichuan'] }), { cuisine: ['快手', '#quick'], style: ['川菜', '#sichuan'] },
+    '别的组的预设不认（菜系里的「快手」是自己写的字）');
+  assert.deepEqual(normalizeTags({ cuisine: ['#italian', '#nope', '#NOPE'] }).cuisine, ['#italian', '#nope'], '新版才有的键原样留着（normName 一样的留一个）');
+  const once = normalizeTags({ cuisine: ['義式', '云南菜'], style: ['Quick'] });
+  assert.equal(canon(normalizeTags(once)), canon(once), '再整理不变');
+  // 读进来的旧数据（normalizeState）：两台设备一个存着「義式」、一个存着「Italian」，整理以后一样，合并不来回改
+  const a = normalizeState({ data: { recipes: { r_1: { id: 'r_1', name: 'x', tags: { cuisine: ['義式'] }, createdAt: 1, updatedAt: 10 } } } });
+  const b = normalizeState({ data: { recipes: { r_1: { id: 'r_1', name: 'x', tags: { cuisine: ['Italian', '意式'] }, createdAt: 1, updatedAt: 10 } } } });
+  assert.equal(canon(a), canon(b));
+  assert.equal(canon(mergeStates(a, b)), canon(mergeStates(b, a)));
+  assert.deepEqual([presetTagKey('cuisine', '義式'), presetTagKey('cuisine', '云南菜'), presetTagKey('nope', '川菜'), tagId('cuisine', '雲南菜')], ['#italian', null, null, '云南菜']);
+});
+
+test('自己写成键的样子（「#Breakfast」「＃QUICK」）就是那个预设：存键、显示成界面语言的字，不会和预设撞成同一个 tagId 又各写各的；搜得到', () => {
+  assert.deepEqual(normalizeTags({ style: ['#Breakfast', '#breakfast', ' ＃QUICK ', '#homestyle'] }).style, ['#breakfast', '#quick', '#homestyle']);
+  assert.deepEqual(normalizeTags({ cuisine: ['#HomeChinese', '#homeChinese', '#SEASIAN'] }).cuisine, ['#homeChinese', '#seAsian'], '键里有大写的也认');
+  const add = addTag({ style: [] }, 'style', '#Breakfast');
+  assert.deepEqual(add.ok && add.tags.style, ['#breakfast']);
+  assert.deepEqual([tagLabel('style', '#breakfast'), tagLabel('style', '#breakfast', k => ALL.en[k])], ['早餐', 'Breakfast']);
+  assert.deepEqual([presetTagKey('style', '#Soup'), tagId('style', '#Soup'), presetTagKey('cuisine', '#Soup')], ['#soup', '#soup', null], '别的组的键照旧是自己写的字');
+  // 「没用到的预设」：用着的就是这个预设，不再列在下面
+  const s = blankState();
+  const r = saveRecipe(s, null, { name: '燕麦粥', tags: { style: ['#Breakfast'] } }, 1);
+  assert.ok(r.ok);
+  const ov = tagOverview(s);
+  assert.deepEqual(ov.style.used, [{ tag: '#breakfast', n: 1, preset: true }]);
+  assert.ok(!ov.style.unused.some(u => u.tag === '#breakfast'));
+  assert.deepEqual(['breakfast', '早餐', '早餐'].map(q => searchRecipes(s, q).length), [1, 1, 1]);
+});
+
+test('预设显示成界面语言的字（tagLabel），自己写的照原样；同一组里的预设在任何语言之间写法都不撞（不然认不回唯一的键）', () => {
+  assert.deepEqual(['zh-Hans', 'zh-Hant-TW', 'en'].map(l => tagLabel('cuisine', '#italian', k => ALL[l][k])), ['意式', '意式', 'Italian']);
+  assert.equal(tagLabel('cuisine', '#italian'), '意式', '没给 t 按简体');
+  assert.deepEqual([tagLabel('cuisine', ' 云南菜 '), tagLabel('cuisine', '#nope'), tagLabel('style', '#italian')], ['云南菜', '#nope', '#italian']);
+  assert.deepEqual(recipeTagLabels({ tags: { cuisine: ['#sichuan'], style: ['#withRice', '空气炸锅'] } }, k => ALL['zh-Hant-TW'][k]), ['川菜', '下飯', '空气炸锅']);
+  for (const [g, keys] of Object.entries(RECIPE_TAG_PRESETS)) {
+    for (const k of keys) for (const lang of Object.keys(STRINGS)) {
+      assert.equal(presetTagKey(g, STRINGS[lang][`rcp.tag.${g}.${k}`]), '#' + k, `${lang} ${g}.${k} 认回自己`);
+    }
+  }
+  assert.equal(Object.values(STRINGS).some(tb => Object.values(tb).includes('義式')), false, '文案里已经没有「義式」');
 });
 
 test('整理食谱的 ordered：只有 true 留着，别的去掉（以前的食谱上没有这个键）', () => {
@@ -44,11 +93,13 @@ test('加 / 去标签：去掉前后空白，空的报错；normName 一样的�
   assert.deepEqual(addTag(t, 'cuisine', '  '), { ok: false, error: 'rcp.err.tag' });
   assert.deepEqual(addTag(t, 'nope', '川菜'), { ok: false, error: 'rcp.err.tag' });
   t = /** @type {any} */ (addTag(t, 'style', ' 快手 ')).tags;
-  assert.deepEqual(t, { cuisine: ['川菜'], style: ['快手'] });
-  assert.deepEqual(/** @type {any} */ (addTag(t, 'cuisine', '川菜')).tags.cuisine, ['川菜']);
-  assert.ok(hasTag(t, 'style', '快手') && !hasTag(t, 'cuisine', '快手') && !hasTag(t, 'style', ''));
-  assert.deepEqual(removeTag({ cuisine: ['粵菜', '川菜'], style: [] }, 'cuisine', '粤菜'), { cuisine: ['川菜'], style: [] });
-  assert.deepEqual(removeTag({ cuisine: ['川菜'], style: [] }, 'nope', '川菜').cuisine, ['川菜']);
+  assert.deepEqual(t, { cuisine: ['#sichuan'], style: ['#quick'] }, '预设存键');
+  assert.deepEqual(/** @type {any} */ (addTag(t, 'cuisine', 'Sichuan')).tags.cuisine, ['#sichuan'], '另一种语言的写法也是同一个');
+  assert.deepEqual(/** @type {any} */ (addTag(t, 'cuisine', ' 雲南菜 ')).tags.cuisine, ['#sichuan', '雲南菜'], '自己写的去掉前后空白、原样');
+  assert.deepEqual(/** @type {any} */ (addTag(t, 'cuisine', '#hunan')).tags.cuisine, ['#sichuan', '#hunan'], '编辑页交的是键');
+  assert.ok(hasTag(t, 'style', '快速上桌') && hasTag(t, 'style', '#quick') && !hasTag(t, 'cuisine', '快手') && !hasTag(t, 'style', ''));
+  assert.deepEqual(removeTag({ cuisine: ['粵菜', '川菜'], style: [] }, 'cuisine', 'Cantonese'), { cuisine: ['#sichuan'], style: [] });
+  assert.deepEqual(removeTag({ cuisine: ['川菜'], style: [] }, 'nope', '川菜').cuisine, ['#sichuan']);
 });
 
 test('预设标签：每个都有三种语言的文案（rcp.tag.<组>.<键>），同一组里不重名', () => {
@@ -70,14 +121,22 @@ test('用到的标签：没删除的食谱里的，normName 一样算一个（�
   recipe(s, 'r_d', { name: 'd', tags: { cuisine: ['粵菜'], style: ['快手'] } });
   s.data.recipes.r_d = deletedRecord(s.data.recipes.r_d, T0 + 1);
   const u = usedTags(s);
-  assert.deepEqual(u.cuisine, [{ name: '川菜', n: 3 }, { name: '湘菜', n: 1 }]);
-  assert.deepEqual(u.style, [{ name: '下饭', n: 2 }, { name: '快手', n: 1 }]);
-  recipe(s, 'r_e', { name: 'e', tags: { cuisine: ['湘菜'], style: [] } });
-  recipe(s, 'r_f', { name: 'f', tags: { cuisine: ['湘菜'], style: [] } });
-  recipe(s, 'r_g', { name: 'g', tags: { cuisine: ['湘菜'], style: [] } });
-  assert.deepEqual(usedTags(s).cuisine.map(x => x.name), ['湘菜', '川菜'], '用得多的在前');
-  assert.deepEqual(tagChoices(s, 'cuisine', ['川菜', '粤菜'], ['云南菜', '川菜']), ['川菜', '粤菜', '湘菜', '云南菜']);
-  assert.deepEqual(tagChoices(s, 'style', [], []), ['下饭', '快手']);
+  assert.deepEqual(u.cuisine, [{ name: '#sichuan', n: 3 }, { name: '#hunan', n: 1 }]);
+  assert.deepEqual(u.style, [{ name: '#withRice', n: 2 }, { name: '#quick', n: 1 }]);
+  recipe(s, 'r_e', { name: 'e', tags: { cuisine: ['湘菜'], style: ['空气炸锅'] } });
+  recipe(s, 'r_f', { name: 'f', tags: { cuisine: ['Hunan'], style: ['空氣炸鍋'] } });
+  recipe(s, 'r_g', { name: 'g', tags: { cuisine: ['湘菜'], style: ['空气炸锅'] } });
+  assert.deepEqual(usedTags(s).cuisine.map(x => x.name), ['#hunan', '#sichuan'], '用得多的在前（几种语言的写法算一个）');
+  assert.deepEqual(usedTags(s).style.find(x => x.n === 3), { name: '空气炸锅', n: 3 }, '自己写的：写法用最多的');
+  const P = (g) => RECIPE_TAG_PRESETS[g].map(k => '#' + k);
+  assert.deepEqual(tagChoices(s, 'cuisine', ['云南菜', '川菜']), [...P('cuisine'), '云南菜'], '预设（键）→ 用过的 → 这一道刚加的，同一个只列一次');
+  assert.deepEqual(tagChoices(s, 'style', []), [...P('style'), '空气炸锅']);
+  // 「不在选项里显示」的预设不列；藏了的有食谱用着照样列（在用过的那里）
+  setTagHidden(s, 'cuisine', '#mexican', true, now());
+  setTagHidden(s, 'cuisine', '#hunan', true, now());
+  const c = tagChoices(s, 'cuisine', []);
+  assert.ok(!c.includes('#mexican') && c.includes('#hunan'));
+  assert.ok(tagChoices(s, 'cuisine', ['墨西哥']).includes('#mexican'), '这一道自己有的照样列');
 });
 
 test('按标签筛选：一组里选几个是「任一」，两组之间是「都要」；一组没选不管；简繁一样；和搜索词一起；搜索也搜标签', () => {
@@ -90,6 +149,8 @@ test('按标签筛选：一组里选几个是「任一」，两组之间是「�
   assert.deepEqual(ids({ cuisine: ['川菜', '湘菜'] }), ['r_a', 'r_b']);
   assert.deepEqual(ids({ cuisine: ['川菜', '湘菜'], style: ['下饭'] }), ['r_a']);
   assert.deepEqual(ids({ style: ['下飯'] }), ['r_a', 'r_c'], '简繁一样');
+  assert.deepEqual(ids({ style: ['#withRice'] }), ['r_a', 'r_c'], '页面交的是键');
+  assert.deepEqual(ids(null, 'Hunan'), ['r_b'], '预设的标签哪种语言的写法都搜得到');
   assert.deepEqual(ids({ cuisine: [], style: [] }), ['r_a', 'r_b', 'r_c', 'r_d']);
   assert.deepEqual(ids({ style: ['下饭'] }, '鱼'), ['r_a']);
   assert.deepEqual(ids(null, '湘菜'), ['r_b'], '搜索词也搜标签');
@@ -102,10 +163,10 @@ test('保存食谱：给了 tags 就存整理过的，没给的照原来的（�
   const r = saveRecipe(s, null, { name: '水煮鱼', tags: { cuisine: ['川菜', '川菜'], style: [' 下饭'] }, ordered: true }, now());
   assert.ok(r.ok);
   const rec = s.data.recipes[r.id];
-  assert.deepEqual(rec.tags, { cuisine: ['川菜'], style: [' 下饭'] });
+  assert.deepEqual(rec.tags, { cuisine: ['#sichuan'], style: ['#withRice'] });
   assert.equal(rec.ordered, true);
   saveRecipe(s, r.id, { name: '水煮鱼片' }, now());
-  assert.deepEqual([s.data.recipes[r.id].tags.cuisine, s.data.recipes[r.id].ordered], [['川菜'], true], '没给的不动');
+  assert.deepEqual([s.data.recipes[r.id].tags.cuisine, s.data.recipes[r.id].ordered], [['#sichuan'], true], '没给的不动');
   saveRecipe(s, r.id, { name: '水煮鱼片', tags: { cuisine: [] }, ordered: false }, now());
   assert.deepEqual(s.data.recipes[r.id].tags, { cuisine: [], style: [] });
   assert.equal('ordered' in s.data.recipes[r.id], false, '「按类别重新排」以后去掉');
@@ -115,9 +176,115 @@ test('合并：标签、ordered 跟着整条（取较新的），顺序无关、
   const a = normalizeState({ data: { recipes: { r_1: { id: 'r_1', name: 'x', tags: { cuisine: ['川菜'] }, ordered: true, createdAt: 1, updatedAt: 10 } } } });
   const b = normalizeState({ data: { recipes: { r_1: { id: 'r_1', name: 'x', tags: { style: ['快手'] }, createdAt: 1, updatedAt: 20 } } } });
   const m = mergeStates(a, b);
-  assert.deepEqual([m.data.recipes.r_1.tags, 'ordered' in m.data.recipes.r_1], [{ cuisine: [], style: ['快手'] }, false]);
+  assert.deepEqual([m.data.recipes.r_1.tags, 'ordered' in m.data.recipes.r_1], [{ cuisine: [], style: ['#quick'] }, false]);
   assert.equal(canon(mergeStates(b, a)), canon(m));
   assert.equal(canon(mergeStates(m, a)), canon(m));
+});
+
+// ---------- 管理标签：改名 / 合并 / 删除 / 不在选项里显示 ----------
+/** 四道：水煮鱼（川菜 · 下饭、空气炸锅）、回锅肉（川菜 · 下饭）、意面（意式 · 快手）、删掉的老菜（川菜） */
+function tagged() {
+  const s = seeded();
+  recipe(s, 'r_a', { name: '水煮鱼', tags: { cuisine: ['川菜'], style: ['下饭', '空气炸锅'] } });
+  recipe(s, 'r_b', { name: '回锅肉', tags: { cuisine: ['川菜'], style: ['下饭'] } });
+  recipe(s, 'r_c', { name: '意面', tags: { cuisine: ['義式'], style: ['Quick'] } });
+  recipe(s, 'r_d', { name: '老菜', tags: { cuisine: ['川菜'], style: [] } });
+  s.data.recipes.r_d = deletedRecord(s.data.recipes.r_d, T0 + 1);
+  return s;
+}
+const tagsOf = (s, id) => s.data.recipes[id].tags;
+
+test('管理标签列什么：每组用着的（几道，没删除的）、没食谱用的预设（藏没藏）', () => {
+  const s = tagged();
+  setTagHidden(s, 'cuisine', '#mexican', true, now());
+  const ov = tagOverview(s);
+  assert.deepEqual(ov.cuisine.used, [{ tag: '#sichuan', n: 2, preset: true }, { tag: '#italian', n: 1, preset: true }]);
+  assert.deepEqual(ov.style.used, [{ tag: '#withRice', n: 2, preset: true }, { tag: '空气炸锅', n: 1, preset: false }, { tag: '#quick', n: 1, preset: true }],
+    '一样多的按显示出来的字排（空气炸锅 kōng 在快手 kuài 前面）');
+  assert.equal(ov.cuisine.unused.length, RECIPE_TAG_PRESETS.cuisine.length - 2);
+  assert.deepEqual(ov.cuisine.unused.filter(x => x.hidden), [{ tag: '#mexican', hidden: true }]);
+  assert.ok(!ov.cuisine.unused.some(x => x.tag === '#sichuan'), '用着的不在「没用到的预设」里');
+});
+
+test('改名：所有没删除的食谱一起改（在原来的位置）；改成已有的就合并（不重复）；预设改成自己写的字变成自己写的、改成别的预设的字是那个键；旧的预设藏起来；空的、一样的不改', () => {
+  const s = tagged();
+  assert.deepEqual(checkTagRename(s, 'style', '空气炸锅', '  '), { ok: false, error: 'rcp.err.tag' });
+  assert.deepEqual(checkTagRename(s, 'style', '空气炸锅', ' 空气炸锅 '), { ok: false, error: 'rcp.err.tagSame' });
+  assert.deepEqual(checkTagRename(s, 'cuisine', '#italian', 'Italian'), { ok: false, error: 'rcp.err.tagSame' }, '预设改成它自己别的语言的写法：没变');
+  assert.deepEqual(checkTagRename(s, 'style', '空气炸锅', '空氣炸鍋'), { ok: true, value: '空氣炸鍋', n: 1, merge: false }, '只改写法（简繁）也算改');
+  // 自己写的 → 预设的字：变成那个键，和已有的合并（水煮鱼原来就有下饭：只留一个）
+  const r1 = renameTag(s, 'style', '空气炸锅', '下饭', now());
+  assert.deepEqual(r1, { ok: true, value: '#withRice', n: 1, merge: true });
+  assert.deepEqual(tagsOf(s, 'r_a').style, ['#withRice']);
+  // 预设 → 自己写的字：所有食谱一起改，位置不变；删掉的那道不动；旧的预设藏起来（编辑页的选项里不再冒出「川菜」）
+  const r2 = renameTag(s, 'cuisine', '#sichuan', '四川菜', now());
+  assert.deepEqual(r2, { ok: true, value: '四川菜', n: 2, merge: false });
+  assert.deepEqual([tagsOf(s, 'r_a').cuisine, tagsOf(s, 'r_b').cuisine, tagsOf(s, 'r_d').cuisine], [['四川菜'], ['四川菜'], ['#sichuan']]);
+  assert.ok(isTagHidden(s, 'cuisine', '#sichuan') && !tagChoices(s, 'cuisine', []).includes('#sichuan') && tagChoices(s, 'cuisine', []).includes('四川菜'));
+  // 预设 → 另一种语言写的别的预设：那个键
+  const r3 = renameTag(s, 'style', '#quick', 'Everyday', now());
+  assert.equal(/** @type {any} */ (r3).value, '#homestyle');
+  assert.deepEqual(tagsOf(s, 'r_c').style, ['#homestyle']);
+  assert.ok(isTagHidden(s, 'style', '#quick'));
+  // 自己写的 → 别的预设：用回预设，那个预设藏着也照样是它（有食谱用着就列出来）
+  renameTag(s, 'cuisine', '四川菜', '川菜', now());
+  assert.deepEqual(tagsOf(s, 'r_a').cuisine, ['#sichuan']);
+  assert.ok(tagChoices(s, 'cuisine', []).includes('#sichuan'));
+  const before = s.data.recipes.r_b.updatedAt;
+  assert.deepEqual(renameTag(s, 'cuisine', '云南菜', '滇菜', now()), { ok: false, error: 'rcp.err.tagSame' }, '没有食谱用的：什么也不改');
+  assert.equal(s.data.recipes.r_b.updatedAt, before);
+});
+
+test('删除标签：所有没删除的食谱上去掉，食谱本身不动；预设的选项照样在；返回几道', () => {
+  const s = tagged();
+  assert.equal(deleteTag(s, 'cuisine', '川菜', now()), 2);
+  assert.deepEqual([tagsOf(s, 'r_a'), tagsOf(s, 'r_b').cuisine, tagsOf(s, 'r_d').cuisine], [{ cuisine: [], style: ['#withRice', '空气炸锅'] }, [], ['#sichuan']]);
+  assert.equal(s.data.recipes.r_a.name, '水煮鱼');
+  assert.ok(!isTagHidden(s, 'cuisine', '#sichuan') && tagChoices(s, 'cuisine', []).includes('#sichuan'));
+  assert.equal(deleteTag(s, 'style', '空氣炸鍋', now()), 1, '简繁一样');
+  assert.equal(deleteTag(s, 'style', '没有的', now()), 0);
+});
+
+test('不在选项里显示：只认预设；意思没变不写；设置里一个预设一个键（hiddenTags.<组>.<键>），恢复写 null；两台设备各藏一个，合并后都藏着（顺序无关、可重复）', () => {
+  const s = tagged();
+  assert.equal(setTagHidden(s, 'style', '空气炸锅', true, now()), false, '自己写的没有「选项」可藏');
+  assert.equal(setTagHidden(s, 'cuisine', 'Mexican', true, now()), true);
+  assert.equal(hiddenTagKey('cuisine', '#mexican'), 'hiddenTags.cuisine.mexican');
+  assert.equal(s.settings['hiddenTags.cuisine.mexican'], true);
+  const at = s.settingsAt['hiddenTags.cuisine.mexican'];
+  assert.equal(setTagHidden(s, 'cuisine', '墨西哥', true, now()), false, '已经藏了：不写、不盖新时间');
+  assert.equal(s.settingsAt['hiddenTags.cuisine.mexican'], at);
+  assert.equal(setTagHidden(s, 'cuisine', '#mexican', false, now()), true);
+  assert.deepEqual([s.settings['hiddenTags.cuisine.mexican'], isTagHidden(s, 'cuisine', '#mexican')], [null, false]);
+  const a = seeded(), b = seeded();
+  setTagHidden(a, 'cuisine', '#mexican', true, T0 + 10);
+  setTagHidden(b, 'style', '#bento', true, T0 + 20);
+  const m = mergeStates(a, b);
+  assert.ok(isTagHidden(m, 'cuisine', '#mexican') && isTagHidden(m, 'style', '#bento'));
+  assert.equal(canon(mergeStates(b, a)), canon(m));
+  assert.equal(canon(mergeStates(m, a)), canon(m));
+  // 一台恢复（晚）、一台还藏着（早）：恢复的为准
+  const c = structuredClone(a);
+  setTagHidden(c, 'cuisine', '#mexican', false, T0 + 30);
+  assert.equal(isTagHidden(mergeStates(m, c), 'cuisine', '#mexican'), false);
+});
+
+test('改名、删除在一次修改里做完，撤销一下全回来（连藏起来的旧预设）', () => {
+  state.load({ storage: null });
+  state.mutate(s => {
+    saveRecipe(s, null, { name: '水煮鱼', tags: { cuisine: ['川菜'], style: ['下饭'] } }, now());
+    saveRecipe(s, null, { name: '回锅肉', tags: { cuisine: ['川菜'], style: [] } }, now());
+  });
+  const snap = () => canon([Object.values(state.getState().data.recipes).map(r => r.tags), isTagHidden(state.getState(), 'cuisine', '#sichuan')]);
+  const before = snap();
+  state.mutate(s => renameTag(s, 'cuisine', '#sichuan', '四川菜', now()), { undoLabel: 'rename' });
+  assert.notEqual(snap(), before);
+  state.undo();
+  assert.equal(snap(), before);
+  state.mutate(s => deleteTag(s, 'cuisine', '#sichuan', now()), { undoLabel: 'delete' });
+  assert.ok(Object.values(state.getState().data.recipes).every(r => !r.tags.cuisine.length));
+  state.undo();
+  assert.equal(snap(), before);
 });
 
 // ---------- 食材的默认顺序 ----------

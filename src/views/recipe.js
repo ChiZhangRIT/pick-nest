@@ -12,7 +12,7 @@
 //   没写几人份的估算的是一整道菜：标题写「营养（整道菜）」，不写「每人份营养」。
 import { h, icon, backText } from '../ui/dom.js';
 import { t } from '../i18n.js';
-import { liveRecipe, recipeName, deleteRecipe, recipeTags } from '../core/recipes.js';
+import { liveRecipe, recipeName, deleteRecipe, recipeTagLabels } from '../core/recipes.js';
 import { isStaple } from '../core/memory.js';
 import { qtyLabel } from '../core/parse.js';
 import { cleanUrl } from '../core/items.js';
@@ -47,7 +47,7 @@ export function render(main, params, ctx) {
 
   // 标签（第 11 步）：菜系在前、风格在后，读屏先念「标签」
   function tagsOf(r) {
-    const tg = recipeTags(r), all = [...tg.cuisine, ...tg.style];
+    const all = recipeTagLabels(r, t);            // 预设存的是键，按界面语言写出来
     return all.length ? h('ul.rcp-tags.rcp-page-tags', { 'aria-label': t('rcp.tags') }, all.map(x => h('li.tag.rcp-tag', null, x))) : null;
   }
   /** 每人份营养：手动填的照写；没填的按食材估算（「每人份约 …（估算，2 样没算进去）」，点了看明细）；估算也没有（没写食材）→ null */

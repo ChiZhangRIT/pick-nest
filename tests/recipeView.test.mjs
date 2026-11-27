@@ -8,7 +8,7 @@ import * as editView from '../src/views/recipeEdit.js';
 import * as listView from '../src/views/list.js';
 import * as state from '../src/core/state.js';
 import { deletedRecord, itemId, normalizeRecord, hash64, normName } from '../src/core/store.js';
-import { saveRecipe, addRecipeToList, liveRecipe } from '../src/core/recipes.js';
+import { saveRecipe, addRecipeToList, liveRecipe, tagId, isTagHidden } from '../src/core/recipes.js';
 import { addFromInput, totalLabel } from '../src/core/items.js';
 import { setStaple, isStaple } from '../src/core/memory.js';
 import { itemSheet } from '../src/ui/itemEditor.js';
@@ -692,7 +692,7 @@ test('「食谱」页：卡片上写着标签；按标签筛选（一组里任�
     const rows = allCls(main, 'rcp-frow');
     assert.deepEqual(rows.map(r => r.attrs['aria-label']), ['菜系', '风格']);
     assert.deepEqual(allCls(rows[1], 'rcp-fchip').map(c => c.textContent), ['下饭', '快手', '宴客'], '用得多的在前，一样多按名字（拼音）');
-    const chip = (g, name) => fid(env.main, `rcp-f-${g}-${hash64(normName(name))}`);
+    const chip = (g, name) => fid(env.main, `rcp-f-${g}-${hash64(tagId(g, name))}`);
     chip('cuisine', '川菜').click();
     chip('cuisine', '湘菜').click();
     assert.deepEqual(names(), ['剁椒鱼头', '水煮鱼'], '一组里任一');
@@ -707,7 +707,7 @@ test('「食谱」页：卡片上写着标签；按标签筛选（一组里任�
     fid(env.main, 'rcp-fclear2').click();
     assert.equal(names().length, 6, '清除筛选');
     assert.equal(document.activeElement, byCls(env.main, 'rcp-search'));
-    assert.equal(fid(env.main, 'rcp-fclear'), null, '没筛的时候没有「清除筛选」');
+    assert.equal(fid(env.main, 'rcp-fclear').hidden, true, '没筛的时候没有「清除筛选」');
     assert.ok(!byCls(env.main, 'rcp-filter').textContent.includes('null'), '没有写成字的 null');
     // 选了湘菜，然后那道菜的标签被改掉了（别的设备）：不再筛着一个看不见的标签
     chip('cuisine', '湘菜').click();
@@ -807,7 +807,7 @@ test('食材替换：搜一样 → 看用到它的食谱和那几行 → 写新�
   } finally { env.done(); }
 });
 
-const tagFid = (g, name) => `re-tag-${g}-${hash64(normName(name))}`;
+const tagFid = (g, name) => `re-tag-${g}-${hash64(tagId(g, name))}`;
 test('编辑食谱：标签——预设（界面语言）和别的食谱用过的都列出来，点一下选上、再点取消；「自己加」开名字面板；保存进食谱，食谱页上看得到', async () => {
   const env = setup({ seed: seedTagged });
   try {
@@ -834,13 +834,126 @@ test('编辑食谱：标签——预设（界面语言）和别的食谱用过�
     assert.equal(fid(main, tagFid('style', '空气炸锅')).attrs['aria-pressed'], 'true', '自己加的列在最后、选上了');
     fid(main, 're-save').click();
     await settle();
-    assert.deepEqual(liveRecipe(S(), env.ids.hsr).tags, { cuisine: ['川菜'], style: ['空气炸锅'] });
+    assert.deepEqual(liveRecipe(S(), env.ids.hsr).tags, { cuisine: ['#sichuan'], style: ['空气炸锅'] }, '预设存键，自己加的存字');
     main = env.mount(recipeView, { name: 'recipe', id: env.ids.hsr });
     assert.deepEqual(allCls(byCls(main, 'rcp-page-tags'), 'rcp-tag').map(x => x.textContent), ['川菜', '空气炸锅']);
     // 别的食谱的编辑页：「空气炸锅」是用过的，也列出来（没选上）
     main = env.mount(editView, { name: 'recipeEdit', id: env.ids.egg }, { storage: env.storage });
     assert.equal(fid(main, tagFid('style', '空气炸锅')).attrs['aria-pressed'], 'false');
   } finally { env.done(); }
+});
+
+// ---------- 管理标签 ----------
+/** seedTagged 再加一道存着旧写法的：番茄意面（「義式」· 空气炸锅） */
+function seedManaged(s) {
+  const ids = seedTagged(s);
+  return { ...ids, pasta: saveRecipe(s, null, { name: '番茄意面', ings: [{ name: '意面', qty: '200', unit: 'g' }], tags: { cuisine: ['義式'], style: ['空气炸锅'] } }, now()).id };
+}
+const tmRows = (sh, g) => allCls(find(sh.el, el => el.tag === 'section' && el.attrs['aria-label'] === t('rcp.tag.' + g)), 'tm-row')
+  .map(r => [byCls(r, 'tm-name').textContent, (byCls(r, 'tm-n') || byCls(r, 'tm-hidden') || { textContent: '' }).textContent]);
+const tmBtn = (sh, kind, g, tag) => fid(sh.el, `tm-${kind}-${g}-${hash64(tagId(g, tag))}`);
+
+test('管理标签：筛选下面「管理标签」打开面板，每组列用着的标签和几道、没用到的预设；改名（合并、一样的不改）一次改完能撤销，筛选和面板跟着变', async () => {
+  const env = setup({ seed: seedManaged });
+  try {
+    const main = env.mount(recipesView, { name: 'recipes' });
+    const mgr = fid(main, 'rcp-tagmgr');
+    assert.equal(mgr.textContent, '管理标签');
+    assert.equal(byCls(main, 'rcp-ftools').hidden, false);
+    mgr.click();
+    const sh = env.sheet();
+    assert.equal(sh.title, '管理标签');
+    assert.deepEqual(tmRows(sh, 'cuisine').slice(0, 3), [['川菜', '1 道食谱'], ['湘菜', '1 道食谱'], ['意式', '1 道食谱']], '旧的「義式」显示成现在的写法');
+    assert.deepEqual(tmRows(sh, 'style').slice(0, 4), [['下饭', '2 道食谱'], ['空气炸锅', '1 道食谱'], ['快手', '1 道食谱'], ['宴客', '1 道食谱']]);
+    assert.equal(byCls(sh.el, 'tm-sub').textContent, '没用到的预设');
+    assert.ok(tmRows(sh, 'cuisine').some(([n, x]) => n === '墨西哥' && x === ''), '没用到的预设也列出来');
+    assert.equal(tmBtn(sh, 'ren', 'style', '空气炸锅').attrs['aria-label'], '给「空气炸锅」改名');
+    assert.equal(tmBtn(sh, 'del', 'style', '空气炸锅').attrs['aria-label'], '删除「空气炸锅」');
+    assert.equal(tmBtn(sh, 'ren', 'cuisine', '墨西哥'), null, '没用到的没有改名、删除');
+    // 改成和原来一样：不改，说一句
+    tmBtn(sh, 'ren', 'style', '下饭').click();
+    let ns = env.sheet();
+    assert.equal(ns.title, '给「下饭」改名');
+    const nameIn = () => find(env.sheet().el, el => el.tag === 'input');
+    assert.equal(nameIn().value, '下饭');
+    btn(ns.el, '保存').click();
+    assert.deepEqual([ns.open, byCls(ns.el, 'f-err').textContent], [true, '和原来的一样']);
+    ns.close();
+    // 自己写的「空气炸锅」改成「快手」（预设的字）：番茄意面上变成快手，和已有的合并
+    tmBtn(sh, 'ren', 'style', '空气炸锅').click();
+    ns = env.sheet();
+    nameIn().value = '快手';
+    btn(ns.el, '保存').click();
+    assert.equal(ns.open, false);
+    assert.equal(state.peekUndo(), '已把「空气炸锅」合并到「快手」');
+    assert.deepEqual(liveRecipe(S(), env.ids.pasta).tags.style, ['#quick']);
+    await settle();
+    assert.deepEqual(tmRows(sh, 'style').slice(0, 3), [['快手', '2 道食谱'], ['下饭', '2 道食谱'], ['宴客', '1 道食谱']], '一样多的按拼音');
+    assert.equal(document.activeElement, tmBtn(sh, 'ren', 'style', '快手'), '焦点回到改好的那一行');
+    assert.equal(fid(env.main, `rcp-f-style-${hash64('空气炸锅')}`), null, '筛选里也没有了');
+    // 撤销：全回来，面板跟着重画
+    state.undo();
+    await settle();
+    assert.deepEqual(liveRecipe(S(), env.ids.pasta).tags.style, ['空气炸锅']);
+    assert.ok(tmRows(sh, 'style').some(([n]) => n === '空气炸锅'));
+  } finally { env.done(); }
+});
+
+test('管理标签：删除先问（说几道、焦点给取消），确定了所有食谱上去掉、能撤销，删掉的预设挪到「没用到的预设」；预设能「不在选项里显示」/「恢复」，编辑页跟着变', async () => {
+  const env = setup({ seed: seedManaged });
+  try {
+    let main = env.mount(recipesView, { name: 'recipes' });
+    fid(main, 'rcp-tagmgr').click();
+    const sh = env.sheet();
+    env.answer = false;
+    tmBtn(sh, 'del', 'style', '下饭').click();
+    await settle();
+    assert.deepEqual(env.confirms.at(-1), { title: '删除标签「下饭」？', message: '2 道食谱上的这个标签会去掉，食谱本身不删。', confirmLabel: '删除', danger: true });
+    assert.deepEqual(liveRecipe(S(), env.ids.fish).tags.style, ['#withRice'], '取消了：不改');
+    env.answer = true;
+    tmBtn(sh, 'del', 'style', '下饭').click();
+    await settle();
+    assert.deepEqual([liveRecipe(S(), env.ids.fish).tags.style, liveRecipe(S(), env.ids.quick).tags.style], [[], ['#quick']]);
+    assert.equal(liveRecipe(S(), env.ids.fish).name, '水煮鱼', '食谱本身还在');
+    assert.equal(state.peekUndo(), '已删除标签「下饭」');
+    assert.ok(!tmRows(sh, 'style').some(([n, x]) => n === '下饭' && x), '用着的里没有了');
+    assert.equal(document.activeElement, tmBtn(sh, 'hide', 'style', '下饭'), '焦点给它的「不在选项里显示」');
+    state.undo();
+    await settle();
+    assert.deepEqual(tmRows(sh, 'style')[0], ['下饭', '2 道食谱']);
+    // 藏起「墨西哥」：设置里记下，按钮变成「恢复」，焦点不丢；编辑页的选项里没有它
+    const hideBtn = () => tmBtn(sh, 'hide', 'cuisine', '#mexican');
+    assert.deepEqual([hideBtn().textContent, hideBtn().attrs['aria-label']], ['不在选项里显示', '「墨西哥」不在选项里显示']);
+    hideBtn().focus();
+    hideBtn().click();
+    assert.ok(isTagHidden(S(), 'cuisine', '#mexican'));
+    assert.deepEqual([hideBtn().textContent, document.activeElement === hideBtn()], ['恢复', true]);
+    assert.ok(tmRows(sh, 'cuisine').some(([n, x]) => n === '墨西哥' && x === '不在选项里'));
+    sh.close();
+    main = env.mount(editView, { name: 'recipeEdit', id: env.ids.hsr }, { storage: env.storage });
+    const chips = () => allCls(find(main, el => el.dataset && el.dataset.group === 'cuisine'), 're-tag').map(c => c.textContent);
+    assert.ok(!chips().includes('墨西哥') && chips().includes('意式'), '藏起来的预设不在编辑页的选项里');
+    state.mutate(s => { s.settings['hiddenTags.cuisine.mexican'] = null; s.settingsAt['hiddenTags.cuisine.mexican'] = now(); });
+    await settle();
+    main = env.mount(editView, { name: 'recipeEdit', id: env.ids.hsr }, { storage: env.storage });
+    assert.ok(chips().includes('墨西哥'), '恢复了又列出来');
+  } finally { env.done(); }
+});
+
+test('预设标签按界面语言显示：旧数据里的「義式」在繁体是「意式」、英文是 Italian；编辑页上是同一个开关（按下了）', async () => {
+  for (const [lang, word] of [['zh-Hant-TW', '意式'], ['en', 'Italian'], ['zh-Hans', '意式']]) {
+    const env = setup({ seed: seedManaged, lang });
+    try {
+      let main = env.mount(recipesView, { name: 'recipes' });
+      const card = allCls(main, 'rcp-li').find(li => byCls(li, 'rcp-name').textContent === '番茄意面');
+      assert.deepEqual(allCls(card, 'rcp-tag').map(x => x.textContent)[0], word, lang);
+      main = env.mount(recipeView, { name: 'recipe', id: env.ids.pasta });
+      assert.equal(allCls(byCls(main, 'rcp-page-tags'), 'rcp-tag')[0].textContent, word);
+      main = env.mount(editView, { name: 'recipeEdit', id: env.ids.pasta }, { storage: env.storage });
+      const on = allCls(find(main, el => el.dataset && el.dataset.group === 'cuisine'), 're-tag').filter(c => c.attrs['aria-pressed'] === 'true').map(c => c.textContent);
+      assert.deepEqual(on, [word], '只有一个，不会「義式」「意式」各一个');
+    } finally { env.done(); }
+  }
 });
 
 test('编辑食谱：「按类别重新排」整张按组排；↑↓ 排过以后「加一样」写的保存时只放进它那一组的最后；新建的「加一样」写的保存时整张按组排', async () => {

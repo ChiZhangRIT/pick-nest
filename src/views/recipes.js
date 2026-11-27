@@ -9,18 +9,21 @@
 // 一组里任一、两组都要；选的也记在这次打开期间）；左上角「食材替换」（ui/replaceIngredient.js）。
 // 数据变了先比一下要画的东西（卡片、筛选）有没有变，没变不重画：加到清单、标常备品这种和食谱无关的修改，不把焦点从刚点的购物车上弄丢。
 // 第 12 步：有成品图的卡片左边一张圆角小图（ui/photo.js：这一页的 object URL 页面清理时放掉；本机没有、在下载的是淡淡的占位）。
+// 标签：预设存的是键，卡片、筛选上一律用 tagLabel 按界面语言写出来；筛选记的是 tagId（同一个标签不管哪种语言的写法都是一个）。
+// 筛选下面一行：「清除筛选」（在筛的时候）和「管理标签」（ui/tagSheet.js：改名、删除、预设不在选项里显示；有食谱就有，没标签也能藏预设）。
 import { h, icon, linkTo } from '../ui/dom.js';
 import { t, listJoin } from '../i18n.js';
-import { searchRecipes, recipeName, recipeTags, usedTags } from '../core/recipes.js';
-import { live, normName, hash64, TAG_GROUPS } from '../core/store.js';
+import { searchRecipes, recipeName, recipeTags, recipeTagLabels, usedTags, tagLabel, tagId } from '../core/recipes.js';
+import { live, hash64, TAG_GROUPS } from '../core/store.js';
 import { collatorFor } from '../core/group.js';
 import { formatQty } from '../core/parse.js';
 import { composing, isNewKey, isTextField } from '../ui/form.js';
 import { addToListSheet } from '../ui/addToList.js';
 import { replaceSheet } from '../ui/replaceIngredient.js';
 import { photoPool } from '../ui/photo.js';
+import { tagSheet } from '../ui/tagSheet.js';
 
-/** q：搜索词；tags：按标签筛选选了的（组 → normName 的集合） */
+/** q：搜索词；tags：按标签筛选选了的（组 → tagId 的集合） */
 const ui = { q: '', tags: { cuisine: new Set(), style: new Set() } };
 
 /** 卡片下面那一行：「2 人份 · 8 样食材」（没写人数就只写几样） */
@@ -48,15 +51,20 @@ export function render(main, params, ctx) {
   }
   // 筛选的一排：每组用到的标签一个开关（aria-pressed），有选了的时候最后一个「清除筛选」
   const filterEl = h('div.rcp-filter', { role: 'group', 'aria-label': t('rcp.filter') });
+  /** @type {ReturnType<typeof tagSheet> | null} 开着的「管理标签」 */
+  let tagMgr = null;
+  const clearBtn = h('button.link-btn.rcp-fclear', { type: 'button', hidden: true, dataset: { fid: 'rcp-fclear' }, onclick: () => clearFilter() }, t('rcp.filterClear'));
+  const manageBtn = h('button.link-btn.rcp-tagmgr', { type: 'button', dataset: { fid: 'rcp-tagmgr' }, onclick: () => { tagMgr = tagSheet(ctx); } }, t('rcp.tagManage'));
+  const toolsEl = h('div.rcp-ftools', null, clearBtn, manageBtn);
   // 「食材替换」：还没有食谱时不画（没有可换的）
   const replaceBtn = h('button.tb-btn.rcp-replace', { type: 'button', dataset: { fid: 'rcp-replace' }, onclick: () => replaceSheet(ctx) }, t('rcp.replace'));
   let lastSig = null;
   function drawBody() {
     const collator = collatorFor(ctx.lang());
     const all = live(ctx.state, 'recipes').length;
-    const used = usedTags(ctx.state, collator);
+    const used = usedTags(ctx.state, collator, t);
     // 选了的标签已经没有食谱用了（删掉、改掉了）：去掉，不然筛着一个看不见的标签，什么都列不出来、也没处取消
-    for (const g of TAG_GROUPS) for (const k of [...ui.tags[g]]) if (!used[g].some(x => normName(x.name) === k)) ui.tags[g].delete(k);
+    for (const g of TAG_GROUPS) for (const k of [...ui.tags[g]]) if (!used[g].some(x => tagId(g, x.name) === k)) ui.tags[g].delete(k);
     const sel = { cuisine: [...ui.tags.cuisine], style: [...ui.tags.style] };
     const filtering = sel.cuisine.length + sel.style.length > 0;
     const hits = searchRecipes(ctx.state, ui.q, collator, { tags: filtering ? sel : null });
@@ -66,6 +74,8 @@ export function render(main, params, ctx) {
     if (sig === lastSig) return;
     lastSig = sig;
     replaceBtn.hidden = !all;
+    // 「管理标签」：没有食谱时不画（没有要管的；预设藏不藏等有了食谱再说）
+    toolsEl.hidden = !all;
     found.textContent = (q || filtering) && all ? (hits.length ? t('rcp.foundN', { n: hits.length }) : q ? t('rcp.notFound', { q }) : t('rcp.filterNone')) : '';
     drawFilter(used, filtering);
     if (!all) {
@@ -80,7 +90,7 @@ export function render(main, params, ctx) {
       return;
     }
     body.replaceChildren(h('ul.group.rcp-list', { 'aria-label': t('nav.recipes') }, hits.map(({ recipe: r, ings }) => {
-      const name = recipeName(r, t), tg = recipeTags(r), tags = [...tg.cuisine, ...tg.style];
+      const name = recipeName(r, t), tags = recipeTagLabels(r, t);
       return h('li.rcp-li' + (sel_(r) ? '.sel' : ''), null,
         h('a.group-row.rcp-row' + (sel_(r) ? '.sel' : ''), { href: '#/r/' + encodeURIComponent(r.id), dataset: { id: r.id, fid: 'rcp-open-' + r.id }, 'aria-current': sel_(r) ? 'page' : null },
           r.photo ? photos.view(r.photo, { cls: '.rcp-thumb' }) : null,
@@ -96,16 +106,15 @@ export function render(main, params, ctx) {
   function drawFilter(used, filtering) {
     const groups = TAG_GROUPS.filter(g => used[g].length);
     filterEl.hidden = !groups.length;
-    // 没在筛的时候「清除筛选」是 null：replaceChildren 会把 null 写成字「null」（只有 h() 跳过 null），先 filter 掉
-    filterEl.replaceChildren(...[...groups.map(g => h('div.rcp-frow', { role: 'group', 'aria-label': t('rcp.tag.' + g) },
+    clearBtn.hidden = !filtering;
+    filterEl.replaceChildren(...groups.map(g => h('div.rcp-frow', { role: 'group', 'aria-label': t('rcp.tag.' + g) },
       h('span.rcp-flabel', { 'aria-hidden': 'true' }, t('rcp.tag.' + g)),
       used[g].map(({ name }) => {
-        // fid 用名字的哈希：标签是用户写的，里面可能有引号，不能直接放进选择器
-        const k = normName(name), on = ui.tags[g].has(k), f = `rcp-f-${g}-${hash64(k)}`;
+        // fid 用 tagId 的哈希：标签是用户写的，里面可能有引号，不能直接放进选择器
+        const k = tagId(g, name), on = ui.tags[g].has(k), f = `rcp-f-${g}-${hash64(k)}`;
         return h('button.chip.rcp-fchip', { type: 'button', 'aria-pressed': String(on), dataset: { fid: f },
-          onclick: () => { if (on) ui.tags[g].delete(k); else ui.tags[g].add(k); refocus(f); } }, name);
-      }))),
-    filtering ? h('button.link-btn.rcp-fclear', { type: 'button', dataset: { fid: 'rcp-fclear' }, onclick: () => clearFilter() }, t('rcp.filterClear')) : null].filter(Boolean));
+          onclick: () => { if (on) ui.tags[g].delete(k); else ui.tags[g].add(k); refocus(f); } }, tagLabel(g, name, t));
+      }))));
   }
   function clearFilter() {
     for (const g of TAG_GROUPS) ui.tags[g].clear();
@@ -135,13 +144,14 @@ export function render(main, params, ctx) {
         h('a.tb-btn', { href: '#/r/new', onclick: newRecipe, dataset: { fid: 'rcp-new' } }, icon('plus'), t('rcp.new'))),
       h('h1.lt', null, t('nav.recipes')),
       h('div.add-wrap.rcp-search-wrap', null, icon('search', { cls: 'add-ic' }), input),
-      filterEl),
+      filterEl, toolsEl),
     found, body);
   drawBody();
   return {
     onChange() {
       const a = document.activeElement, fid = a && a.dataset && main.contains(a) ? a.dataset.fid : null;
       drawBody();
+      if (tagMgr && tagMgr.isOpen()) tagMgr.refresh();
       // 重画了（食谱真的变了）：焦点放回原来那个控件（卡片、购物车、筛选的标签）
       if (fid && !main.contains(a)) { const el = main.querySelector(`[data-fid="${fid}"]`); if (el) el.focus({ preventScroll: true }); }
     },

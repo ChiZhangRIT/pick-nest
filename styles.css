@@ -32,6 +32,9 @@
   --tint-rose-bg: #f8e4e8; --tint-rose-fg: #ad3656;    --tint-amber-bg: #f7ebcf; --tint-amber-fg: #94600a;
   --tint-clay-bg: #f6e4da; --tint-clay-fg: #ac4f27;    --tint-graphite-bg: #e9eae6; --tint-graphite-fg: #4b524c;
   --radius: 12px; --radius-btn: 10px;
+  /* 顶上让开多少：--safe-top 是状态栏 / 刘海（安全区），--top-clear 是装到主屏幕的 App 里状态栏下面再空出的一截（见下面 display-mode: standalone），
+     --top-inset 是两个加起来。页面、顶栏、侧栏、面板、滚动定位一律用 --top-inset，不要再直接写 env(safe-area-inset-top) */
+  --safe-top: env(safe-area-inset-top, 0px); --top-clear: 0px; --top-inset: calc(var(--safe-top) + var(--top-clear));
   --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "PingFang TC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", "Segoe UI", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
   color-scheme: light;
 }
@@ -51,6 +54,14 @@
   --tint-rose-bg: #3a1e27; --tint-rose-fg: #f093aa;    --tint-amber-bg: #382b12; --tint-amber-fg: #efbb62;
   --tint-clay-bg: #3a2419; --tint-clay-fg: #ef9c76;    --tint-graphite-bg: #2a2e2a; --tint-graphite-fg: #c5cbc3;
   color-scheme: dark;
+}
+
+/* 装到主屏幕的 App（iOS 26）：系统在状态栏下面画一条渐变的模糊，盖到安全区下面大约 34pt（截图：1179×2556 @3x = 393×852 pt，
+   安全区 59 pt；第一行「编辑」「＋ 新增清单」的字在 73–89 pt、中心 81 pt，糊了；到 ~93 pt 底色才完全回到原样；大标题在 108–138 pt，清楚）。
+   第一行往下让 24px：字到 97–113 pt，离模糊的下沿还有几 pt。只在有状态栏挡着的时候让（安全区是 0 的横屏、Mac 上装的 App 窗口不让：
+   乘 1000 再和 24px 取小，安全区只要不是 0 就是 24px）；Safari 标签页里不是 standalone，不变 */
+@media (display-mode: standalone) {
+  :root { --top-clear: min(24px, var(--safe-top) * 1000); }
 }
 
 /* ---------- 基础 ---------- */
@@ -97,7 +108,7 @@ body[data-layout="phone"][data-tabs="1"] #tabs {
 /* ---------- 宽屏（≥720，iPad、Mac）：侧栏 + 内容栏，各自滚动；≥1000 时首页 / 「商店」和选中的那一张 / 那一家并排（照 babble） ---------- */
 @media (min-width: 720px) {
   .app { display: grid; grid-template-columns: 228px minmax(0, 1fr); height: 100vh; height: 100dvh; }
-  #side { display: flex; flex-direction: column; gap: 6px; padding: calc(18px + env(safe-area-inset-top)) 12px calc(16px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  #side { display: flex; flex-direction: column; gap: 6px; padding: calc(18px + var(--top-inset)) 12px calc(16px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
     background: var(--side-bg); border-right: 1px solid var(--line); min-height: 0; overflow-y: auto; }
   #side > * { flex-shrink: 0; }
   #main { display: flex; min-width: 0; min-height: 0; height: 100%; }
@@ -129,8 +140,8 @@ body[data-layout="phone"][data-tabs="1"] #tabs {
 .side-foot > .sync-badge { align-self: flex-start; margin: 0 10px; white-space: normal; }
 
 /* ---------- 顶层页面的大标题；上面可以有一行按钮（.toolbar，占掉原来留空的 44px） ---------- */
-.page-head { max-width: 720px; margin: 0 auto; padding: calc(44px + env(safe-area-inset-top)) 20px 10px; }
-.page-head:has(> .toolbar) { padding-top: env(safe-area-inset-top); }
+.page-head { max-width: 720px; margin: 0 auto; padding: calc(44px + var(--top-inset)) 20px 10px; }
+.page-head:has(> .toolbar) { padding-top: var(--top-inset); }
 .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 4px; min-height: 44px; margin: 0 -6px; }
 .tb-btn { display: inline-flex; align-items: center; gap: 5px; min-height: 44px; padding: 0 6px; border: 0; background: none; color: var(--accent-text); font-size: 16px; font-weight: 500; }
 .tb-btn .ic { width: 20px; height: 20px; }
@@ -142,7 +153,7 @@ body[data-layout="phone"][data-tabs="1"] #tabs {
 /* ---------- 推入的页面的顶栏：返回 · 操作（只有双栏的右栏不要返回，见下面）---------- */
 /* 和 Babble 的 .navbar 一样不限宽：宽屏时返回贴着内容栏的左边、操作贴着右边，内容照样限宽居中（.page） */
 .navbar { display: flex; justify-content: space-between; align-items: center;
-  min-height: calc(48px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) max(6px, env(safe-area-inset-right)) 0 max(4px, env(safe-area-inset-left)); }
+  min-height: calc(48px + var(--top-inset)); padding: var(--top-inset) max(6px, env(safe-area-inset-right)) 0 max(4px, env(safe-area-inset-left)); }
 .back { display: inline-flex; align-items: center; min-height: 44px; padding: 0 10px 0 2px; border: 0; background: none; color: var(--accent-text); font-size: 17px; }
 .back .ic { width: 24px; height: 24px; stroke-width: 2.2; }
 .back { min-width: 0; max-width: 55%; }
@@ -245,7 +256,7 @@ a.sync-badge::after { content: ""; position: absolute; inset: -8px -6px; }   /* 
 
 /* ---------- 空状态、出错 ---------- */
 .empty { padding: 48px 24px; text-align: center; color: var(--muted); }
-.safe-mode { margin-top: calc(24px + env(safe-area-inset-top)); }
+.safe-mode { margin-top: calc(24px + var(--top-inset)); }
 .safe-mode > * + * { margin-top: 10px; }
 .safe-mode .row { margin-top: 14px; }
 
@@ -261,7 +272,8 @@ dialog.sheet::backdrop { background: var(--scrim); }
 .sheet-head .icon-btn { color: var(--muted); }
 .sheet-body { padding: 4px 20px 20px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .sheet-foot { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
-.sheet-body:last-child { padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+/* 不写 :last-child：提示条开着时会挪进面板、排在最后（ui/dom.js 的 homeToast），底部的留白不能跟着变 */
+.sheet-body:not(:has(~ .sheet-foot)) { padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
 .confirm-msg { font-size: 16px; line-height: 1.6; white-space: pre-line; }
 .sheet-actions { display: grid; gap: 8px; margin-top: 24px; }
 .sheet-actions .f-help { margin-top: -2px; }
@@ -270,7 +282,8 @@ dialog.confirm .sheet-head:has(> h2:empty) { display: none; }
 dialog.confirm .sheet-body { padding-top: 22px; }
 @media (max-width: 719px) {
   /* dvh：Safari 标签页里工具栏露出来时 vh 比看得见的高，高的面板会把顶上的 ✕ 顶到状态栏下面 */
-  dialog.sheet, dialog.sheet.wide, dialog.sheet.confirm { width: 100vw; max-width: 100vw; max-height: 92vh; max-height: 92dvh; margin: auto 0 0; border-radius: 16px 16px 0 0; }
+  /* 主屏幕 App 里高的面板顶上的标题、✕ 也不能进状态栏下面模糊的那一截：最高到 --top-inset 下面（Safari 标签页里 92dvh 本来就更矮，不变） */
+  dialog.sheet, dialog.sheet.wide, dialog.sheet.confirm { width: 100vw; max-width: 100vw; max-height: 92vh; max-height: min(92dvh, calc(100dvh - var(--top-inset))); margin: auto 0 0; border-radius: 16px 16px 0 0; }
   .sheet-foot .btn { flex: 1; }
 }
 
@@ -342,9 +355,10 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
 .lp-banner .btn { flex: none; }
 
 /* 顶栏（返回、⋯）和快速添加都吸在顶上（手机整页滚动、宽屏内容栏滚动都一样）：长清单滚下去也能返回、打开菜单。
-   刘海由顶栏让开，快速添加贴在顶栏下面（顶栏的高度写死，两条才对得齐）；滚下去以后快速添加下面一条线（.stuck，页面算） */
-.lp-nav { position: sticky; top: 0; z-index: 16; height: calc(48px + env(safe-area-inset-top)); background: var(--bg); }
-.add-bar { position: sticky; top: calc(48px + env(safe-area-inset-top)); z-index: 15; padding-top: 10px; padding-bottom: 8px; background: var(--bg); }
+   刘海（和主屏幕 App 里状态栏下面模糊的那一截，--top-inset）由顶栏让开：顶栏的底色不透明、从最上面铺到按钮下面，滚上去的内容不会从那一截透出来；
+   快速添加贴在顶栏下面（顶栏的高度写死，两条才对得齐）；滚下去以后快速添加下面一条线（.stuck，页面算） */
+.lp-nav { position: sticky; top: 0; z-index: 16; height: calc(48px + var(--top-inset)); background: var(--bg); }
+.add-bar { position: sticky; top: calc(48px + var(--top-inset)); z-index: 15; padding-top: 10px; padding-bottom: 8px; background: var(--bg); }
 .add-bar.stuck { box-shadow: 0 1px 0 var(--line); }
 .add-wrap { position: relative; display: flex; align-items: center; }
 .add-ic { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--accent-text); pointer-events: none; }
@@ -367,7 +381,7 @@ body[data-layout="phone"][data-tabs="1"] #toast { bottom: calc(68px + env(safe-a
 .grp:first-child > .group:first-child { margin-top: 4px; }
 .item-row { position: relative; display: flex; align-items: stretch;
   /* 闪一下、滚到看得见时：让开上面吸顶的顶栏和快速添加（48 + 68，再留一点），下面让开提示条 */
-  scroll-margin-top: calc(128px + env(safe-area-inset-top)); scroll-margin-bottom: 84px; }
+  scroll-margin-top: calc(128px + var(--top-inset)); scroll-margin-bottom: 84px; }
 /* 圆圈 + 这一行的编辑按钮在 .item-in 里（左右滑时跟着手指动的那一层，ui/swipe.js）：分隔线画在它上面，跟着一起动，不划过露出来的按钮 */
 .item-in { position: relative; flex: 1; min-width: 0; display: flex; align-items: stretch; background: var(--card); }
 .item-row + .item-row > .item-in::before { content: ""; position: absolute; top: 0; left: 56px; right: 0; height: .5px; background: var(--line); }
@@ -679,6 +693,25 @@ select.f-in { width: 100%; }
 .rcp-fchip { flex: none; max-width: 14em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rcp-fclear { align-self: flex-start; min-height: 36px; padding: 4px 2px; font-size: 14px; }
 .lp-empty .rcp-fclear { margin-top: 14px; }
+/* 筛选下面一行：「清除筛选」（在筛的时候）在左，「管理标签」靠右（「清除筛选」出现、消失时它不跳） */
+.rcp-ftools { display: flex; align-items: center; gap: 0 18px; margin-top: 4px; }
+.rcp-ftools .link-btn { min-height: 36px; padding: 4px 2px; font-size: 14px; }
+.rcp-tagmgr { margin-left: auto; }
+/* 管理标签的面板（ui/tagSheet.js）：两组，每组用着的（名字、几道，右边「改名」「删除」）+ 没用到的预设（「不在选项里显示」/「恢复」） */
+.tm-sec > .group-h { margin: 14px 2px 8px; }
+.tm-sec:first-child > .group-h { margin-top: 4px; }
+.tm-row { flex-wrap: wrap; gap: 8px 12px; min-height: 52px; }
+.tm-text { flex: 1 1 8em; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+.tm-name { min-width: 0; font-size: 16px; overflow-wrap: anywhere; }
+.tm-n { color: var(--muted); font-size: 13px; }
+.tm-acts { flex: none; display: flex; gap: 8px; }
+.tm-sub { margin: 14px 2px 8px; color: var(--muted); font-size: 13px; font-weight: 500; }
+.tm-row.off .tm-name { color: var(--muted); }
+/* 没用到的预设一组有十几个：行矮一点、按钮是字（不是一排框），不抢上面用着的那几行 */
+.tm-unused .tm-row { min-height: 46px; padding-top: 0; padding-bottom: 0; }
+.tm-hide { flex: none; font-size: 14px; }
+.tm-none { margin: 0 2px; }
+.tm-help { margin: 16px 2px 0; }
 /* 没有食谱时左边的「食材替换」不画：右边的「新建食谱」照样靠右 */
 .rcp-replace[hidden] + .tb-btn { margin-left: auto; }
 .rcp-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
@@ -852,7 +885,7 @@ p.rcp-source { color: var(--ink-2); overflow-wrap: anywhere; }
 /* 一栏要写明 minmax(0, 1fr)：默认的 auto 一栏会被不折行的「几人份 · 备注」撑宽，手机上整周横着溢出，每天的「+」被挤到屏幕外 */
 .plan-week { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
 /* 挪过去以后滚到那一天（views/plan.js 的 follow）：下面让开提示条（手机上还有底栏） */
-.plan-day { margin-top: 10px; scroll-margin: calc(8px + env(safe-area-inset-top)) 0 calc(84px + env(safe-area-inset-bottom)); }   /* 上面让开状态栏（滚到今天时） */
+.plan-day { margin-top: 10px; scroll-margin: calc(8px + var(--top-inset)) 0 calc(84px + env(safe-area-inset-bottom)); }   /* 上面让开状态栏（滚到今天时） */
 body[data-layout="phone"][data-tabs="1"] .plan-day { scroll-margin-bottom: calc(148px + env(safe-area-inset-bottom)); }   /* 底栏 + 提示条（加了菜马上有）上面 */
 .pd-head { display: flex; align-items: center; gap: 8px; min-height: 44px; padding-left: 4px; }
 .pd-title { flex: 1; min-width: 0; display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; margin: 0; font-size: 16px; font-weight: 650; }
@@ -970,7 +1003,7 @@ body[data-layout="phone"][data-tabs="1"] .plan-day { scroll-margin-bottom: calc(
 
 /* ================= 本机数据坏了：恢复页盖在整个 App 上；启动失败的提示 ================= */
 .recovery-screen { position: fixed; inset: 0; z-index: 200; overflow: auto; background: var(--bg); color: var(--ink);
-  padding: max(20px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }   /* 横屏时左右也避开刘海 */
+  padding: max(20px, var(--top-inset)) max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }   /* 横屏时左右也避开刘海 */
 .recovery-screen .safe-mode { margin-top: 0; }   /* 上面的安全区外面已经留了，卡片自己再留一次就空出一大截 */
 body .recovery-screen .page { max-width: 720px; margin: 0 auto; padding: 0; }   /* 外面已经留了边距和安全区；前面加 body 才盖得过手机布局给 .page 的左右边距 */
 .recovery-screen .row { flex-wrap: wrap; gap: 10px; }

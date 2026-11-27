@@ -4,10 +4,12 @@
 // 「加到清单」面板里的每一行（recipeLines：常备品、可选的默认不勾，清单上已有的写出来）和确认（addRecipeToList → items.js 的 addNeeds）。
 // 写法和 items.js 一样：操作函数直接改传进来的 state（页面在 ctx.mutate 里调用），记录经过 writeRecord / deletedRecord。
 // 确定性的规则，不用 AI：粘贴的食材拆不出来就整段当名字（宁可不认，也不认错），加进去以后还能改。
-// 第 11 步：标签（菜系、风格；tagChoices、usedTags、筛选在 searchRecipes 的 tags）、食材的默认顺序（ingredientGroup、sortIngredients、placeIngredients）、
+// 第 11 步：标签（菜系、风格；预设存键、tagLabel 显示；tagChoices、usedTags、筛选在 searchRecipes 的 tags；管理标签：改名 / 合并、删除、预设不在选项里显示）、食材的默认顺序（ingredientGroup、sortIngredients、placeIngredients）、
 // 重复的食材（duplicateOf、mergeIngredient）、食材替换（ingredientNames、replacePreview、replaceDuplicates、replaceIngredient）。
 // 第 12 步：成品图 photo（{ sha256, mime, w, h, bytes }）跟着 saveRecipe 存，给了才改；图片本身不在这里（core/blobStore.js、core/photo.js）。
-import { normName, writeRecord, deletedRecord, newId, live, homeLists, itemId, normalizeTags, normalizePhoto, TAG_GROUPS, GROCERY_CATEGORIES } from './store.js';
+import { normName, writeRecord, deletedRecord, newId, live, homeLists, itemId, normalizeTags, normalizePhoto, TAG_GROUPS, GROCERY_CATEGORIES,
+  RECIPE_TAG_PRESETS, isPresetTag, presetTagKey, tagId, tagTexts, setSetting } from './store.js';
+import { STRINGS as RECIPE_STRINGS } from '../strings/recipes.js';
 import { own, isObj, str, safeKey } from './util.js';
 import { parseQuickAdd, readQty, isRecipeUnit, qtyLabel, QTY_MAX } from './parse.js';
 import { searchTerms } from './search.js';
@@ -254,7 +256,7 @@ export function searchRecipes(state, query, collator = collatorFor('zh-Hans'), {
   if (!terms.length) return all.map(recipe => ({ recipe, ings: [] }));
   const out = [];
   for (const recipe of all) {
-    const name = normName(recipe.name), ings = recipe.ings.map(g => normName(g.name)), tg = allTags(recipe).map(normName);
+    const name = normName(recipe.name), ings = recipe.ings.map(g => normName(g.name)), tg = TAG_GROUPS.flatMap(g => recipeTags(recipe)[g].flatMap(x => tagTexts(g, x)));
     if (!terms.every(w => name.includes(w) || ings.some(x => x.includes(w)) || tg.some(x => x.includes(w)))) continue;
     const rank = !terms.every(w => name.includes(w)) ? 2 : name.startsWith(terms.join(' ')) || name.startsWith(terms[0]) ? 0 : 1;
     out.push({ recipe, ings: recipe.ings.filter((g, i) => terms.some(w => ings[i].includes(w))).map(g => g.name), rank });
@@ -279,22 +281,25 @@ export function recipesUsing(state, name, collator = collatorFor('zh-Hans')) {
     .sort(byRecipeName(collator));
 }
 
-// ---------- 标签（第 11 步） ----------
+// ---------- 标签（第 11 步；预设存成键、管理标签：改名 / 合并 / 删除 / 不在选项里显示） ----------
+// 预设（RECIPE_TAG_PRESETS）存的是键 '#italian'，整理、认字在 store.js（normalizeTags、presetTagKey、tagId）；显示一律用 tagLabel
+export { RECIPE_TAG_PRESETS, isPresetTag, presetTagKey, tagId };
+/** 没给 t 的时候（测试、排序的默认）按简体写 @param {string} key */
+const zhT = (key) => /** @type {Record<string, string>} */ (RECIPE_STRINGS['zh-Hans'])[key] || key;
 /**
- * 预设的标签（菜系、风格）：这里是文案的键（rcp.tag.<组>.<键>），显示、存的都是界面语言写出来的那个字
- * （换了界面语言，已经存的不改；同一个意思两种写法时，在编辑页、筛选里各是一个）。只能加，不要改名（键只用来找文案）
+ * 一个标签显示成什么：预设按界面语言（t('rcp.tag.<组>.<键>')），自己写的照原样（去掉前后空白）
+ * @param {string} group @param {unknown} tag @param {Translate | ((key: string) => string)} [t]
  */
-export const RECIPE_TAG_PRESETS = Object.freeze({
-  cuisine: ['sichuan', 'cantonese', 'hunan', 'shandong', 'jiangzhe', 'dongbei', 'taiwanese', 'homeChinese', 'japanese', 'korean', 'seAsian', 'western', 'italian', 'mexican'],
-  style: ['homestyle', 'quick', 'withRice', 'lean', 'vegetarian', 'soup', 'cold', 'breakfast', 'bento', 'dessert', 'baking', 'guests'],
-});
-/** 食谱的两组标签（整理过的：旧的食谱、坏的数据都是两个数组） @param {Recipe} r @returns {import('./store.js').RecipeTags} */
+export const tagLabel = (group, tag, t = zhT) => (isPresetTag(group, tag) ? /** @type {(k: string) => string} */ (t)(`rcp.tag.${group}.${String(tag).slice(1)}`) : str(tag).trim());
+/** 食谱的两组标签（整理过的：旧的食谱、坏的数据都是两个数组；预设是键） @param {Recipe} r @returns {import('./store.js').RecipeTags} */
 export const recipeTags = (r) => normalizeTags(r && r.tags);
-/** 一道食谱的所有标签（菜系在前） @param {Recipe} r */
-const allTags = (r) => { const t = recipeTags(r); return [...t.cuisine, ...t.style]; };
+/** 一道食谱所有标签显示出来的字（菜系在前） @param {Recipe} r @param {Translate | ((key: string) => string)} [t] */
+export const recipeTagLabels = (r, t = zhT) => { const tg = recipeTags(r); return TAG_GROUPS.flatMap(g => tg[g].map(x => tagLabel(g, x, t))); };
+const isGroup = (/** @type {unknown} */ g) => TAG_GROUPS.includes(/** @type {any} */ (g));
 
 /**
- * 加一个标签（编辑页「自己加」、点预设）：前后的空白去掉；空的 → { ok: false, error }；这一组里已经有 normName 一样的 → 照旧（不重复加）
+ * 加一个标签（编辑页「自己加」、点选项）：前后的空白去掉；空的 → { ok: false, error }；写的是某个预设（任何一种语言）→ 存它的键；
+ * 这一组里已经有同一个（tagId 一样）→ 照旧（不重复加）
  * @param {unknown} tags @param {string} group @param {unknown} name
  * @returns {{ ok: true, tags: import('./store.js').RecipeTags } | { ok: false, error: string }}
  */
@@ -302,33 +307,34 @@ export function addTag(tags, group, name) {
   const t = normalizeTags(tags);
   const x = str(name).trim();
   if (!x) return { ok: false, error: 'rcp.err.tag' };
-  if (!TAG_GROUPS.includes(/** @type {any} */ (group))) return { ok: false, error: 'rcp.err.tag' };
-  const k = normName(x);
+  if (!isGroup(group)) return { ok: false, error: 'rcp.err.tag' };
+  const id = tagId(group, x);
   const list = /** @type {string[]} */ (t[/** @type {'cuisine' | 'style'} */ (group)]);
-  if (!list.some(y => normName(y) === k)) list.push(x);
+  if (!list.some(y => tagId(group, y) === id)) list.push(presetTagKey(group, x) || x);
   return { ok: true, tags: t };
 }
-/** 去掉一个标签（normName 一样的） @param {unknown} tags @param {string} group @param {unknown} name */
+/** 去掉一个标签（tagId 一样的） @param {unknown} tags @param {string} group @param {unknown} name */
 export function removeTag(tags, group, name) {
-  const t = normalizeTags(tags), k = normName(name);
-  if (TAG_GROUPS.includes(/** @type {any} */ (group))) {
-    const g = /** @type {'cuisine' | 'style'} */ (group);
-    t[g] = t[g].filter(y => normName(y) !== k);
+  const t = normalizeTags(tags);
+  if (isGroup(group)) {
+    const g = /** @type {'cuisine' | 'style'} */ (group), id = tagId(g, name);
+    t[g] = t[g].filter(y => tagId(g, y) !== id);
   }
   return t;
 }
-/** 这一组里有没有这个标签（normName 比） @param {unknown} tags @param {string} group @param {unknown} name */
+/** 这一组里有没有这个标签（tagId 比） @param {unknown} tags @param {string} group @param {unknown} name */
 export function hasTag(tags, group, name) {
-  const t = /** @type {Record<string, string[]>} */ (normalizeTags(tags)), k = normName(name);
-  return !!k && (t[group] || []).some(y => normName(y) === k);
+  const t = /** @type {Record<string, string[]>} */ (normalizeTags(tags)), id = tagId(group, name);
+  return !!id && isGroup(group) && (t[group] || []).some(y => tagId(group, y) === id);
 }
 
 /**
- * 没删除的食谱用到的标签：{ cuisine: [{ name, n }], style: [...] }，n 是几道食谱用了它。normName 一样的算一个（写法用最多的那个，一样多取排在前面的）；
- * 按用得多的在前、再按名字（collator）。「食谱」页的筛选只列这些（没有食谱用的标签筛了也是空的）
- * @param {State} state @param {Intl.Collator} [collator]
+ * 没删除的食谱用到的标签：{ cuisine: [{ name, n }], style: [...] }，name 是存的值（预设是键，页面用 tagLabel 写出来），n 是几道食谱用了它。
+ * 同一个（tagId 一样）算一个：自己写的写法用最多的那个（一样多取排在前面的）；按用得多的在前、再按显示出来的字（collator）。
+ * 「食谱」页的筛选、管理标签只列这些（没有食谱用的标签筛了也是空的）
+ * @param {State} state @param {Intl.Collator} [collator] @param {Translate | ((key: string) => string)} [t]
  */
-export function usedTags(state, collator = collatorFor('zh-Hans')) {
+export function usedTags(state, collator = collatorFor('zh-Hans'), t = zhT) {
   /** @type {Record<string, { name: string, n: number }[]>} */
   const out = {};
   for (const g of TAG_GROUPS) {
@@ -336,50 +342,142 @@ export function usedTags(state, collator = collatorFor('zh-Hans')) {
     const m = new Map();
     for (const r of /** @type {Recipe[]} */ (live(state, 'recipes'))) {
       for (const x of recipeTags(r)[g]) {
-        const k = normName(x);
+        const k = tagId(g, x), v = x.trim();
         const e = m.get(k) || { n: 0, names: new Map() };
-        e.n++; e.names.set(x.trim(), (e.names.get(x.trim()) || 0) + 1);
+        e.n++; e.names.set(v, (e.names.get(v) || 0) + 1);
         m.set(k, e);
       }
     }
     out[g] = [...m.values()].map(e => {
       const name = [...e.names].sort((a, b) => b[1] - a[1] || collator.compare(a[0], b[0]))[0][0];
       return { name, n: e.n };
-    }).sort((a, b) => b.n - a.n || collator.compare(a.name, b.name));
+    }).sort((a, b) => b.n - a.n || collator.compare(tagLabel(g, a.name, t), tagLabel(g, b.name, t)));
   }
   return /** @type {{ cuisine: { name: string, n: number }[], style: { name: string, n: number }[] }} */ (out);
 }
 
 /**
- * 编辑页一组标签里列哪些：预设（presets，页面按界面语言用 t() 写出来的字，按原来的顺序）→ 别的食谱用过的（usedTags 的顺序）→
- * 这一道自己有、上面都没有的（mine，刚加的）；normName 一样的只列一个（先来的）
- * @param {State} state @param {string} group @param {string[]} presets @param {string[]} [mine] @param {Intl.Collator} [collator]
+ * 编辑页一组标签里列哪些（存的值，页面用 tagLabel 写出来）：预设（按原来的顺序；「不在选项里显示」的不列）→ 别的食谱用过的（usedTags 的顺序，
+ * 藏起来的预设有食谱用着也列）→ 这一道自己有、上面都没有的（mine，刚加的）；同一个（tagId）只列一个（先来的）
+ * @param {State} state @param {string} group @param {string[]} [mine] @param {Intl.Collator} [collator] @param {Translate | ((key: string) => string)} [t]
  * @returns {string[]}
  */
-export function tagChoices(state, group, presets, mine = [], collator = collatorFor('zh-Hans')) {
-  const used = /** @type {Record<string, { name: string }[]>} */ (usedTags(state, collator))[group] || [];
+export function tagChoices(state, group, mine = [], collator = collatorFor('zh-Hans'), t = zhT) {
+  const used = /** @type {Record<string, { name: string }[]>} */ (usedTags(state, collator, t))[group] || [];
+  const presets = isGroup(group) ? RECIPE_TAG_PRESETS[/** @type {'cuisine' | 'style'} */ (group)].map(k => '#' + k).filter(k => !isTagHidden(state, group, k)) : [];
   const seen = new Set(), out = [];
   for (const x of [...presets, ...used.map(u => u.name), ...mine]) {
-    const k = normName(x);
-    if (!k || seen.has(k)) continue;
-    seen.add(k); out.push(str(x).trim());
+    const id = tagId(group, x);
+    if (!id || seen.has(id)) continue;
+    seen.add(id); out.push(presetTagKey(group, x) || str(x).trim());
   }
   return out;
 }
 
 /**
- * 按标签筛选：sel 是 { cuisine: [...], style: [...] }（选了的标签）。一组里选了几个是「任一」（川菜或湘菜），两组之间是「都要」
- * （川菜里的快手菜）；一组什么也没选就不管这一组。normName 比
+ * 按标签筛选：sel 是 { cuisine: [...], style: [...] }（选了的标签，存的值或写出来的字都行）。一组里选了几个是「任一」（川菜或湘菜），两组之间是「都要」
+ * （川菜里的快手菜）；一组什么也没选就不管这一组。tagId 比
  * @param {Recipe} r @param {Partial<Record<string, string[]>>} sel
  */
 export function matchesTags(r, sel) {
   const t = /** @type {Record<string, string[]>} */ (recipeTags(r));
   return TAG_GROUPS.every(g => {
-    const want = (sel && Array.isArray(sel[g]) ? sel[g] : []).map(normName).filter(Boolean);
+    const want = (sel && Array.isArray(sel[g]) ? sel[g] : []).map(x => tagId(g, x)).filter(Boolean);
     if (!want.length) return true;
-    const have = new Set(t[g].map(normName));
+    const have = new Set(t[g].map(x => tagId(g, x)));
     return want.some(k => have.has(k));
   });
+}
+
+// 「不在选项里显示」的预设：同步的设置里一个预设一个键 hiddenTags.<组>.<键>（true 是藏起来，恢复写 null），各自按 settingsAt 合并：
+// 两台设备各藏了一个，合并以后两个都藏着（整个一份存的话，晚的那份会把另一台藏的冲掉）
+/** @param {string} group @param {string} tag 预设的键 '#…' */
+export const hiddenTagKey = (group, tag) => `hiddenTags.${group}.${String(tag).replace(/^#/, '')}`;
+/** 这个预设是不是「不在选项里显示」 @param {State} state @param {string} group @param {unknown} tag */
+export function isTagHidden(state, group, tag) {
+  const k = presetTagKey(group, tag);
+  return !!k && !!state && isObj(state.settings) && own(state.settings, hiddenTagKey(group, k)) === true;
+}
+/**
+ * 藏起 / 恢复一个预设（只认预设；自己写的标签只在食谱上，没有「选项」可藏）。意思没变不写（不盖新时间）。返回是否改了
+ * @param {State} state @param {string} group @param {unknown} tag @param {boolean} hidden @param {number} [now]
+ */
+export function setTagHidden(state, group, tag, hidden, now = Date.now()) {
+  const k = presetTagKey(group, tag);
+  if (!k || !isGroup(group) || isTagHidden(state, group, k) === !!hidden) return false;
+  return setSetting(state, hiddenTagKey(group, k), hidden ? true : null, now);
+}
+
+/**
+ * 管理标签的面板列什么：每组 { used: [{ tag, n, preset }]（usedTags 的顺序），unused: [{ tag, hidden }]（没有食谱用的预设，按预设的顺序）}
+ * @param {State} state @param {Intl.Collator} [collator] @param {Translate | ((key: string) => string)} [t]
+ */
+export function tagOverview(state, collator = collatorFor('zh-Hans'), t = zhT) {
+  const used = usedTags(state, collator, t);
+  /** @type {Record<string, { used: { tag: string, n: number, preset: boolean }[], unused: { tag: string, hidden: boolean }[] }>} */
+  const out = {};
+  for (const g of TAG_GROUPS) {
+    const ids = new Set(used[g].map(u => tagId(g, u.name)));
+    out[g] = {
+      used: used[g].map(u => ({ tag: u.name, n: u.n, preset: isPresetTag(g, u.name) })),
+      unused: RECIPE_TAG_PRESETS[g].map(k => '#' + k).filter(k => !ids.has(k)).map(k => ({ tag: k, hidden: isTagHidden(state, g, k) })),
+    };
+  }
+  return /** @type {Record<'cuisine' | 'style', { used: { tag: string, n: number, preset: boolean }[], unused: { tag: string, hidden: boolean }[] }>} */ (out);
+}
+
+/** 这一组里用着这个标签的没删除的食谱 @param {State} state @param {string} group @param {unknown} tag @returns {Recipe[]} */
+export function recipesWithTag(state, group, tag) {
+  const id = tagId(group, tag);
+  if (!id || !isGroup(group)) return [];
+  return /** @type {Recipe[]} */ (live(state, 'recipes')).filter(r => recipeTags(r)[/** @type {'cuisine' | 'style'} */ (group)].some(x => tagId(group, x) === id));
+}
+
+/**
+ * 改名之前先算：新名字整理成存的值（写的是某个预设的字 → 那个键；不然是自己写的字），会改几道食谱（n），新名字这一组里是不是已经有了（merge：合并成一个）。
+ * 空的 → 'rcp.err.tag'；一道也不会变（新名字和原来的是同一个、写法也一样）→ 'rcp.err.tagSame'
+ * @param {State} state @param {string} group @param {unknown} from @param {unknown} to
+ * @returns {{ ok: true, value: string, n: number, merge: boolean } | { ok: false, error: string }}
+ */
+export function checkTagRename(state, group, from, to) {
+  const x = str(to).trim();
+  if (!x || !isGroup(group)) return { ok: false, error: 'rcp.err.tag' };
+  const value = presetTagKey(group, x) || x, fromId = tagId(group, from), toId = tagId(group, value);
+  const g = /** @type {'cuisine' | 'style'} */ (group);
+  const hits = recipesWithTag(state, g, from).filter(r => recipeTags(r)[g].some(y => tagId(g, y) === fromId && y !== value));
+  if (!hits.length) return { ok: false, error: 'rcp.err.tagSame' };
+  const merge = toId !== fromId && usedTags(state)[g].some(u => tagId(g, u.name) === toId);
+  return { ok: true, value, n: hits.length, merge };
+}
+/**
+ * 改名（管理标签）：所有没删除的食谱里这个标签一起改（在原来的位置）；新名字这一道里已经有了 → 去掉旧的（合并，不会有两个）。
+ * 预设改成自己写的字 / 别的预设以后，原来的预设没有食谱用了，藏起来（不然编辑页的选项里又冒出旧名字，像没改成）；撤销一起回来。
+ * 一次改完（页面在一个 ctx.mutate 里调，能撤销）。返回 checkTagRename 的结果
+ * @param {State} state @param {string} group @param {unknown} from @param {unknown} to @param {number} [now]
+ */
+export function renameTag(state, group, from, to, now = Date.now()) {
+  const c = checkTagRename(state, group, from, to);
+  if (!c.ok) return c;
+  const g = /** @type {'cuisine' | 'style'} */ (group), fromId = tagId(g, from), toId = tagId(g, c.value);
+  for (const r of recipesWithTag(state, g, from)) {
+    const tg = recipeTags(r);
+    const has = tg[g].some(y => tagId(g, y) === toId && tagId(g, y) !== fromId);
+    tg[g] = tg[g].flatMap(y => (tagId(g, y) !== fromId ? [y] : has ? [] : [c.value]));
+    writeRecord(state, 'recipes', { ...r, tags: tg }, now);
+  }
+  const oldKey = presetTagKey(g, from);
+  if (oldKey && oldKey !== toId) setTagHidden(state, g, oldKey, true, now);
+  return c;
+}
+/**
+ * 删除一个标签（管理标签）：所有没删除的食谱上去掉它，食谱本身不动；预设的选项照样在（要藏另外点「不在选项里显示」）。
+ * 一次改完（一个 ctx.mutate，能撤销）。返回改了几道
+ * @param {State} state @param {string} group @param {unknown} tag @param {number} [now]
+ */
+export function deleteTag(state, group, tag, now = Date.now()) {
+  const hits = recipesWithTag(state, group, tag);
+  for (const r of hits) writeRecord(state, 'recipes', { ...r, tags: removeTag(r.tags, group, tag) }, now);
+  return hits.length;
 }
 
 // ---------- 食材的默认顺序（第 11 步） ----------

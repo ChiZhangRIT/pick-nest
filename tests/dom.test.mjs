@@ -1,7 +1,7 @@
 // ui/dom.js 的确认框和提示条（读屏、键盘）：假 DOM（tests/helpers/dom.mjs），<dialog> 的 showModal / close 在这里补上。全是编的文字
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { confirmDialog, toast } from '../src/ui/dom.js';
+import { confirmDialog, toast, sheet, h } from '../src/ui/dom.js';
 import { setLang } from '../src/i18n.js';
 import { Element, find, installDom } from './helpers/dom.mjs';
 
@@ -79,5 +79,52 @@ test('提示条：读屏念一直在页面里的 #toast-live；焦点在「撤�
     toast('已删除「台灯」', { ms: 20 });
     await wait(60);
     assert.ok(!el.classList.contains('on'));
+  } finally { env.restore(); }
+});
+
+test('提示条：面板开着时在最上面那个面板里（模态面板外面都是 inert，「撤销」才按得到）；面板关了挪到下面那个面板 / <body>，还在倒计时的不跟着没了；撤销后焦点回到重画出来的同一个按钮', async () => {
+  const env = setup();
+  try {
+    const row = () => h('button', { type: 'button', dataset: { fid: 'tm-ren-1' } }, '改名');
+    const body = h('div', null, row());
+    const mgr = sheet(body, { title: '管理标签' });
+    let undone = 0;
+    toast('已删除标签「下饭」', { ms: 1000, action: { label: '撤销', run: () => { undone++; body.replaceChildren(row()); } } });
+    const el = env.doc.querySelector('#toast');
+    const inTop = () => { const open = env.doc.querySelectorAll('dialog').filter(d => d.open); return open[open.length - 1].contains(button(el, '撤销')); };
+    assert.equal(el.parentNode, mgr.el, '在管理标签的面板里，不在 <body>（被面板挡着）');
+    assert.ok(inTop());
+    // 上面又开了一个面板（确认框）：提示条还开着，挪到它里面；它关了回到管理标签
+    const p = confirmDialog({ title: '删除标签「快手」？', confirmLabel: '删除', danger: true });
+    assert.ok(inTop(), '最上面的面板里');
+    const cd = env.doc.body.children.find(c => c.tag === 'dialog' && c !== mgr.el);
+    assert.equal(el.parentNode, cd);
+    await button(cd, '取消').fire('click');
+    assert.equal(await p, false);
+    assert.equal(el.parentNode, mgr.el, '确认框关了：回到管理标签，「撤销」还在');
+    assert.ok(el.classList.contains('on'));
+    // 键盘：从「改名」Tab 到「撤销」按下 → 面板重画了那一行，焦点给新的「改名」（面板外面的标题给不了焦点）
+    const before = find(body, x => x.dataset.fid === 'tm-ren-1');
+    const undo = button(el, '撤销');
+    for (const fn of el.events.focusin) fn({ target: undo, relatedTarget: before });
+    undo.focus();
+    await undo.fire('click');
+    await wait(0);
+    assert.equal(undone, 1);
+    const now = find(body, x => x.dataset.fid === 'tm-ren-1');
+    assert.notEqual(now, before);
+    assert.equal(env.doc.activeElement, now);
+    // 提示条开着时关面板：挪回 <body>，不跟着面板一起没了
+    const last = toast('已把「快手」改成「快炒」', { ms: 1000, action: { label: '撤销', run: () => {} } });
+    assert.equal(el.parentNode, mgr.el);
+    mgr.close();
+    assert.equal(el.parentNode, env.doc.body);
+    assert.ok(el.classList.contains('on') && button(el, '撤销'));
+    // 面板关着时开一个新的：还开着的提示条跟进去
+    const next = sheet(h('p', null, '编的内容'), { title: '另一个面板' });
+    assert.equal(el.parentNode, next.el);
+    next.close();
+    assert.equal(el.parentNode, env.doc.body);
+    last.close();
   } finally { env.restore(); }
 });

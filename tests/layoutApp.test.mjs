@@ -183,3 +183,39 @@ test('换布局、双栏、搜索、旧的购物模式地址、屏幕常亮：�
     assert.deepEqual([wake.requests, wake.released], [2, 2], '离开清单页、商店页：放掉');
   } finally { dom.restore(); }
 });
+
+test('主屏幕 App 里顶上让开状态栏下面模糊的那一截：只在 display-mode: standalone 里有 --top-clear（24px，安全区是 0 时不让）；顶上的东西一律用 --top-inset', async () => {
+  const fs = await import('node:fs');
+  const raw = fs.readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
+  const css = raw.replace(/\/\*[\s\S]*?\*\//g, '');
+  const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  /** 这个选择器所有规则的内容连在一起（媒体查询里缩进的也算） */
+  const rule = (sel) => { const m = [...css.matchAll(new RegExp(`(?:^|\\n)\\s*${esc(sel)}\\s*\\{([^}]*)\\}`, 'g'))]; assert.ok(m.length, sel); return m.map(x => x[1]).join('\n'); };
+  // 平时（Safari 标签页）是 0；standalone 里是 24px（安全区乘 1000 再取小：安全区 0 的横屏、Mac 上的 App 窗口还是 0）
+  const root = rule(':root');
+  assert.match(root, /--safe-top: env\(safe-area-inset-top, 0px\);/);
+  assert.match(root, /--top-clear: 0px;/);
+  assert.match(root, /--top-inset: calc\(var\(--safe-top\) \+ var\(--top-clear\)\);/);
+  const sa = /@media \(display-mode: standalone\) \{\s*:root \{ --top-clear: min\(24px, var\(--safe-top\) \* 1000\); \}\s*\}/.exec(css);
+  assert.ok(sa, 'standalone 里才有让开的那一截');
+  assert.equal((css.match(/--top-clear:/g) || []).length, 2, '别处不改 --top-clear');
+  // env(safe-area-inset-top) 只在 --safe-top 的定义里出现：别的地方都经过 --top-inset，新加的顶栏不会忘了让开
+  assert.equal((css.match(/safe-area-inset-top/g) || []).length, 1);
+  for (const [sel, want] of [
+    ['.page-head', 'padding: calc(44px + var(--top-inset)) 20px 10px'],
+    ['.page-head:has(> .toolbar)', 'padding-top: var(--top-inset)'],                    // 顶层页面的「编辑」「＋ 新增清单」
+    ['.navbar', 'padding: var(--top-inset) '],                                            // 推入的页面的顶栏
+    ['.navbar', 'min-height: calc(48px + var(--top-inset))'],
+    ['.lp-nav', 'height: calc(48px + var(--top-inset)); background: var(--bg)'],          // 吸顶、底色不透明，盖住让开的那一截
+    ['.lp-nav', 'top: 0'],
+    ['.add-bar', 'top: calc(48px + var(--top-inset))'],
+    ['#side', 'padding: calc(18px + var(--top-inset))'],
+    ['.item-row', 'scroll-margin-top: calc(128px + var(--top-inset))'],
+    ['.plan-day', 'scroll-margin: calc(8px + var(--top-inset))'],
+    ['dialog.sheet, dialog.sheet.wide, dialog.sheet.confirm', 'max-height: min(92dvh, calc(100dvh - var(--top-inset)))'],
+    ['.recovery-screen', 'padding: max(20px, var(--top-inset))'],
+  ]) assert.ok(rule(sel).includes(want), `${sel}：${want}`);
+  // 提示条放到顶上时量的也是 --top-inset
+  const dom = fs.readFileSync(new URL('../src/ui/dom.js', import.meta.url), 'utf8');
+  assert.ok(dom.includes("height: 'var(--top-inset, env(safe-area-inset-top, 0px))'"));
+});

@@ -67,6 +67,13 @@ export const STRINGS = {
     'rcp.err.replaceSame': '和原来的一样', 'rcp.replaced': '已在 {n} 道食谱里换掉「{name}」',
     'rcp.replaceDup': '{recipes}里已经有「{name}」，换了以后会有两行。', 'rcp.replaceDupN': '{n} 道食谱里已经有「{name}」，换了以后会有两行。', 'rcp.replaceDupName': '「{name}」',
     'rcp.cartFor': '把「{name}」加到清单',
+    // 管理标签（「食谱」页筛选下面）
+    'rcp.tagManage': '管理标签', 'rcp.tagUsedN': '{n} 道食谱', 'rcp.tagNone': '还没有食谱用这一组的标签。',
+    'rcp.tagRename': '改名', 'rcp.tagRenameFor': '给「{name}」改名', 'rcp.tagRenameHelp': '用到它的食谱一起改。改成这一组里已有的名字，两个就合成一个。',
+    'rcp.tagRenamed': '已把「{name}」改成「{to}」', 'rcp.tagMerged': '已把「{name}」合并到「{to}」', 'rcp.err.tagSame': '和原来的一样',
+    'rcp.tagDeleteFor': '删除「{name}」', 'rcp.tagDelTitle': '删除标签「{name}」？', 'rcp.tagDelMsg': '{n} 道食谱上的这个标签会去掉，食谱本身不删。', 'rcp.tagDeleted': '已删除标签「{name}」',
+    'rcp.tagUnused': '没用到的预设', 'rcp.tagHide': '不在选项里显示', 'rcp.tagHideFor': '「{name}」不在选项里显示', 'rcp.tagShow': '恢复', 'rcp.tagShowFor': '「{name}」恢复显示在选项里',
+    'rcp.tagHidden': '不在选项里', 'rcp.tagUnusedHelp': '预设的标签在编辑食谱时列在选项里。不想看到的可以不显示，以后随时恢复。',
   },
 
   'zh-Hant-TW': {
@@ -86,7 +93,7 @@ export const STRINGS = {
     'rcp.rowName': '第 {n} 項的名稱', 'rcp.rowQty': '第 {n} 項的數量', 'rcp.rowUnit': '第 {n} 項的單位', 'rcp.rowNote': '第 {n} 項的備註',
     'rcp.rowOptional': '「{name}」可選', 'rcp.moveUp': '上移「{name}」', 'rcp.moveDown': '下移「{name}」', 'rcp.removeRow': '刪掉「{name}」', 'rcp.rowN': '第 {n} 項',
     'rcp.rowRemoved': '刪掉了「{name}」',
-    'rcp.stepsPh': '一個步驟一行', 'rcp.sourcePh': '連結，或是從哪裡看來的',
+    'rcp.stepsPh': '一個步驟一行', 'rcp.sourcePh': '鏈接，或是從哪裡看來的',
     'rcp.draftBack': '接著上次沒儲存的修改。', 'rcp.draftDrop': '捨棄修改',
     'rcp.goneSaveQ': '這道食譜已經刪除了（可能是在別的裝置上）。要存成一道新的嗎？', 'rcp.saveNew': '存成新的',
     'rcp.err.name': '名稱不能空白', 'rcp.err.servings': '幾人份要大於 0，最多 99', 'rcp.err.ingName': '這一項要填名稱', 'rcp.err.ingQty': '數量要大於 0，最多 9999',
@@ -110,7 +117,7 @@ export const STRINGS = {
     'rcp.tag.cuisine.sichuan': '川菜', 'rcp.tag.cuisine.cantonese': '粵菜', 'rcp.tag.cuisine.hunan': '湘菜', 'rcp.tag.cuisine.shandong': '魯菜',
     'rcp.tag.cuisine.jiangzhe': '江浙菜', 'rcp.tag.cuisine.dongbei': '東北菜', 'rcp.tag.cuisine.taiwanese': '台灣菜', 'rcp.tag.cuisine.homeChinese': '家常中式',
     'rcp.tag.cuisine.japanese': '日式', 'rcp.tag.cuisine.korean': '韓式', 'rcp.tag.cuisine.seAsian': '東南亞', 'rcp.tag.cuisine.western': '西式',
-    'rcp.tag.cuisine.italian': '義式', 'rcp.tag.cuisine.mexican': '墨西哥',
+    'rcp.tag.cuisine.italian': '意式', 'rcp.tag.cuisine.mexican': '墨西哥',
     'rcp.tag.style.homestyle': '家常', 'rcp.tag.style.quick': '快速上桌', 'rcp.tag.style.withRice': '下飯', 'rcp.tag.style.lean': '減脂', 'rcp.tag.style.vegetarian': '素食',
     'rcp.tag.style.soup': '湯品', 'rcp.tag.style.cold': '涼拌', 'rcp.tag.style.breakfast': '早餐', 'rcp.tag.style.bento': '便當', 'rcp.tag.style.dessert': '甜點',
     'rcp.tag.style.baking': '烘焙', 'rcp.tag.style.guests': '宴客',
@@ -127,6 +134,13 @@ export const STRINGS = {
     'rcp.err.replaceSame': '和原本的一樣', 'rcp.replaced': '已在 {n} 道食譜裡換掉「{name}」',
     'rcp.replaceDup': '{recipes}裡已經有「{name}」，換了以後會有兩行。', 'rcp.replaceDupN': '{n} 道食譜裡已經有「{name}」，換了以後會有兩行。', 'rcp.replaceDupName': '「{name}」',
     'rcp.cartFor': '把「{name}」加到清單',
+    // 管理標籤
+    'rcp.tagManage': '管理標籤', 'rcp.tagUsedN': '{n} 道食譜', 'rcp.tagNone': '還沒有食譜用這一組的標籤。',
+    'rcp.tagRename': '改名', 'rcp.tagRenameFor': '幫「{name}」改名', 'rcp.tagRenameHelp': '用到它的食譜一起改。改成這一組裡已有的名稱，兩個就合併成一個。',
+    'rcp.tagRenamed': '已把「{name}」改成「{to}」', 'rcp.tagMerged': '已把「{name}」合併到「{to}」', 'rcp.err.tagSame': '和原本的一樣',
+    'rcp.tagDeleteFor': '刪除「{name}」', 'rcp.tagDelTitle': '刪除標籤「{name}」？', 'rcp.tagDelMsg': '{n} 道食譜上的這個標籤會拿掉，食譜本身不刪除。', 'rcp.tagDeleted': '已刪除標籤「{name}」',
+    'rcp.tagUnused': '沒用到的預設', 'rcp.tagHide': '不在選項裡顯示', 'rcp.tagHideFor': '「{name}」不在選項裡顯示', 'rcp.tagShow': '恢復', 'rcp.tagShowFor': '「{name}」恢復在選項裡顯示',
+    'rcp.tagHidden': '不在選項裡', 'rcp.tagUnusedHelp': '預設的標籤在編輯食譜時列在選項裡。不想看到的可以不顯示，之後隨時恢復。',
   },
 
   en: {
@@ -194,5 +208,12 @@ export const STRINGS = {
     'rcp.replaceDupN': en('“{name}” is already in {n} recipe, so it will appear twice there.', '“{name}” is already in {n} recipes, so it will appear twice in each.'),
     'rcp.replaceDupName': '“{name}”',
     'rcp.cartFor': 'Add “{name}” to a list',
+    'rcp.tagManage': 'Manage Tags', 'rcp.tagUsedN': en('{n} recipe', '{n} recipes'), 'rcp.tagNone': 'No recipe uses a tag from this group yet.',
+    'rcp.tagRename': 'Rename', 'rcp.tagRenameFor': 'Rename “{name}”', 'rcp.tagRenameHelp': 'Every recipe that uses it changes too. Renaming it to a tag that’s already in this group merges the two.',
+    'rcp.tagRenamed': 'Renamed “{name}” to “{to}”', 'rcp.tagMerged': 'Merged “{name}” into “{to}”', 'rcp.err.tagSame': 'That’s the same name',
+    'rcp.tagDeleteFor': 'Delete “{name}”', 'rcp.tagDelTitle': 'Delete the tag “{name}”?',
+    'rcp.tagDelMsg': en('It will be removed from {n} recipe. The recipe itself stays.', 'It will be removed from {n} recipes. The recipes themselves stay.'), 'rcp.tagDeleted': 'Deleted the tag “{name}”',
+    'rcp.tagUnused': 'Presets Not in Use', 'rcp.tagHide': 'Hide from Options', 'rcp.tagHideFor': 'Hide “{name}” from options', 'rcp.tagShow': 'Restore', 'rcp.tagShowFor': 'Show “{name}” in options again',
+    'rcp.tagHidden': 'Hidden', 'rcp.tagUnusedHelp': 'Preset tags are offered as options when you edit a recipe. Hide the ones you don’t want; you can restore them anytime.',
   },
 };

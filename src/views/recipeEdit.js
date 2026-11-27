@@ -9,7 +9,8 @@
 // 马上存：iOS 页面一隐藏就停掉计时器，最后 0.4 秒里打的、贴的字等不到。
 // 自己管更新（返回 onChange）：别的设备同步来的改动不重画这一页（正在打的字不能被冲掉）；这道食谱在别的设备上删掉了，保存时问要不要存成新的。
 // 第 11 步：
-//   - 标签：「菜系」「风格」两组开关（预设按界面语言写出来、别的食谱用过的、自己加的：core/recipes.js 的 tagChoices），「自己加」开一个名字面板
+//   - 标签：「菜系」「风格」两组开关（预设按界面语言写出来、别的食谱用过的、自己加的：core/recipes.js 的 tagChoices；「不在选项里显示」的预设不列），
+//     「自己加」开一个名字面板（写的是某个预设的字就是那个预设：存键）
 //   - 食材的默认顺序：粘贴进来的马上按类别放好（placeIngredients），「加一样」写的保存时再放（写着名字的时候行不能跳走：iPhone 上点同一行的数量框
 //     名字框就失去焦点，这时挪走就点空了）；↑↓ 排过（ordered）、已经存过的食谱，新加的只放进它那一组的最后（原来的几行不自己挪）；
 //     「按类别重新排」整张排一次、去掉 ordered
@@ -28,7 +29,7 @@ import { h, icon, keepUnderFinger } from '../ui/dom.js';
 import { t } from '../i18n.js';
 import { field, showErr, onEnter } from '../ui/form.js';
 import { liveRecipe, validateRecipe, saveRecipe, sortIngredients, placeIngredients, duplicateOf, mergeIngredient, tagChoices, addTag, removeTag, hasTag,
-  RECIPE_TAG_PRESETS } from '../core/recipes.js';
+  tagLabel, tagId } from '../core/recipes.js';
 import { formatQty, readQty, stepQty } from '../core/parse.js';
 import { canon, newId, normName, hash64, normalizeTags, normalizePhoto, TAG_GROUPS, NUTRIENTS } from '../core/store.js';
 import { photoInUse } from '../core/photo.js';
@@ -384,20 +385,19 @@ export function render(main, params, ctx, deps = {}) {
 
   // ---------- 标签 ----------
   const collator = collatorFor(ctx.lang());
-  // 标签开关的 fid 用名字的哈希：自己加的标签里可能有引号，不能直接放进选择器
-  const tagFid = (g, name) => `re-tag-${g}-${hash64(normName(name))}`;
+  // 标签开关的 fid 用 tagId 的哈希：自己加的标签里可能有引号，不能直接放进选择器；预设是键，换了写法也是同一个
+  const tagFid = (g, name) => `re-tag-${g}-${hash64(tagId(g, name))}`;
   const tagEls = Object.fromEntries(TAG_GROUPS.map(g => [g, h('div.chips.re-tag-chips', { role: 'group', 'aria-label': t('rcp.tag.' + g), dataset: { group: g } })]));
-  /** 一组的开关：预设（界面语言）→ 别的食谱用过的 → 这一道自己加的（tagChoices），最后「自己加」 */
+  /** 一组的开关：预设（存键，界面语言写出来）→ 别的食谱用过的 → 这一道自己加的（tagChoices），最后「自己加」 */
   function drawTags(g) {
-    const presets = RECIPE_TAG_PRESETS[g].map(k => t(`rcp.tag.${g}.${k}`));
-    tagEls[g].replaceChildren(...tagChoices(ctx.state, g, presets, w.tags[g], collator).map(name => {
+    tagEls[g].replaceChildren(...tagChoices(ctx.state, g, w.tags[g], collator, t).map(name => {
       const chip = h('button.chip.re-tag', { type: 'button', 'aria-pressed': String(hasTag(w.tags, g, name)), dataset: { fid: tagFid(g, name) },
         onclick: () => {
           const on = !hasTag(w.tags, g, name);
           w.tags = on ? /** @type {any} */ (addTag(w.tags, g, name)).tags : removeTag(w.tags, g, name);
           chip.setAttribute('aria-pressed', String(on));
           touched();
-        } }, name);
+        } }, tagLabel(g, name, t));
       return chip;
     }), h('button.chip.re-tag-add', { type: 'button', dataset: { fid: 're-tag-add-' + g }, onclick: () => customTag(g) }, icon('plus'), t('rcp.tagAdd')));
   }

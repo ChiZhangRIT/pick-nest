@@ -113,6 +113,7 @@ let toastTimer = null, toastDeadline = 0, toastHover = false, toastFocus = false
 export function toast(msg, { ms = 4000, action = null } = {}) {
   let el = $('#toast');
   if (!el) { el = h('div', { id: 'toast' }); document.body.appendChild(el); }
+  homeToast(el);
   wireToast(el);
   const close = () => {
     el.classList.remove('on'); el.setAttribute('inert', '');
@@ -139,6 +140,20 @@ export function toast(msg, { ms = 4000, action = null } = {}) {
   toastFocus = el.contains(document.activeElement);
   armToast(close, ms);
   return { close: () => { clearTimeout(toastTimer); close(); } };
+}
+/**
+ * 提示条放在最上面那个开着的面板（showModal 的 <dialog>）里，没有面板时在 <body> 里。
+ * 模态的面板开着时它外面的东西都是 inert，z-index 也盖不过顶层：留在 <body> 里的提示条被面板挡着、按不到，
+ * 面板里做的事（管理标签的改名、删除）要「撤销」只能先关面板。面板开、关时跟着挪（sheet()、placeToast）
+ */
+function toastHost() {
+  const open = [...document.querySelectorAll('dialog')].filter(d => d.open);
+  return open.length ? open[open.length - 1] : document.body;
+}
+function homeToast(el) {
+  const host = toastHost();
+  // 只在换地方时挪：每次都 append 会让 body 的 MutationObserver 又排一次 placeToast，一直转下去
+  if (el.parentNode !== host) host.appendChild(el);
 }
 let toastClose = null;
 function armToast(close, ms) {
@@ -168,10 +183,16 @@ function wireToast(el) {
 function refocus(el, from) {
   const a = document.activeElement;
   if (a && a !== document.body && !el.contains(a)) return;
+  const host = toastHost(), inSheet = host !== document.body;
   const main = $('#main');
   const pane = main && main.querySelector('.pane');
-  for (const c of [from, main && main.querySelector('[data-fid="lp-title"]'), pane]) {
-    if (!c || !c.isConnected || typeof c.focus !== 'function' || el.contains(c)) continue;
+  // 原来那个按钮撤销以后重画换掉了（面板里那一行的「改名」）：找同一个 data-fid 的新按钮
+  const fid = from && from.dataset && from.dataset.fid;
+  const again = fid ? host.querySelector(`[data-fid="${typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(fid) : fid}"]`) : null;
+  // 面板开着时外面都是 inert、给不了焦点：只在面板里找，最后给它的 ✕
+  const rest = inSheet ? [host.querySelector('.sheet-head button')] : [main && main.querySelector('[data-fid="lp-title"]'), pane];
+  for (const c of [from, again, ...rest]) {
+    if (!c || !c.isConnected || typeof c.focus !== 'function' || el.contains(c) || (inSheet && !host.contains(c))) continue;
     if (c === pane && c.tabIndex < 0) c.tabIndex = -1;
     c.focus({ preventScroll: true });
     if (document.activeElement === c) return;
@@ -191,10 +212,10 @@ function announce(msg) {
 // 提示条要让开的按钮：手机底栏、页面底部的按钮条、顶栏。页面里别的固定按钮可以加 data-toast-avoid
 const TOAST_AVOID = '#tabs, .bottom-bar, .navbar, [data-toast-avoid]';
 let safeProbe = null;
-/** 顶部安全区（刘海 / 灵动岛）多高：env() 只能在 CSS 里用，放一个看不见的元素量一下 */
+/** 顶上要让开多高（刘海 / 灵动岛，主屏幕 App 里还有状态栏下面模糊的那一截：styles.css 的 --top-inset）：只能在 CSS 里算，放一个看不见的元素量一下 */
 function safeTop() {
   if (!safeProbe || !safeProbe.isConnected) {
-    safeProbe = h('div', { 'aria-hidden': 'true', style: { position: 'fixed', top: '0', left: '0', width: '0', height: 'env(safe-area-inset-top, 0px)', visibility: 'hidden', pointerEvents: 'none' } });
+    safeProbe = h('div', { 'aria-hidden': 'true', style: { position: 'fixed', top: '0', left: '0', width: '0', height: 'var(--top-inset, env(safe-area-inset-top, 0px))', visibility: 'hidden', pointerEvents: 'none' } });
     document.body.appendChild(safeProbe);
   }
   return safeProbe.offsetHeight || 0;
@@ -208,12 +229,15 @@ function placeToast(el = $('#toast')) {
   el.style.top = ''; el.style.bottom = '';
   el.classList.remove('at-top');
   if (!el.classList.contains('on')) return;
+  homeToast(el);
   // iPhone 弹出键盘时 innerHeight（layout viewport）不变，看得见的只有键盘上面那一截（visualViewport）：提示条要在键盘上面
   const vh = window.innerHeight, vv = window.visualViewport;
   const viewTop = vv ? vv.offsetTop : 0, viewBottom = vv ? Math.min(vh, vv.offsetTop + vv.height) : vh;
   const gap = 8, th = el.offsetHeight, tw = el.offsetWidth;
   const left = (window.innerWidth - tw) / 2, right = left + tw;
-  const rects = [...document.querySelectorAll(TOAST_AVOID)].filter(n => !el.contains(n)).map(n => n.getBoundingClientRect())
+  // 在面板里时页面上的底栏、顶栏在遮罩下面，不用让；要让的是面板底部的按钮条
+  const host = el.parentNode, avoid = host && host !== document.body && host.querySelectorAll ? host.querySelectorAll('.sheet-foot, [data-toast-avoid]') : document.querySelectorAll(TOAST_AVOID);
+  const rects = [...avoid].filter(n => !el.contains(n)).map(n => n.getBoundingClientRect())
     .filter(r => r.width > 0 && r.height > 0 && r.bottom > viewTop && r.top < viewBottom && r.left < right && r.right > left);
   const hits = (top) => rects.filter(r => r.top < top + th && r.bottom > top);
   const minTop = Math.max(safeTop(), viewTop) + gap;
@@ -246,7 +270,8 @@ const placeSoon = () => { if (!toastRaf) toastRaf = requestAnimationFrame(() => 
 function watch(el) {
   if (toastObs) return;
   toastObs = new MutationObserver(muts => { if (muts.some(m => !el.contains(m.target))) placeSoon(); });
-  toastObs.observe(document.body, { childList: true, subtree: true });
+  // 面板关上时先去掉 open、过一会儿才有 close 事件：看 open 属性，提示条马上挪出关掉的面板（不然跟着它一起不显示）
+  toastObs.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['open'] });
   window.addEventListener('resize', placeSoon);
   window.addEventListener('scroll', placeSoon, { passive: true, capture: true });
   const vv = window.visualViewport;
@@ -279,13 +304,17 @@ export function sheet(content, { title = '', foot = null, wide = false, cls = ''
   if (node) bodyEl.append(node);
   if (foot && foot.length) dlg.append(h('div.sheet-foot', null, foot));
   dlg.addEventListener('cancel', e => { e.preventDefault(); tryClose(); });
-  dlg.addEventListener('close', () => { dlg.remove(); if (onClose) onClose(); });
+  // 提示条在这个面板里的话先挪到下面那个面板或 <body>（还在倒计时的「撤销」不跟着面板一起没了）
+  dlg.addEventListener('close', () => { const tst = dlg.querySelector('#toast'); if (tst) homeToast(tst); dlg.remove(); if (onClose) onClose(); });
   // 点遮罩关闭：按下和松开都在遮罩上才算（在输入框里拖选文字、松手落到遮罩上不算）
   let downOnBackdrop = false;
   dlg.addEventListener('pointerdown', e => { downOnBackdrop = e.target === dlg; });
   dlg.addEventListener('click', e => { if (e.target === dlg && downOnBackdrop) tryClose(); downOnBackdrop = false; });
   document.body.appendChild(dlg);
   dlg.showModal();
+  // 提示条还开着（刚删了东西、能撤销）：挪进这个面板，不然被它挡着
+  const tst = $('#toast');
+  if (tst && tst.classList.contains('on')) placeToast(tst);
   return api;
 }
 

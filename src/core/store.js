@@ -8,6 +8,8 @@
 // 预置的清单、商店、分类用固定 id、updatedAt 0，由 ensureSeeds() 补。细节见 docs/DATA_MODEL.md。
 import { isObj, str, own, safeKey } from './util.js';
 import { toSimplified } from './hanzi.js';
+// 预设标签三种语言的写法（只读文案表里 rcp.tag.* 那几条）：存进食谱的是键，读到任何一种语言写出来的字都要认回这个键（normalizeTags）
+import { STRINGS as RECIPE_STRINGS } from '../strings/recipes.js';
 
 /**
  * @typedef {object} Base 所有记录都有的字段
@@ -322,20 +324,74 @@ export function normalizePhoto(p) {
 /** 食谱标签的两组（第 11 步） */
 export const TAG_GROUPS = /** @type {const} */ (['cuisine', 'style']);
 /**
- * 整理标签：两组都是字符串数组（不是数组的当空的），空白的、不是字符串的扔掉，同一组里 normName 一样的只留第一个（「粵菜」「粤菜」是一个）；
- * 字本身原样（不做简繁转换、不截）。别的组（新版才有的）原样留着
+ * 预设的标签（菜系、风格）：文案的键 rcp.tag.<组>.<键>。存进食谱的是 '#' + 键（'#italian'），显示时按当前界面语言 t() 写出来：
+ * 换了界面语言、改了某种语言的写法（繁体「義式」→「意式」），已经存的标签跟着变，也不会一个意思两种写法各算一个。
+ * 只能加，不要改名、不要删（旧的数据里存着这些键；认不出的键当自己写的字原样显示）
+ */
+export const RECIPE_TAG_PRESETS = Object.freeze({
+  cuisine: Object.freeze(['sichuan', 'cantonese', 'hunan', 'shandong', 'jiangzhe', 'dongbei', 'taiwanese', 'homeChinese', 'japanese', 'korean', 'seAsian', 'western', 'italian', 'mexican']),
+  style: Object.freeze(['homestyle', 'quick', 'withRice', 'lean', 'vegetarian', 'soup', 'cold', 'breakfast', 'bento', 'dessert', 'baking', 'guests']),
+});
+// 预设以前用过、后来改掉的写法：以前存的就是当时显示出来的字，照样认回那个键（文案表里已经没有这些字了）
+/** @type {Record<string, Record<string, string[]>>} */
+const OLD_PRESET_TEXT = { cuisine: { italian: ['義式'] } };
+/** @type {Map<string, Map<string, string>> | null} 组 → (normName(写法) → '#键')；第一次用时才建（和文案表的 import 顺序无关） */
+let presetIndex = null;
+function presetMap(/** @type {string} */ group) {
+  if (!presetIndex) {
+    presetIndex = new Map();
+    for (const g of TAG_GROUPS) {
+      const m = new Map();
+      for (const k of RECIPE_TAG_PRESETS[g]) {
+        // 键本身也认大小写、全角（'#Quick'、'＃quick'）：不然自己写的「#Quick」按 normName 比是 '#quick'，和预设的键撞成同一个，
+        // 卡片上写「#Quick」、编辑页上预设「快手」却是按下的，「没用到的预设」里也没有它
+        const texts = ['#' + k, ...Object.values(RECIPE_STRINGS).map(tb => /** @type {Record<string, unknown>} */ (tb)[`rcp.tag.${g}.${k}`]), ...((OLD_PRESET_TEXT[g] || {})[k] || [])];
+        // 先来的不被后来的盖掉：万一两个预设在某种语言里写法一样，还是认成前面那个（测试查了现在没有这种情况）
+        for (const x of texts) { const n = typeof x === 'string' ? normName(x) : ''; if (n && !m.has(n)) m.set(n, '#' + k); }
+      }
+      presetIndex.set(g, m);
+    }
+  }
+  return presetIndex.get(group) || new Map();
+}
+/** 是不是这一组预设的键（'#italian'） @param {string} group @param {unknown} tag */
+export const isPresetTag = (group, tag) => typeof tag === 'string' && tag[0] === '#' && /** @type {Record<string, readonly string[]>} */ (RECIPE_TAG_PRESETS)[group] != null
+  && /** @type {Record<string, readonly string[]>} */ (RECIPE_TAG_PRESETS)[group].includes(tag.slice(1));
+/**
+ * 一个标签（存的值或输入的字）是不是这一组的某个预设：是键本身（'#Quick' 这样大小写、全角不同的也算）、或者等于它在任何一种语言里写出来的字（normName 比，简繁一样；也认以前的写法）→ '#键'；不是 → null
+ * @param {string} group @param {unknown} tag @returns {string | null}
+ */
+export function presetTagKey(group, tag) {
+  if (typeof tag !== 'string') return null;
+  if (isPresetTag(group, tag.trim())) return tag.trim();
+  return presetMap(group).get(normName(tag)) || null;
+}
+/** 同一组里两个标签是不是同一个：预设按键，自己写的按 normName（「粵菜」「粤菜」「Cantonese」都是 '#cantonese'） @param {string} group @param {unknown} tag */
+export const tagId = (group, tag) => presetTagKey(group, tag) || normName(tag);
+/** 搜索时这个标签算哪些字：预设是三种语言（和以前的）写法都算（搜「Italian」「意式」都找得到），自己写的就是它 @param {string} group @param {unknown} tag @returns {string[]} */
+export function tagTexts(group, tag) {
+  const k = presetTagKey(group, tag);
+  if (!k) return [normName(tag)];
+  return [...presetMap(group)].filter(([n, v]) => v === k && n[0] !== '#').map(([n]) => n);
+}
+/**
+ * 整理标签：两组都是字符串数组（不是数组的当空的），空白的、不是字符串的扔掉；预设的（任何一种语言写出来的字、以前的写法）换成键 '#…'，
+ * 自己写的字原样（不做简繁转换、不截）；同一组里是同一个的（tagId 一样：「粵菜」「粤菜」「Cantonese」）只留第一个。别的组（新版才有的）原样留着。
+ * 每台设备读进来都这样整理，结果一样：合并时两边是同一种写法，再整理一遍也不变
  * @param {unknown} tags @returns {RecipeTags}
  */
 export function normalizeTags(tags) {
   const out = isObj(tags) ? copySafe(tags) : {};
   for (const g of TAG_GROUPS) {
-    const seen = new Set();
-    out[g] = (Array.isArray(out[g]) ? out[g] : []).filter(x => {
-      const k = typeof x === 'string' ? normName(x) : '';
-      if (!k || seen.has(k)) return false;
-      seen.add(k);
-      return true;
-    });
+    const seen = new Set(), list = [];
+    for (const x of (Array.isArray(out[g]) ? out[g] : [])) {
+      if (typeof x !== 'string' || !normName(x)) continue;
+      const key = presetTagKey(g, x), id = key || normName(x);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      list.push(key || x);
+    }
+    out[g] = list;
   }
   return /** @type {RecipeTags} */ (out);
 }

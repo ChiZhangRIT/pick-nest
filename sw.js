@@ -1,6 +1,6 @@
 // 每次启动固定使用同一份完整缓存。新版安装时按 release.json 校验文件，等旧页面全部关闭后再启用。
 // 只管本网站的文件。同步（api.github.com）不经过这里，也不进缓存。
-const CACHE = 'picknest-v29';
+const CACHE = 'picknest-v30';
 // 程序文件全部预先缓存（tests/sw.test.mjs 检查这张表和磁盘上的文件、index.html、import 关系一致），第一次打开之后就能离线用
 const CORE = [
   './', './index.html', './styles.css',
@@ -15,7 +15,7 @@ const CORE = [
   './src/strings/core.js', './src/strings/lists.js', './src/strings/items.js', './src/strings/stores.js', './src/strings/catalog.js', './src/strings/settings.js', './src/strings/recovery.js',
   './src/strings/sync.js', './src/strings/data.js', './src/strings/awake.js', './src/strings/search.js', './src/strings/recipes.js', './src/strings/plan.js', './src/strings/log.js', './src/strings/estimate.js',
   './src/ui/dom.js', './src/ui/recovery.js', './src/ui/form.js', './src/ui/listEditor.js', './src/ui/itemEditor.js', './src/ui/checklist.js', './src/ui/swipe.js', './src/ui/nameSheet.js', './src/ui/syncBadge.js', './src/ui/listTile.js', './src/ui/storeFilter.js',
-  './src/ui/addToList.js', './src/ui/pasteIngredients.js', './src/ui/dishSheet.js', './src/ui/planList.js', './src/ui/replaceIngredient.js', './src/ui/photo.js', './src/ui/logSheet.js', './src/ui/dayLog.js', './src/ui/estimateSheet.js', './src/ui/keepAwake.js',
+  './src/ui/addToList.js', './src/ui/pasteIngredients.js', './src/ui/dishSheet.js', './src/ui/planList.js', './src/ui/replaceIngredient.js', './src/ui/tagSheet.js', './src/ui/photo.js', './src/ui/logSheet.js', './src/ui/dayLog.js', './src/ui/estimateSheet.js', './src/ui/keepAwake.js',
   './src/views/lists.js', './src/views/list.js', './src/views/stores.js', './src/views/store.js', './src/views/settings.js', './src/views/manage.js',
   './src/views/sync.js', './src/views/data.js', './src/views/deleted.js', './src/views/search.js',
   './src/views/recipes.js', './src/views/recipe.js', './src/views/recipeEdit.js', './src/views/plan.js', './src/views/goals.js',
