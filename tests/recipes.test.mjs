@@ -3,6 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ensureSeeds, blankState, normalizeRecord, normalizeState, mergeStates, canon, itemId, deletedRecord, restoredRecord } from '../src/core/store.js';
+import { findFood, gramsFor } from '../src/core/nutrition.js';
 import { parseIngredients, scaleIngredients, searchRecipes, recipesUsing, validateRecipe, saveRecipe, deleteRecipe, liveRecipe,
   recipeLines, addRecipeToList, groceryLists, defaultTarget, recipeName } from '../src/core/recipes.js';
 import { addFromInput, totalLabel, setStatus } from '../src/core/items.js';
@@ -49,6 +50,15 @@ test('粘贴食材：一行一样，序号和列表符号去掉；「1.5斤」�
   assert.deepEqual(rows('猪肉二两\n雞蛋兩個\n半个洋葱\n洋葱半个\n大蒜３瓣\n盐 1小勺\n二两白酒'),
     [['猪肉', 2, '两', ''], ['雞蛋', 2, '個', ''], ['洋葱', 0.5, '个', ''], ['洋葱', 0.5, '个', ''], ['大蒜', 3, '瓣', ''], ['盐', 1, '小勺', ''], ['白酒', 2, '两', '']]);
   assert.deepEqual(rows('五花肉：500g'), [['五花肉', 500, 'g', '']]);
+});
+
+test('粘贴食材：台湾食谱的单位（大匙、小匙、公克、cc、公升、台斤），拆出来的单位营养表都换算得了', () => {
+  const got = rows('醬油 2大匙、鹽 1小匙、豬肉 300公克、水 200cc、米酒 1湯勺、雞高湯 1公升、五花肉 1台斤');
+  assert.deepEqual(got, [['醬油', 2, '大匙', ''], ['鹽', 1, '小匙', ''], ['豬肉', 300, '公克', ''], ['水', 200, 'cc', ''], ['米酒', 1, '湯勺', ''],
+    ['雞高湯', 1, '公升', ''], ['五花肉', 1, '台斤', '']]);
+  const grams = got.map(([name, qty, unit]) => gramsFor(findFood(name), qty, unit).grams);
+  assert.deepEqual(grams, [32, 6, 300, 200, 14.7, 1010, 600], '水不在表里：按 1 g/ml；米酒、高汤按密度');
+  assert.deepEqual(rows('鸡蛋 3 大匙'), [['鸡蛋', 3, '大匙', '']], '空格隔开的「大匙」也是左边的单位');
 });
 
 test('粘贴食材：英文的行（cups、tbsp、分数），逗号后面当备注、不拆；Ingredients: 开头；to taste', () => {

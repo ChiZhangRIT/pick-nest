@@ -1,0 +1,5 @@
+"fdc_id","data_type","description","food_category_id","publication_date"
+"900001","sr_legacy_food","Testfruit, raw, ""big"" variety","9","2019-04-01"
+"900002","sr_legacy_food","Testbean paste, sweet, canned","16","2019-04-01"
+"900003","sr_legacy_food","Testoil, salad or cooking","4","2019-04-01"
+"900004","sr_legacy_food","Test food without protein","4","2019-04-01"

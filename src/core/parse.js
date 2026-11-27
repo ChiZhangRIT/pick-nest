@@ -15,7 +15,7 @@ export const QTY_MAX = 9999;
 // 认得的单位（比较时不分大小写、繁体折成简体：「個」「LB」都认）。「两」不当单位：它更常是数字（两盒牛奶）
 const ZH_UNITS = ['个', '只', '袋', '盒', '瓶', '包', '罐', '听', '把', '根', '条', '块', '片', '颗', '粒', '头', '棵', '串', '束', '捆', '扎',
   '打', '斤', '公斤', '千克', '克', '磅', '盎司', '升', '毫升', '加仑', '箱', '板', '卷', '提', '桶', '杯', '份', '支', '双', '对', '件', '本',
-  '套', '张', '节', '台', '盘'];
+  '套', '张', '节', '台', '盘', '公克', '公升', '台斤'];   // 公克、公升、台斤：台湾的写法（「豬肉 300公克」）
 const EN_UNITS = ['lb', 'lbs', 'oz', 'g', 'kg', 'mg', 'ml', 'l', 'gal', 'gallon', 'gallons', 'qt', 'quart', 'quarts', 'pt', 'pint', 'pints',
   'ct', 'count', 'pc', 'pcs', 'piece', 'pieces', 'pk', 'pack', 'packs', 'bag', 'bags', 'box', 'boxes', 'bottle', 'bottles', 'can', 'cans',
   'jar', 'jars', 'bunch', 'bunches', 'dozen', 'doz', 'loaf', 'loaves', 'roll', 'rolls', 'carton', 'cartons', 'head', 'heads', 'ea', 'each',
@@ -25,8 +25,9 @@ const EN_UNITS = ['lb', 'lbs', 'oz', 'g', 'kg', 'mg', 'ml', 'l', 'gal', 'gallon'
 const OF_UNITS = new Set(['pair', 'pairs', 'set', 'sets', 'sheet', 'sheets']);
 export const UNITS = [...ZH_UNITS, ...EN_UNITS];
 // 食谱里常见、买东西时很少写的单位：只在拆食谱的食材时认（core/recipes.js 的 parseIngredients）。
-// 「两」在这里是单位（「猪肉二两」「二两酒」）：快速添加里它更常是数字（「两盒牛奶」），所以那边不认
-export const RECIPE_UNITS = ['两', '勺', '汤匙', '大勺', '小勺', '茶匙', '碗', '瓣', '撮', '滴', 'cup', 'cups', 'tbsp', 'tsp', 'tablespoon', 'tablespoons',
+// 「两」在这里是单位（「猪肉二两」「二两酒」）：快速添加里它更常是数字（「两盒牛奶」），所以那边不认。
+// 大匙、小匙、cc 是台湾食谱的写法（「醬油 2大匙」「水 200cc」）；cc 只在这里认：买东西时「鮮奶 936cc」说的是一瓶的大小
+export const RECIPE_UNITS = ['两', '勺', '汤匙', '大勺', '汤勺', '小勺', '茶匙', '大匙', '小匙', '碗', '瓣', '撮', '滴', 'cc', 'cup', 'cups', 'tbsp', 'tsp', 'tablespoon', 'tablespoons',
   'teaspoon', 'teaspoons', 'clove', 'cloves', 'pinch', 'slice', 'slices', 'stalk', 'stalks', 'sprig', 'sprigs'];
 
 /**

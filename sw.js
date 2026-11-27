@@ -1,6 +1,6 @@
 // 每次启动固定使用同一份完整缓存。新版安装时按 release.json 校验文件，等旧页面全部关闭后再启用。
 // 只管本网站的文件。同步（api.github.com）不经过这里，也不进缓存。
-const CACHE = 'picknest-v25';
+const CACHE = 'picknest-v26';
 // 程序文件全部预先缓存（tests/sw.test.mjs 检查这张表和磁盘上的文件、index.html、import 关系一致），第一次打开之后就能离线用
 const CORE = [
   './', './index.html', './styles.css',
@@ -11,7 +11,7 @@ const CORE = [
   './src/core/parse.js', './src/core/catalog.js', './src/core/memory.js', './src/core/items.js', './src/core/group.js', './src/core/lists.js',
   './src/core/stores.js', './src/core/categories.js', './src/core/dates.js', './src/core/sync.js', './src/core/backup.js', './src/core/deleted.js',
   './src/core/search.js', './src/core/shop.js', './src/core/wake.js', './src/core/listIcons.js', './src/core/recipes.js', './src/core/plan.js', './src/core/foods.js', './src/core/log.js',
-  './src/core/sha256.js', './src/core/blobStore.js', './src/core/photo.js',
+  './src/core/sha256.js', './src/core/blobStore.js', './src/core/photo.js', './src/core/nutrition.js', './src/data/nutrition.js',
   './src/strings/core.js', './src/strings/lists.js', './src/strings/items.js', './src/strings/stores.js', './src/strings/catalog.js', './src/strings/settings.js', './src/strings/recovery.js',
   './src/strings/sync.js', './src/strings/data.js', './src/strings/shop.js', './src/strings/search.js', './src/strings/recipes.js', './src/strings/plan.js', './src/strings/log.js',
   './src/ui/dom.js', './src/ui/recovery.js', './src/ui/form.js', './src/ui/listEditor.js', './src/ui/itemEditor.js', './src/ui/checklist.js', './src/ui/swipe.js', './src/ui/nameSheet.js', './src/ui/syncBadge.js', './src/ui/listTile.js', './src/ui/storeFilter.js',
