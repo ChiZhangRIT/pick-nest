@@ -2,7 +2,7 @@
 // 商店：「商店」页每家店还要买几样（storeCounts、storeRows）、一家店的页面（groupStore、clearStoreDone），设置里管商店（新增、改名、归档、删除、排顺序）。
 // 「这家店的东西」：没删除、所在的清单没删除也没归档的东西里，storeId 是这家店的。商店删掉了（或者根本没有这家）的东西算「未指定」（key null）：
 // storeId 不改，商店恢复了就回到原来那家（和清单页按商店分组、编辑面板显示「未指定」是同一个规则）。归档的商店照常算，只是不再出现在选择里。
-// 「商店」页、一家店、从商店进的购物模式可以只看一张清单（本机记住的 storeFilter，见 storeFilter）：下面这些都收一个 { listId }，null / 不给 = 所有清单。
+// 「商店」页、一家店可以只看一张清单（本机记住的 storeFilter，见 storeFilter）：下面这些都收一个 { listId }，null / 不给 = 所有清单。
 // 写法和 items.js 一样：直接改传进来的 state（在 ctx.mutate 里调用），记录经过 writeRecord（没变的不盖新时间）或 deletedRecord。
 // （store.js 是数据层：整理、合并、预置记录；这里是商店这件事本身。）
 import { newId, byOrder, writeRecord, deletedRecord, live, normName, moveInOrder, homeLists } from './store.js';
@@ -47,7 +47,7 @@ export function storeCounts(state, f = {}) {
 
 // ---------- 只看一张清单（picknest.local 的 storeFilter，不同步） ----------
 /**
- * 现在按哪张清单筛：「商店」页、每家店、从商店进的购物模式共用本机记住的一个（换了一家店还是看同一张清单，不用每家各选一次）。
+ * 现在按哪张清单筛：「商店」页、每家店共用本机记住的一个（换了一家店还是看同一张清单，不用每家各选一次）。
  * 记着的清单还在、没归档 → 它的 id；没记、认不出、删掉了、归档了 → null（所有清单），不提示：那张清单在店里本来就什么也看不到，
  * 留着「木工」只会让每家店都显示成空的。记着的值不在这里改（读的时候不写）：撤销删除、取消归档以后又按它筛
  * @param {State} state @param {{ storeFilter?: unknown } | null | undefined} local @returns {string | null}

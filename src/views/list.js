@@ -4,7 +4,7 @@
 // 规则都在 core：解析和添加（items.js、parse.js）、联想（memory.js）、分组排序（group.js）、清单操作（lists.js）。
 // 点左边的圆圈 = 勾掉 / 取消，点这一行别的地方 = 编辑：行和勾选的节奏（先在原地打勾，停一下再挪）在 ui/checklist.js，商店页也用它。
 // 行能左右滑（也在 ui/checklist.js）：往右露出「编辑」，往左露出「删除」，点了按钮才做；正在滑时数据变了，滑完再重画。
-// 顶栏右边「开始购物」进购物模式（#/l/<id>?shop=1，views/shop.js）。
+// 顶栏右边 ⋯：编辑清单、清除已买、「屏幕常亮」开关（ui/keepAwake.js，和商店页共用；开着时 ⋯ 左边一个「屏幕常亮中」的小标签）。
 // 食材清单上打字时，联想的最后还有「用到它的食谱」（core/recipes.js 的 recipesUsing，最多 3 道），点了打开「加到清单」（ui/addToList.js），默认加到这张清单。
 // ⌘N（别的系统 Ctrl+N）：光标放进快速添加（Babble、房屋账本的 ⌘N 是新建一条，这里新建的就是一样东西）；一栏的清单页、双栏右栏的清单页都算。
 import { h, icon, backText } from '../ui/dom.js';
@@ -21,8 +21,9 @@ import { setArchived, deleteList } from '../core/lists.js';
 import { checklist, foldSec, storeChip, groupSections } from '../ui/checklist.js';
 import { listSheet } from '../ui/listEditor.js';
 import { composing, isNewKey, isTextField } from '../ui/form.js';
+import { keepAwake } from '../ui/keepAwake.js';
 
-/** @param {{ swipe?: object }} [deps]  测试用：交给 ui/swipe.js 的 createSwipes 的 env（时钟、计时器、宽度、减少动态效果） */
+/** @param {{ swipe?: object, wake?: object }} [deps]  测试用：交给 ui/swipe.js 的 createSwipes 的 env（时钟、计时器、宽度、减少动态效果）；wake 交给 ui/keepAwake.js（假的 wakeLock、document） */
 export function render(main, params, ctx, deps = {}) {
   const listId = params.id;
   const list = () => liveList(ctx.state, listId);
@@ -44,11 +45,11 @@ export function render(main, params, ctx, deps = {}) {
 
   // ---------- 顶栏、页头 ----------
   // 顶栏和快速添加都吸顶：长清单滚下去也能返回、打开 ⋯
+  const moreBtn = h('button.icon-btn', { type: 'button', 'aria-label': t('common.more'), title: t('common.more'), dataset: { fid: 'lp-more' }, onclick: () => menu() }, icon('more'));
+  const awake = keepAwake(ctx, main, { ...deps.wake, focusTo: () => moreBtn });
   const navbar = h('header.navbar.lp-nav', null,
     h('button.back', { type: 'button', onclick: () => ctx.back('/') }, icon('back'), backText(ctx, t('nav.lists'))),     // 双栏右栏里 CSS 藏起来（左栏就是上一页）
-    h('div.nav-acts', null,
-      h('button.tb-btn.shop-btn', { type: 'button', dataset: { fid: 'lp-shop' }, onclick: () => ctx.navigate('/l/' + encodeURIComponent(listId) + '?shop=1') }, icon('cart'), t('shop.start')),
-      h('button.icon-btn', { type: 'button', 'aria-label': t('common.more'), title: t('common.more'), onclick: () => menu() }, icon('more'))));
+    h('div.nav-acts', null, awake.chip, moreBtn));
   const segBtns = ['category', 'store'].map(g => h('button', { type: 'button', dataset: { g, fid: 'lp-g-' + g },
     onclick: () => { if (view().groupBy !== g) { setView({ groupBy: g }); paintSeg(); keepFocus(drawBody); } } }, t(g === 'store' ? 'list.byStore' : 'list.byCat')));
   const seg = h('div.seg.lp-seg', { role: 'group', 'aria-label': t('list.groupBy') }, segBtns);
@@ -191,7 +192,8 @@ export function render(main, params, ctx, deps = {}) {
     if (!l) return;
     ctx.sheet((api) => {
       const item = (label, fn) => h('button.group-row.menu-row', { type: 'button', onclick: () => { api.close(); fn(); } }, h('span', null, label));
-      return h('div.group.menu', null, item(t('list.editTitle'), () => editList()), doneCount() ? item(t('list.clearDone'), () => clear()) : null);
+      return h('div.menu-groups', null, h('div.group.menu', null, item(t('list.editTitle'), () => editList()), doneCount() ? item(t('list.clearDone'), () => clear()) : null),
+        awake.menuGroup(api));
     }, { title: listName(l, t), cls: 'menu-sheet' });
   }
   function editList() {
@@ -248,6 +250,7 @@ export function render(main, params, ctx, deps = {}) {
       if (!sugBox.hidden) updateSugs();
     }),
     cleanup: () => {
+      awake.stop();
       document.removeEventListener('keydown', onShortcut);
       window.removeEventListener('scroll', onScroll, { capture: true });
       if (vv) { vv.removeEventListener('resize', fitSugs); vv.removeEventListener('scroll', fitSugs); }

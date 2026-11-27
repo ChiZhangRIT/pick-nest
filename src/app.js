@@ -4,10 +4,10 @@
 // export function render(main, params, ctx) → 清理函数 | { cleanup?(), onChange?(info), flush?(), land?() } | undefined
 //   main    空的容器（<section class="pane view view-<name>">，双栏时 .pane-list / .pane-detail，一栏 .pane-main），页面自己画标题和内容
 //   params  { name, path, id, sub, query, pane, selected, hash }
-//           name: 'lists' | 'list' | 'stores' | 'store' | 'shop' | 'search' | 'recipes' | 'recipe' | 'recipeEdit' | 'plan' | 'settings' | 'deleted'
+//           name: 'lists' | 'list' | 'stores' | 'store' | 'search' | 'recipes' | 'recipe' | 'recipeEdit' | 'plan' | 'settings' | 'deleted'
 //           #/ → lists（首页「清单」）；#/l/<listId> → list（一张清单，id；清单不在了由页面自己回首页）；
 //           #/stores → stores（「商店」）；#/s/<storeId> → store（一家店，id；#/s/none 是「未指定」；商店不在了由页面自己回「商店」）；
-//           #/l/<listId>?shop=1、#/s/<storeId>?shop=1 → shop（购物模式，id，sub 'list' | 'store'）；
+//           以前的 #/l/<listId>?shop=1、#/s/<storeId>?shop=1（第 6 步的大字页面，已经去掉）→ 照样是 list / store（不看 query）；
 //           #/search、#/search?q=<词> → search（query.q）；
 //           #/recipes → recipes（「食谱」）；#/r/<recipeId> → recipe（一道食谱，id；不在了由页面自己回「食谱」）；
 //           #/r/new → recipeEdit（新建，sub 'new'）；#/r/<recipeId>/edit → recipeEdit（改，id）；
@@ -15,7 +15,7 @@
 //           #/settings → settings（sub null）；#/settings/stores、/categories、/sync、/data、/goals → settings（sub 'stores' | 'categories' | 'sync' | 'data' | 'goals'）；
 //           #/deleted → deleted（最近删除，从设置首页「数据」那一组进去）；不认识的地址 → lists
 //           pane: 'main'（一栏）| 'list'（双栏左）| 'detail'（双栏右）；selected: 双栏时右栏正在看的清单 / 商店的 id（左栏高亮那一行）
-//   数据变了：页面返回了 onChange 就只调 onChange(info)，页面自己更新（清单页、一家店、搜索、购物模式、设置 → 多设备同步这样做：输入框不能被打断，勾选的节奏要跨重画记着；
+//   数据变了：页面返回了 onChange 就只调 onChange(info)，页面自己更新（清单页、一家店、搜索、设置 → 多设备同步这样做：输入框不能被打断，勾选的节奏要跨重画记着；
 //            设置首页也是：只改「最近删除」的数和下面那几句，不整页重画，键盘、读屏走到一半不被打断）；
 //            否则 app 把这个页面整个重画一遍（保留滚动位置；带 data-fid 的控件重画后恢复焦点）。
 //   flush：页面上点过、还没写进数据的（勾选要停一下才改数据）马上写进去。切到后台时 app 先调它，再决定要不要马上上传
@@ -26,14 +26,13 @@
 //     双栏（≥1000px，iPad 横放、Mac）：侧栏 + 两栏。#/、#/l/…、#/search 左栏是首页，右栏是那张清单 / 搜索（#/ 时右栏是提示）；
 //            #/stores、#/s/… 左栏是「商店」，右栏是那家店（#/stores 时是 App 图标 + 提示）；#/recipes、#/r/… 左栏是「食谱」，右栏是那道食谱 / 编辑食谱。
 //            右栏的返回由 CSS 藏起来（左栏就是上一页；编辑食谱的「取消」是 .back.text，照样显示）；别的页面（「日历」、设置……）一栏。
-//     购物模式不管哪种布局都占满整个窗口（没有底栏、侧栏）。
 //   换布局（转 iPad、拉窗口）：同一栏的页面原样留着；要换栏时，有 onChange 的页面（清单页、一家店、搜索）整个搬过去（params.pane / selected 原地更新），
 //            输入框里打了一半的字、焦点都不丢；其余重画。要随布局变化的页面听 ctx.on('layout')。
 //
 // ===== ctx =====
 // 数据（src/core/state.js 的包装；改数据一律走这些，app 会保存、重画）
 //   ctx.state                  当前数据（只读）：{ app, v, data: { lists, items, stores, categories, memory, recipes, plan, foods, log }, settings, settingsAt }
-//   ctx.local                  本机设置 picknest.local（只读）：{ lang, theme, device, sync, lastBackupAt, view, storeView, storeFilter, planView }
+//   ctx.local                  本机设置 picknest.local（只读）：{ lang, theme, device, sync, lastBackupAt, view, storeView, storeFilter, planView, keepAwake }
 //   ctx.mutate(fn, { undoLabel })  fn(state) 直接改（同步函数），返回 fn 的返回值；修改时间自动补；给 undoLabel 会弹 10 秒「撤销」提示
 //   ctx.put(collection, rec, { undoLabel })   新建（没有 id 就生成）或整条替换：整理字段、盖修改时间，返回存好的记录。
 //                              内容和原来一样就什么也不做（不盖新时间、不进撤销）；id 不符合 safeKey 直接抛错
@@ -104,7 +103,6 @@ import * as stores from './views/stores.js';
 import * as store from './views/store.js';
 import * as settings from './views/settings.js';
 import * as deleted from './views/deleted.js';
-import * as shop from './views/shop.js';
 import * as search from './views/search.js';
 import * as recipes from './views/recipes.js';
 import * as recipe from './views/recipe.js';
@@ -112,7 +110,7 @@ import * as recipeEdit from './views/recipeEdit.js';
 import * as plan from './views/plan.js';
 import { liveRecipe, recipeName } from './core/recipes.js';
 
-const VIEWS = { lists, list, stores, store, shop, search, recipes, recipe, recipeEdit, plan, settings, deleted };
+const VIEWS = { lists, list, stores, store, search, recipes, recipe, recipeEdit, plan, settings, deleted };
 const SETTINGS_SUBS = ['stores', 'categories', 'sync', 'data', 'goals'];
 const THEME_COLOR = { light: '#f6f5f0', dark: '#121412' };          // 和 styles.css 的 --bg 一样：状态栏和页面连成一片
 const ID_PREFIX = { lists: 'l_', items: 'i_', stores: 's_', categories: 'c_', memory: 'm_', recipes: 'r_', plan: 'p_', foods: 'f_', log: 'e_' };
@@ -136,13 +134,12 @@ function parseRoute(hash) {
   const [a] = path;
   let r;
   // 设置里没有的子页面（以后才有的页面的旧链接）当成设置首页：不然既没有底栏、也没有返回
-  // 购物模式是清单页 / 商店页带上 ?shop=1：地址里记着，重新载入还在购物模式；去掉它就回到普通的那一页
-  const shopping = query.shop === '1';
   if (a === 'settings') r = { name: 'settings', sub: SETTINGS_SUBS.includes(path[1]) ? path[1] : null };
   else if (a === 'deleted') r = { name: 'deleted' };
-  else if (a === 'l' && path[1]) r = shopping ? { name: 'shop', sub: 'list', id: path[1] } : { name: 'list', id: path[1] };
+  // 以前清单页 / 商店页带上 ?shop=1 是另一个大字的页面（已经去掉：勾选和平时一样）。历史记录、书签里的旧地址不看 query，打开的就是普通的那一页
+  else if (a === 'l' && path[1]) r = { name: 'list', id: path[1] };
   else if (a === 'stores') r = { name: 'stores' };
-  else if (a === 's' && path[1]) r = shopping ? { name: 'shop', sub: 'store', id: path[1] } : { name: 'store', id: path[1] };
+  else if (a === 's' && path[1]) r = { name: 'store', id: path[1] };
   else if (a === 'search') r = { name: 'search' };
   else if (a === 'recipes') r = { name: 'recipes' };
   else if (a === 'r' && path[1] === 'new') r = { name: 'recipeEdit', sub: 'new' };
@@ -454,9 +451,9 @@ function renderShell(r) {
   document.body.dataset.route = r.name;
   document.body.dataset.layout = layout();
   document.body.dataset.tabs = TOP_LEVEL(r) ? '1' : '0';
-  // 清单页算在「清单」下面，一家店算在「商店」下面，一道食谱、编辑食谱算在「食谱」下面，购物模式算在它来的那一边，最近删除算在「设置」下面
+  // 清单页算在「清单」下面，一家店算在「商店」下面，一道食谱、编辑食谱算在「食谱」下面，最近删除算在「设置」下面
   const cur = r.name === 'list' ? 'lists' : r.name === 'store' ? 'stores' : r.name === 'recipe' || r.name === 'recipeEdit' ? 'recipes'
-    : r.name === 'shop' ? (r.sub === 'store' ? 'stores' : 'lists') : r.name === 'deleted' ? 'settings' : r.name;
+    : r.name === 'deleted' ? 'settings' : r.name;
   const item = (id, href, ic, label, onclick = null) => h('a.nav-item' + (cur === id ? '.on' : ''), { href, onclick, 'aria-current': cur === id ? 'page' : null }, ic, h('span', null, label));
   const tab = (id, href, ic, label) => h('a.tab' + (cur === id ? '.on' : ''), { href, 'aria-current': cur === id ? 'page' : null }, ic, h('span', null, label));
   $('#side').replaceChildren(

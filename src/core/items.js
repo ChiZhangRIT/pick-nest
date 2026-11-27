@@ -323,7 +323,7 @@ export function setStatus(state, id, status, now = Date.now()) {
 
 /**
  * 已买的取消勾选回到哪：刚从「以后再说」勾掉的（UNTICK_MS 之内）回「以后再说」——点错了再点一下就是没点过，不能悄悄变成「要买」
- * （进了「还要买 N」、购物模式）；别的、隔久了的回「要买」（又要买了）
+ * （进了「还要买 N」）；别的、隔久了的回「要买」（又要买了）
  * @param {State} state @param {Item} it @param {number} [now] @returns {ItemStatus}
  */
 export function untickStatus(state, it, now = Date.now()) {
@@ -339,7 +339,7 @@ export function toggleDone(state, id, now = Date.now()) {
 
 /**
  * @typedef {'edit' | 'delete'} SwipeAction
- * 一行左右滑露出哪些按钮（ui/checklist.js 照这个画，清单页、商店页、搜索、购物模式一样；按钮都要点一下才做，见 ui/swipe.js）：
+ * 一行左右滑露出哪些按钮（ui/checklist.js 照这个画，清单页、商店页、搜索一样；按钮都要点一下才做，见 ui/swipe.js）：
  *   往右滑（左边）：「编辑」——和点这一行打开的是同一个面板；
  *   往左滑（右边）：红色的「删除」——和编辑面板里的「删除」是同一件事（进最近删除、能撤销）。
  * 每一行都一样（哪张清单、什么状态都是）：以前往右是「以后再说」/「移回要买」、往左是「编辑」「删除」两个，

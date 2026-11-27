@@ -1,4 +1,4 @@
-// 清单的图标方块（首页、清单页、双栏、商店页和搜索里的来源小标签、搜索的组名、购物模式、最近删除、编辑清单的面板都用这一个）：
+// 清单的图标方块（首页、清单页、双栏、商店页和搜索里的来源小标签、搜索的组名、最近删除、编辑清单的面板都用这一个）：
 // 圆角方块，底是色调的浅色、图标是色调的深色（深色模式两样都换，见 styles.css 的 .tint-*）。规则（存什么、默认什么）在 core/listIcons.js。
 // 图标和 ui/dom.js 的界面图标同一套画法：24×24、线条、圆头圆角，只用大的几何形状——最小的地方（商店页的来源标签）只有十几像素，细节会糊成一团。
 import { h } from './dom.js';
@@ -80,7 +80,7 @@ export function glyph(key) {
 
 /**
  * 一张清单（或者面板里还没存的 { kind, icon, glyph, color }）的图标方块：<span class="list-tile tint-绿 …">。
- * cls 是各处的大小（.list-icon 首页 36、.lp-icon 清单页 46、.sr-list-ic 搜索 28、.list-chip-ic 小标签、.shop-icon 购物模式、.le-preview 面板）；
+ * cls 是各处的大小（.list-icon 首页 36、.lp-icon 清单页 46、.sr-list-ic 搜索 28、.list-chip-ic 小标签、.le-preview 面板）；
  * 方块给眼睛看（aria-hidden），读屏念旁边的清单名
  */
 export function listTile(list, cls = '') {

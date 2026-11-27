@@ -1,16 +1,18 @@
 // 真实 App（src/app.js）在假 DOM 里的三种布局：手机 / 侧栏 / 双栏（≥1000），换布局时有输入框的页面整个搬过去（打了一半的字、焦点不丢），
-// 双栏左栏高亮右边正在看的那一张 / 那一家，搜索在右栏、打字只换地址栏不重画，购物模式不管哪种布局都是一栏。全是编的数据
+// 双栏左栏高亮右边正在看的那一张 / 那一家，搜索在右栏、打字只换地址栏不重画；以前的购物模式地址打开普通的页面，屏幕常亮跟着清单页、商店页。全是编的数据
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Element, all, fakeStorage, installDom } from './helpers/dom.mjs';
+import { fakeWake } from './helpers/wake.mjs';
 
-test('换布局、双栏、搜索、购物模式：页面不被拆掉，左栏高亮，地址栏跟着搜索词', async () => {
+test('换布局、双栏、搜索、旧的购物模式地址、屏幕常亮：页面不被拆掉，左栏高亮，地址栏跟着搜索词', async () => {
   const storage = fakeStorage();
   const loc = { hash: '#/l/l_groceries', protocol: 'http:' };
   const media = {};
   const mq = q => (media[q] ||= { matches: false, listeners: [], addEventListener(type, fn) { this.listeners.push(fn); } });
+  const wake = fakeWake();
   const dom = installDom({ localStorage: storage, location: loc, history: { state: {}, replaceState(s, title, hash) { loc.hash = hash; }, back() {} },
-    navigator: { languages: ['zh-CN'], locks: { request: async (name, fn) => fn() } },
+    navigator: { languages: ['zh-CN'], locks: { request: async (name, fn) => fn() }, wakeLock: wake.wakeLock },
     matchMedia: mq, setTimeout: () => 0, setInterval: () => 0, getComputedStyle: () => ({ bottom: '24px' }), requestAnimationFrame: () => 0,
     MutationObserver: class { observe() {} disconnect() {} }, CSS: { escape: String } });
   try {
@@ -151,27 +153,33 @@ test('换布局、双栏、搜索、购物模式：页面不被拆掉，左栏�
     resize(1180);
     assert.equal(main.querySelector('.search-input'), q);
 
-    // 购物模式：双栏也是一栏、没有底栏；地址里带着 ?shop=1
+    // 以前的购物模式地址（#/l/<id>?shop=1、#/s/<id>?shop=1；历史记录、书签里可能还有）：打开的就是普通的清单页 / 商店页，不出错
     await go('#/l/l_groceries?shop=1');
-    assert.deepEqual([body.dataset.route, main.dataset.panes], ['shop', '1']);
-    assert.deepEqual(panes(), ['pane pane-main view view-shop']);
-    assert.equal(main.querySelector('.shop-name').textContent, '食材');
-    resize(390);
-    assert.deepEqual([body.dataset.route, body.dataset.tabs], ['shop', '0']);
-    assert.equal(dom.doc.querySelector('#tabs').querySelector('.on').attrs.href, '#/', '购物模式算在清单这一边');
+    assert.deepEqual([body.dataset.route, main.dataset.panes], ['list', '2']);
+    assert.deepEqual(panes(), ['pane pane-list view view-lists', 'pane pane-detail view view-list']);
+    assert.equal(main.children[1].querySelector('.lp-name').textContent, '食材');
     await go('#/s/s_wholefoods?shop=1');
-    assert.equal(main.querySelector('.shop-name').textContent, 'Whole Foods');
-    // 清单页、商店页（含「未指定」）的「开始购物」进的就是这个地址
+    assert.deepEqual(panes(), ['pane pane-list view view-stores', 'pane pane-detail view view-store']);
+    assert.equal(main.children[1].querySelector('.lp-name').textContent, 'Whole Foods');
+    resize(390);
+    await go('#/s/none?shop=1');
+    assert.deepEqual([body.dataset.route, body.dataset.tabs, main.querySelector('.lp-name').textContent], ['store', '0', '未指定']);
+    assert.equal(main.querySelector('.shop-btn'), null, '没有「开始购物」了');
+
+    // 屏幕常亮（本机开关，默认关）：开着时清单页、商店页上要常亮；清单页 ↔ 商店页换页时先放掉再要；去别的页面放掉
+    const many = async () => { for (let i = 0; i < 10; i++) await settle(); };
     await go('#/l/l_groceries');
-    main.querySelector('.shop-btn').fire('click');
-    assert.equal(loc.hash, '#/l/l_groceries?shop=1');
-    assert.equal(body.dataset.route, 'shop');
-    for (const id of ['s_costco', 'none']) {
-      await go('#/s/' + id);
-      assert.equal(body.dataset.route, 'store');
-      main.querySelector('.shop-btn').fire('click');
-      assert.equal(loc.hash, '#/s/' + id + '?shop=1');
-      assert.deepEqual([body.dataset.route, main.querySelector('.shop-name').textContent], ['shop', id === 'none' ? '未指定' : 'Costco']);
-    }
+    await many();
+    assert.deepEqual([wake.requests, main.querySelector('.awake-chip').hidden], [0, true], '默认关着：不要');
+    window.__picknest.state.setLocal({ keepAwake: true });
+    await go('#/s/s_costco');
+    await many();
+    assert.deepEqual([wake.requests, wake.released, main.querySelector('.awake-chip').hidden], [1, 0, false]);
+    await go('#/l/l_tobuy');
+    await many();
+    assert.deepEqual([wake.requests, wake.released], [2, 1]);
+    await go('#/recipes');
+    await many();
+    assert.deepEqual([wake.requests, wake.released], [2, 2], '离开清单页、商店页：放掉');
   } finally { dom.restore(); }
 });

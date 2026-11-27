@@ -1,4 +1,4 @@
-// 一行左右滑（src/ui/swipe.js 接到 ui/checklist.js 的行上）：清单页、商店页、搜索、购物模式。最小 DOM + 真的 state.js，事件按捕获 → 冒泡派发。
+// 一行左右滑（src/ui/swipe.js 接到 ui/checklist.js 的行上）：清单页、商店页、搜索。最小 DOM + 真的 state.js，事件按捕获 → 冒泡派发。
 //   每一行都是往右滑露出「编辑」、往左滑露出红色的「删除」（哪张清单、什么状态都一样；没有「以后再说」「移回要买」）。
 //   滑只是露出按钮，点了按钮才做：拖得再远、甩得再快、被打断、触控板猛扫都只是开着或者关上；
 //   删除和编辑面板里的一样（进「最近删除」、10 秒「撤销」），编辑打开点这一行的那个面板；点开着的行（圆圈、别处）只是关上（不勾掉、不打开）；同一时间只开一行；
@@ -9,7 +9,6 @@ import assert from 'node:assert/strict';
 import * as listView from '../src/views/list.js';
 import * as storeView from '../src/views/store.js';
 import * as searchView from '../src/views/search.js';
-import * as shopView from '../src/views/shop.js';
 import { SWIPE } from '../src/ui/swipe.js';
 import * as state from '../src/core/state.js';
 import { normalizeRecord, deletedRecord } from '../src/core/store.js';
@@ -105,7 +104,7 @@ function setup({ page = 'list', params = { id: 'l_groceries' }, reduce = false }
     if (info.undoLabel) ctx.toast(info.undoLabel, { ms: 10000, action: { label: t('common.undo'), run: () => state.undo() } });
     queueMicrotask(() => { if (env.handle && env.handle.onChange) env.handle.onChange(info); });
   });
-  const views = { list: listView, store: storeView, search: searchView, shop: shopView };
+  const views = { list: listView, store: storeView, search: searchView };
   env.main = new Element('section');
   env.handle = views[page].render(env.main, { name: page, query: {}, ...params }, ctx, { swipe });
   Object.assign(env, {
@@ -488,7 +487,7 @@ test('拖着的时候数据变了（同步进来）：滑完再重画，手底�
   } finally { env.done(); }
 });
 
-test('商店页、搜索、购物模式的行也一样能滑：往右编辑、往左删除', async () => {
+test('商店页、搜索的行也一样能滑：往右编辑、往左删除；离开页面时等动画的删除马上做完', async () => {
   const store = setup({ page: 'store', params: { id: 's_wholefoods' } });
   try {
     const w = store.row('台灯');
@@ -516,21 +515,21 @@ test('商店页、搜索、购物模式的行也一样能滑：往右编辑、�
     search.flush();
     assert.equal(!!raw('i_desk').deleted, true);
   } finally { search.done(); }
-  const shop = setup({ page: 'shop', params: { sub: 'list', id: 'l_tobuy' } });
+  // 离开页面时等动画的删除马上做完，不会丢（清单页的 cleanup）
+  const lp = setup({ page: 'list', params: { id: 'l_tobuy' } });
   try {
-    const w = shop.row('椅子');
-    openRow(shop, w, 1);
-    tap(shop, btnOf(w, 'sw-edit'));
-    assert.equal(shop.sheets.length, 1, '购物模式里也能打开编辑面板');
-    shop.sheets[0].close();
-    shop.clock.t += 1000;
-    openRow(shop, w, -1);
-    tap(shop, btnOf(w, 'sw-del'));
-    // 离开页面时等动画的删除马上做完，不会丢
-    shop.handle.cleanup();
-    shop.handle = null;
+    const w = lp.row('椅子');
+    openRow(lp, w, 1);
+    tap(lp, btnOf(w, 'sw-edit'));
+    assert.equal(lp.sheets.length, 1, '往右照样打开编辑面板');
+    lp.sheets[0].close();
+    lp.clock.t += 1000;
+    openRow(lp, w, -1);
+    tap(lp, btnOf(w, 'sw-del'));
+    lp.handle.cleanup();
+    lp.handle = null;
     assert.equal(!!raw('i_chair').deleted, true);
-  } finally { shop.done(); }
+  } finally { lp.done(); }
 });
 test('和勾选的节奏一起：勾了马上滑开，勾在滑的时候就到时间、照常改成已买（重画等滑完）；接着点「删除」删的是已买的那一样，撤销回到已买；在别的行上滑着的时候，勾的那一行等滑完再挪；切到后台时等动画的删除马上做', async () => {
   const env = setup();

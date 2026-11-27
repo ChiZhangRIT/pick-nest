@@ -83,7 +83,6 @@ export function listView(local, listId) {
 
 /**
  * 改一张清单的显示方式：返回给 ctx.setLocal 的 { view }（本机设置是浅合并，view 要整个换；别的清单的原样留着）。
- * 购物模式只读 groupBy（和清单页一样分组），「已买」折没折它自己管（每次进去都是折起来的）
  * @param {{ view?: Record<string, any> } | null | undefined} local @param {string} listId @param {Partial<ReturnType<typeof listView>>} patch
  */
 export function listViewPatch(local, listId, patch) {

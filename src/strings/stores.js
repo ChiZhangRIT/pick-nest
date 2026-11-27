@@ -22,7 +22,7 @@ export const STRINGS = {
     'store.noActive': '没有在用的商店。', 'store.archivedN': '已归档（{n}）',
     // 宽屏双栏：右栏还没选商店时
     'store.pick': '选一家店，在那儿要买的东西显示在这里',
-    // 只看一张清单（「商店」页、一家店、购物模式上面的按钮和面板）
+    // 只看一张清单（「商店」页、一家店上面的按钮和面板）
     'store.filterAll': '所有清单', 'store.filterTitle': '看哪张清单', 'store.filterAria': '看哪张清单：{name}',
     'store.filterHelp': '选一张清单，「商店」页的数和每家店里的东西就只算这张。这台设备会记住。',
     'store.filterHelpHere': '数字是在这家店还要买几样。选了的清单换一家店也照样用，这台设备会记住。',

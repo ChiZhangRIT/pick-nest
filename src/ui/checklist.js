@@ -1,4 +1,4 @@
-// 能勾的一行和勾选的节奏：清单页（views/list.js）、商店页（views/store.js）、购物模式（views/shop.js）、搜索（views/search.js）共用。
+// 能勾的一行和勾选的节奏：清单页（views/list.js）、商店页（views/store.js）、搜索（views/search.js）共用。
 // 一行：左边的大圆勾 + 名字（下面一行是页面给的小标签——清单页标商店、商店页标来自哪张清单——和备注的第一行）+ 数量 + ›。
 // 数量是自己加的和各道菜的加起来（core/items.js 的 totalLabel：「洋葱 2 个 + 200 g」），四种页面一样。
 // 只有点左边的圆圈才勾掉 / 取消（以前点整行就勾，推着车、滚着页面很容易误勾）；点这一行别的地方打开编辑面板（ui/itemEditor.js），› 只是提示。
@@ -214,7 +214,7 @@ export function foldSec(key, title, open, onToggle, content, extra = null) {
     open ? content() : null);
 }
 
-// ---------- 行里的小标签、组名、分好的组（清单页、商店页、购物模式、搜索一样） ----------
+// ---------- 行里的小标签、组名、分好的组（清单页、商店页、搜索一样） ----------
 const storeNameOf = (ctx, id) => (storeExists(ctx.state, id) ? ctx.state.data.stores[id].name : '');
 /**
  * 商店小标签：只标和清单默认商店不一样的（每行都写「Whole Foods」等于没写，例外的「H Mart」反而看不出来）。

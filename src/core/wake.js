@@ -1,10 +1,21 @@
 // @ts-check
-// 购物模式的屏幕常亮（Screen Wake Lock，navigator.wakeLock）：进购物模式时要一次；切到后台时系统会收回，切回来（visibilitychange → visible）再要；
-// 离开购物模式时放掉。浏览器不支持（旧的 iOS 等）就什么也不做，被拒绝（低电量模式之类）也一样——不影响购物，页面最下面淡淡地说一句。
+// 屏幕常亮（Screen Wake Lock，navigator.wakeLock）：清单页、商店页上开着「屏幕常亮」（⋯ 里的开关，ui/keepAwake.js）时，进这一页要一次；
+// 切到后台时系统会收回，切回来（visibilitychange → visible）再要；离开这一页、关掉开关时放掉。
+// 浏览器不支持（旧的 iOS 等）就什么也不做，被拒绝（低电量模式之类）也一样——不影响勾东西，页面上淡淡地说一句。
+// 以前只在第 6 步那个单独的大字页面里用；那一页去掉了（勾选和平时一样，不需要另一页），留下的只有常亮，换成本机记住的开关（keepAwakeOn / keepAwakePatch）。
 // navigator.wakeLock、document 都由调用的地方给（测试用假的），这里不碰 DOM。
 //
 // 状态（status()，变了调 onChange）：
 //   'unsupported' 没有 navigator.wakeLock；'asking' 正在要；'on' 拿到了；'off' 没在用（还没开始、已经放掉、被系统收回）；'denied' 要了没给
+
+/**
+ * 本机设置里开没开（picknest.local 的 keepAwake）：只有 true 算开，没有这一项（旧版存的）、认不出的值都是关着。
+ * 默认关：常亮费电，而且只有在店里推着车时才需要；Mac、iPad 上一般用不着
+ * @param {{ keepAwake?: unknown } | null | undefined} local
+ */
+export const keepAwakeOn = (local) => !!(local && local.keepAwake === true);
+/** 给 ctx.setLocal 的改动（只记这台设备，不同步：手机上开着、Mac 上关着都可以） @param {boolean} on */
+export const keepAwakePatch = (on) => ({ keepAwake: on === true });
 
 /** @typedef {'unsupported' | 'asking' | 'on' | 'off' | 'denied'} WakeStatus */
 /**
@@ -36,7 +47,7 @@ export function screenWake({ wakeLock = null, doc = null, onChange = () => {} } 
     try {
       const s = await /** @type {any} */ (wakeLock).request('screen');
       asking = false;
-      if (!running) { drop(s); return; }            // 要到之前已经离开了购物模式
+      if (!running) { drop(s); return; }            // 要到之前已经离开了这一页（或者关掉了开关）
       sentinel = s;
       // 系统收回（切到后台、锁屏、低电量）：记成没在用，切回来再要。自己放掉的（stop）已经先把 sentinel 清掉了，不算
       if (s && typeof s.addEventListener === 'function') s.addEventListener('release', () => { if (sentinel === s) { sentinel = null; set('off'); } });
@@ -49,7 +60,7 @@ export function screenWake({ wakeLock = null, doc = null, onChange = () => {} } 
   function onVis() { if (visible()) request(); }
 
   return {
-    /** 进购物模式 */
+    /** 进清单页 / 商店页（开着开关时），或者刚打开开关 */
     start() {
       if (running) return;
       running = true;
@@ -57,7 +68,7 @@ export function screenWake({ wakeLock = null, doc = null, onChange = () => {} } 
       if (doc && typeof doc.addEventListener === 'function') doc.addEventListener('visibilitychange', onVis);
       request();
     },
-    /** 离开购物模式：放掉，不再听切回来 */
+    /** 离开这一页、关掉开关：放掉，不再听切回来 */
     stop() {
       if (!running) return;
       running = false;

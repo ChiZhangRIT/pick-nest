@@ -157,7 +157,7 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 - **拿掉一个来源**（`removeNeeds(state, source, now, { skip })`：计划里删掉一道菜、改人数、换食谱、再生成一次时拿掉旧的；`<来源>#2` 这些一起拿掉；`skip(it)` 为真的先不动——接着要用 `addNeeds` 就地换成新的用量）：只动「要买」「以后再说」的东西，已买、已清除的不动（买过的历史留着）；拿掉以后自己加的是 `null` 或 0、而且 `needs` 空了 → 这样东西本来就只是为这道菜加的，软删除；还有别的就留着。整个操作在一次 `ctx.mutate` 里，带撤销
 - **改人数**（计划里的一道菜）：还没买、已经在清单上的那几份（名字和单位对得上食谱的）按新的人数就地换掉这个来源的那一份（只交给 `addNeeds`，别的不动，不先删再加），见下面 plan「清单跟着计划变」
 - **勾成已买、清除已买**：`needs` 不改（已买的东西上留着这一轮是为哪几道菜买的）。这一轮买过了就不再算：再加回来时清空——从食谱加（`addNeeds`，上面「已买或已清除」那条）、快速添加或点联想（`addItem` 的 `'restored'`，见下面「固定 id」）都是；已买的**隔了 `UNTICK_MS`（30 分钟）才取消勾选**（又要买了：`setStatus`、编辑面板里改状态）也清空。留着的话再从食谱加一次会算两遍（「1 + 400 g」），计划里删掉那道旧菜还会把又要买的东西拿掉。刚勾上就取消是点错了，照原样放回去；从「以后再说」恢复的（还没买过）也留着。清空时上一轮里计划的来源记进 `boughtFor`（上面 items）：不然周一为红烧肉买过的洋葱，周三因为咖喱又加回清单以后，再生成一次购物清单，红烧肉的洋葱又成了没买过的、默认勾上放回清单（每生成一次就多一份）
-- **显示**：`qtyParts(item)` → `[{ qty, unit }]`（自己加的那一份在前，别的按 `needs` 里出现的先后，单位用先出现的写法），`totalLabel(item)` 用「 + 」连起来；清单页、一家店、搜索、购物模式的每一行都是它（`ui/checklist.js`），每份不拆开折行。`needsOf(item)` → `[[键, { qty, unit, label, recipeId }]]`（编辑面板列出来；坏的来源跳过）
+- **显示**：`qtyParts(item)` → `[{ qty, unit }]`（自己加的那一份在前，别的按 `needs` 里出现的先后，单位用先出现的写法），`totalLabel(item)` 用「 + 」连起来；清单页、一家店、搜索的每一行都是它（`ui/checklist.js`），每份不拆开折行。`needsOf(item)` → `[[键, { qty, unit, label, recipeId }]]`（编辑面板列出来；坏的来源跳过）
 - **编辑面板**：有 `needs` 时数量那一项叫「自己加的」（改的只是 `qty`、`unit`），下面「来自食谱」列出每一份（菜名用抄下来的 `label`，空的用食谱现在的名字；计划里的菜（`p:<id>`，那道菜还在）后面写哪一天「燕麦粥 · 11月23日 周一」，读屏的「拿掉」也一样：同一道菜排了两天是两份），每份能拿掉：点「保存」时交 `dropNeeds: [键…]`，`validateItemPatch` 换成 `clean.needs`（这时的 `needs` 去掉它们）。拿掉以后什么都不剩也照样留着（面板里的「保存」只改看得到的；不要了用「删除」）
 - 合并（多台设备）：`needs`、`boughtFor` 是记录的字段，照整条取较新的（一台勾成已买、另一台不知道又改了的例外，见上面「合并」的 `boughtMeanwhile`）；各自从头建的同一条（`mergeRecord`）里，状态、`needs` 先照同一条的规则定（购买算数），两条都还没买（要买 / 以后再说、没删除）时两边的 `needs` 合在一起（同一个来源（连同 `#2`）只用一条的，较新那条有就用它的；两条上买过的那几份都不要，见上面「合并」的「哪几份算买过」）；`boughtFor` 两条的都留（同一道取晚的时间），另一条是已买、已清除的，它那一轮计划的来源（不带过来）也记进去（较新的那条自己还是已买、`needs` 里还带着的不重复记，再合并一次结果一样）。从备份恢复也是这条路
 
@@ -394,7 +394,7 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 - **这家店的东西**：没删除、所在的清单没删除**也没归档**的东西里，`storeId` 是这家店的。`storeId` 是 `null`、指向删掉的或者不存在的商店：算「未指定」
 - **还要买几样** `storeCounts`：只数 `status: 'need'`（以后再说、已买不算）。「商店」页的行 `storeRows`：没归档的商店按顺序（0 样的也列；只看一张清单时 0 样的不列，没列的有几家用 `emptyStoresIn`）；归档的商店只在还有要买的时候列，排在后面；最后「未指定」（有要买的才列）
 - **一家店的页面** `groupStore`：要买的按分类分组（和清单页同一个 `group.js` 的 `groupItems`），已买的 `doneAt` 新的在前；「清除已买」`clearStoreDone` 只软删除这一页上的已买
-- **只看一张清单**：`shoppingItems`、`storeCounts`、`storeRows`、`groupStore`、`clearStoreDone`（还有 `shop.js` 的 `shopProgress`）最后都收一个 `{ listId }`，`null` / 不给 = 所有清单。给了就只算这张清单上的：数、「商店」页哪家归档的店 / 「未指定」要列出来、要买的、已买的、清除已买（只清看得到的，别的清单在这家买到的不动）都一样。`listId` 原样用（删掉、归档的清单上本来什么也看不到）；页面先用 `storeFilter(state, local)` 取本机记着的（见下面「本机设置」），那张清单不在了它返回 `null`
+- **只看一张清单**：`shoppingItems`、`storeCounts`、`storeRows`、`groupStore`、`clearStoreDone` 最后都收一个 `{ listId }`，`null` / 不给 = 所有清单。给了就只算这张清单上的：数、「商店」页哪家归档的店 / 「未指定」要列出来、要买的、已买的、清除已买（只清看得到的，别的清单在这家买到的不动）都一样。`listId` 原样用（删掉、归档的清单上本来什么也看不到）；页面先用 `storeFilter(state, local)` 取本机记着的（见下面「本机设置」），那张清单不在了它返回 `null`
 - **选清单的面板** `storeFilterOptions(state, { storeId })` → `[{ id: null, list: null, n }, { id, list, n }…]`：「所有清单」在最前（`n` 是各张加起来），然后首页上的清单（`homeLists`：没删除、没归档，首页的顺序），`n` = 还要买几样；给了 `storeId`（`null` = 未指定）只数在这家店的，不给是所有店加起来
 - **名字**：不能空，不能和别的没删除的商店 `normName` 一样（删掉的不算）。预置商店也能改名、删除
 - **新增**：`order` = 现有的（没删除的，归档的也算）最大的 + 1，id `newId('s_')`
@@ -425,14 +425,13 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 - 「已买」：`doneAt` 新的在前
 - 在 `core/group.js` 的 `groupNeed`；分组本身是 `groupItems`，商店页（`core/stores.js` 的 `groupStore`，按分类分组）也用它
 
-## 购物模式（core/shop.js）
+## 屏幕常亮（core/wake.js）
 
-不存任何东西：是清单页 / 商店页的地址带上 `?shop=1`（`#/l/<id>?shop=1`、`#/s/<id>?shop=1`、`#/s/none?shop=1`），重新载入还在。显示的东西和普通页面一样分组（清单用 `groupNeed`、按这张清单的 `groupBy`；一家店用 `groupStore`），只是不显示「以后再说」。
+不进同步的数据、不进备份：只有本机设置 `picknest.local` 的 `keepAwake`（见下面「本机设置」），清单页、商店页 ⋯ 里的开关改它（`keepAwakePatch(on)` 交给 `ctx.setLocal`），读的时候一律用 `keepAwakeOn(local)`（只有 `true` 算开：旧版存的本机设置没有这一项，就是关着）。
 
-- **进度** `shopProgress(state, 'list' | 'store', id, { listId })` → `{ done, left, total, finished }`：清单 = 这张清单上没删除的 `need`（还剩）和 `done`（已买），用 `items.js` 的 `countItems`；一家店 = `groupStore` 里的（归档的清单不算，删掉的商店算「未指定」；商店页只看一张清单时给 `listId`，只数这张，清单的购物模式不用）。`以后再说` 不算。`finished` = 没有还剩的、而且有已买的（空的一页不算「买齐了」）。已买包括以前勾掉还没清除的（它们也在「已买」里），「清除已买」以后从 0 算
-- 勾掉、放回去、清除已买用的就是 `setStatus`、`clearDone`、`clearStoreDone`（勾掉时照样记 memory）
-- 「已买」每次进购物模式都是折起来的，点开只管这一次（页面里记着，不存）：不读不写普通页面的 `view[listId].showDone`、`storeView`，本机设置只读 `view[listId].groupBy`（分组和清单页一样）
-- 屏幕常亮（`core/wake.js` 的 `screenWake`，`navigator.wakeLock`、`document` 由页面传进去）：只是浏览器的 Screen Wake Lock，不存东西、不同步
+- 开着时清单页、商店页（`ui/keepAwake.js`，一页一个）进来就用 `screenWake` 要 Screen Wake Lock（`navigator.wakeLock.request('screen')`）；切到后台系统收回，切回来（`visibilitychange` → `visible`）再要；页面的 `cleanup`、关掉开关时放掉，不再听切回来。别的页面不要
+- 不支持（没有 `navigator.wakeLock`）：⋯ 里那一行不是开关，只说做不到；被拒绝：顶栏淡淡地写一句，在页面上点一下（`click`）再要
+- 以前有一个单独的购物模式（`#/l/<id>?shop=1`、`#/s/<id>?shop=1`，第 6 步，进度是 `core/shop.js` 的 `shopProgress`），已经去掉；它从来不存东西，所以没有要迁移的数据。旧地址照样打开普通的清单页 / 商店页（`app.js` 的 `parseRoute` 不看 query）
 
 ## 搜索（core/search.js）
 
@@ -449,13 +448,14 @@ V1 沿用 babble：**逐条记录比 `updatedAt`，取较新的整条**；时间
 { lang: null, theme: 'auto', device: null, lastBackupAt: null, tabNoteOff: false,
   sync: null | { repo: 'owner/pick-nest-data', token: 'github_pat_…', tokenExp: null /* 用户填的到期日 23:59 */,
                  sha, etag, dirty, at /* 上次同步成功 */, err: null | { code, vars }, offline },
-  view: { [listId]: { groupBy: 'category' | 'store', showDone: true, showLater: true } },   // 认不出的值按默认（core/group.js 的 listView）；购物模式只用 groupBy
+  view: { [listId]: { groupBy: 'category' | 'store', showDone: true, showLater: true } },   // 认不出的值按默认（core/group.js 的 listView）
   storeView: { [storeId | 'none']: { showDone: true } },                                     // 商店页「已买」折没折；'none' 是「未指定」（core/group.js 的 storeView）
   storeFilter: null | listId,                                                                  // 按商店看时只看哪张清单（core/stores.js 的 storeFilter）
-  planView: 'week' | 'month' }                                                                 // 「日历」页看一周还是一个月（core/plan.js 的 planView，认不出的按一周）
+  planView: 'week' | 'month',                                                                  // 「日历」页看一周还是一个月（core/plan.js 的 planView，认不出的按一周）
+  keepAwake: false }                                                                           // 清单页、商店页上让屏幕常亮（core/wake.js 的 keepAwakeOn，只有 true 算开）
 ```
 
-- `storeFilter`：「商店」页、每家店的页面、从商店进的购物模式共用一个（换一家店还是同一张）；`null` 是所有清单。读的时候一律经过 `stores.js` 的 `storeFilter(state, local)`：不是字符串、没有这张清单、删掉了、归档了 → 按所有清单显示（`null`），不提示，也不改记着的值（撤销删除、取消归档以后又按它筛）。改的时候用 `storeFilterPatch(listId)`；选清单的面板拿点的和**记着的**比（不是现在生效的）：记着的清单归档了、面板上勾着「所有清单」，再点「所有清单」也要记下来
+- `storeFilter`：「商店」页、每家店的页面共用一个（换一家店还是同一张）；`null` 是所有清单。读的时候一律经过 `stores.js` 的 `storeFilter(state, local)`：不是字符串、没有这张清单、删掉了、归档了 → 按所有清单显示（`null`），不提示，也不改记着的值（撤销删除、取消归档以后又按它筛）。改的时候用 `storeFilterPatch(listId)`；选清单的面板拿点的和**记着的**比（不是现在生效的）：记着的清单归档了、面板上勾着「所有清单」，再点「所有清单」也要记下来
 
 - `device`：写进同步文件和提交说明的设备名；没设就用平台名（iPhone / iPad / Mac，`core/sync.js` 的 `platformDevice`）
 - `tabNoteOff`：在浏览器标签页里打开时（`navigator.standalone` 不是 true、也不是 `display-mode: standalone`；iPhone / iPad 和 Mac 的 Safari 说法不同，见 `views/lists.js` 的 `tabNoteKind`）首页那句「和主屏幕 / 程序坞上的不是同一份数据」点过「知道了」
