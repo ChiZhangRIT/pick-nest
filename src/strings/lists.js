@@ -48,7 +48,7 @@ export const STRINGS = {
     'list.moveUp': '上移「{name}」', 'list.moveDown': '下移「{name}」',
     'list.editTitle': '編輯清單', 'list.name': '名稱', 'list.namePh': '例如：木工', 'list.kind': '類型',
     'list.kind.grocery': '食材', 'list.kind.groceryHint': '吃的、喝的、煮飯用的；常見的東西自動分類',
-    'list.kind.general': '一般', 'list.kind.generalHint': '衣服、書、工具……可以先放進「以後再說」，能填鏈接和價格',
+    'list.kind.general': '一般', 'list.kind.generalHint': '衣服、書、工具……可以先放進「以後再說」，能填連結和價格',
     'list.kindFixed': '類型建立後就不能改。', 'list.icon': '圖示', 'list.color': '顏色', 'list.iconCustom': '自訂', 'list.iconCustomPh': '一個 emoji 或一兩個字',
     'list.glyph.basket': '菜籃', 'list.glyph.carrot': '蔬菜', 'list.glyph.bag': '購物袋', 'list.glyph.gift': '禮物', 'list.glyph.pot': '廚房', 'list.glyph.coffee': '咖啡', 'list.glyph.wine': '酒類', 'list.glyph.pill': '藥品', 'list.glyph.baby': '寶寶', 'list.glyph.paw': '寵物', 'list.glyph.shirt': '衣服', 'list.glyph.shoe': '鞋子', 'list.glyph.home': '家', 'list.glyph.sofa': '家具', 'list.glyph.plant': '盆栽', 'list.glyph.flower': '花園', 'list.glyph.hammer': '工具', 'list.glyph.saw': '木工', 'list.glyph.roller': '裝修', 'list.glyph.box': '搬家', 'list.glyph.book': '書', 'list.glyph.pencil': '文具', 'list.glyph.laptop': '電腦', 'list.glyph.phone': '手機', 'list.glyph.car': '汽車', 'list.glyph.suitcase': '旅行', 'list.glyph.ball': '運動', 'list.glyph.calendar': '節日', 'list.glyph.star': '星星', 'list.glyph.heart': '愛心',
     'list.tint.green': '綠色', 'list.tint.teal': '青色', 'list.tint.blue': '藍色', 'list.tint.indigo': '靛藍', 'list.tint.rose': '玫瑰紅', 'list.tint.amber': '琥珀色', 'list.tint.clay': '陶土色', 'list.tint.graphite': '石墨灰',

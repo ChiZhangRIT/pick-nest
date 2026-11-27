@@ -26,7 +26,7 @@ export const STRINGS = {
     'item.store': '商店', 'item.storeNone': '未指定', 'item.storeArchived': '{name}（已封存）', 'item.storeHelp': '只改這一次，不會改掉以後的預設。',
     'item.category': '分類', 'item.catNone': '未分類', 'item.note': '備註',
     'item.status': '狀態', 'item.st.need': '要買', 'item.st.later': '以後再說', 'item.st.done': '已買',
-    'item.url': '商品鏈接', 'item.open': '開啟', 'item.price': '價格',
+    'item.url': '商品連結', 'item.open': '開啟', 'item.price': '價格',
     'item.list': '清單', 'item.listHelp': '換一張清單就會移過去。', 'item.moveQ': '「{list}」上已經有「{name}」了，要合併成一筆嗎？', 'item.merge': '合併', 'item.moved': '已移到「{list}」',
     'item.delete': '刪除這一項', 'item.deleted': '已刪除「{name}」',
     'item.swEdit': '編輯', 'item.swDelete': '刪除「{name}」',
@@ -34,7 +34,7 @@ export const STRINGS = {
     'item.ownQty': '自己加的', 'item.fromRecipes': '來自食譜', 'item.needsTotal': '清單上顯示總共：{total}', 'item.needsTotalNone': '清單上不顯示數量（都沒填數量）',
     'item.needRemove': '拿掉「{name}」的這一份', 'item.needUnnamed': '一道菜',
     'item.err.name': '名稱不能空白', 'item.err.nameTaken': '這張清單上已經有同名的了', 'item.err.qty': '數量要大於 0，最多 9999',
-    'item.err.url': '鏈接要以 http:// 或 https:// 開頭', 'item.err.price': '價格要是 0 或更大的數字', 'item.err.gone': '這一項已經不在了',
+    'item.err.url': '連結要以 http:// 或 https:// 開頭', 'item.err.price': '價格要是 0 或更大的數字', 'item.err.gone': '這一項已經不在了',
   },
   en: {
     'item.exists': '“{name}” is already on the list', 'item.own': '“{name}” was already on the list for a recipe; added your own {qty}', 'item.edit': 'Edit “{name}”', 'item.editTitle': 'Edit Item',

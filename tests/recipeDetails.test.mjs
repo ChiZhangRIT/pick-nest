@@ -36,7 +36,7 @@ test('整理标签：没有就是两个空数组；不是字符串、空白的�
 });
 
 test('预设存成键：任何一种语言写出来的字（也认以前繁体的「義式」）都换成键，几种语言的写法重复的只留一个；组不对的不认；认不出的 # 开头原样留着', () => {
-  assert.deepEqual(normalizeTags({ cuisine: ['義式', '意式', 'Italian', 'italian ', 'ＩＴＡＬＩＡＮ'] }).cuisine, ['#italian'], '繁体以前的写法、简体、英文、大小写全角都是一个');
+  assert.deepEqual(normalizeTags({ cuisine: ['義式', '意式', 'Italian', 'italian ', 'ＩＴＡＬＩＡＮ'] }).cuisine, ['#italian'], '繁体、简体、英文、大小写全角都是一个');
   assert.deepEqual(normalizeTags({ cuisine: ['Cantonese', '粵菜', '粤菜', '川菜', 'Sichuan'], style: ['快速上桌', '快手', 'Quick', '湯品', '汤', 'Soup'] }),
     { cuisine: ['#cantonese', '#sichuan'], style: ['#quick', '#soup'] }, '繁体、简体、英文混着存的');
   assert.deepEqual(normalizeTags({ cuisine: ['快手', '#quick'], style: ['川菜', '#sichuan'] }), { cuisine: ['快手', '#quick'], style: ['川菜', '#sichuan'] },
@@ -70,7 +70,7 @@ test('自己写成键的样子（「#Breakfast」「＃QUICK」）就是那个�
 });
 
 test('预设显示成界面语言的字（tagLabel），自己写的照原样；同一组里的预设在任何语言之间写法都不撞（不然认不回唯一的键）', () => {
-  assert.deepEqual(['zh-Hans', 'zh-Hant-TW', 'en'].map(l => tagLabel('cuisine', '#italian', k => ALL[l][k])), ['意式', '意式', 'Italian']);
+  assert.deepEqual(['zh-Hans', 'zh-Hant-TW', 'en'].map(l => tagLabel('cuisine', '#italian', k => ALL[l][k])), ['意式', '義式', 'Italian']);
   assert.equal(tagLabel('cuisine', '#italian'), '意式', '没给 t 按简体');
   assert.deepEqual([tagLabel('cuisine', ' 云南菜 '), tagLabel('cuisine', '#nope'), tagLabel('style', '#italian')], ['云南菜', '#nope', '#italian']);
   assert.deepEqual(recipeTagLabels({ tags: { cuisine: ['#sichuan'], style: ['#withRice', '空气炸锅'] } }, k => ALL['zh-Hant-TW'][k]), ['川菜', '下飯', '空气炸锅']);
@@ -79,7 +79,7 @@ test('预设显示成界面语言的字（tagLabel），自己写的照原样；
       assert.equal(presetTagKey(g, STRINGS[lang][`rcp.tag.${g}.${k}`]), '#' + k, `${lang} ${g}.${k} 认回自己`);
     }
   }
-  assert.equal(Object.values(STRINGS).some(tb => Object.values(tb).includes('義式')), false, '文案里已经没有「義式」');
+  assert.equal(STRINGS['zh-Hant-TW']['rcp.tag.cuisine.italian'], '義式', '繁体界面用台湾用词');
 });
 
 test('整理食谱的 ordered：只有 true 留着，别的去掉（以前的食谱上没有这个键）', () => {

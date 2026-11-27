@@ -863,7 +863,7 @@ test('管理标签：筛选下面「管理标签」打开面板，每组列用�
     mgr.click();
     const sh = env.sheet();
     assert.equal(sh.title, '管理标签');
-    assert.deepEqual(tmRows(sh, 'cuisine').slice(0, 3), [['川菜', '1 道食谱'], ['湘菜', '1 道食谱'], ['意式', '1 道食谱']], '旧的「義式」显示成现在的写法');
+    assert.deepEqual(tmRows(sh, 'cuisine').slice(0, 3), [['川菜', '1 道食谱'], ['湘菜', '1 道食谱'], ['意式', '1 道食谱']], '存着的繁体「義式」在简体界面显示成「意式」');
     assert.deepEqual(tmRows(sh, 'style').slice(0, 4), [['下饭', '2 道食谱'], ['空气炸锅', '1 道食谱'], ['快手', '1 道食谱'], ['宴客', '1 道食谱']]);
     assert.equal(byCls(sh.el, 'tm-sub').textContent, '没用到的预设');
     assert.ok(tmRows(sh, 'cuisine').some(([n, x]) => n === '墨西哥' && x === ''), '没用到的预设也列出来');
@@ -940,8 +940,8 @@ test('管理标签：删除先问（说几道、焦点给取消），确定了�
   } finally { env.done(); }
 });
 
-test('预设标签按界面语言显示：旧数据里的「義式」在繁体是「意式」、英文是 Italian；编辑页上是同一个开关（按下了）', async () => {
-  for (const [lang, word] of [['zh-Hant-TW', '意式'], ['en', 'Italian'], ['zh-Hans', '意式']]) {
+test('预设标签按界面语言显示：存着的繁体「義式」在繁体是「義式」、简体是「意式」、英文是 Italian；编辑页上是同一个开关（按下了）', async () => {
+  for (const [lang, word] of [['zh-Hant-TW', '義式'], ['en', 'Italian'], ['zh-Hans', '意式']]) {
     const env = setup({ seed: seedManaged, lang });
     try {
       let main = env.mount(recipesView, { name: 'recipes' });

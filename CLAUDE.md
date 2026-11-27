@@ -20,7 +20,7 @@
   页面自己换了状态（搜索词）用 `ctx.replaceHash` 只换地址栏；`ctx.navigate` 马上画新页面（点按里 focus 输入框 iPhone 才弹键盘，链接用 `ui/dom.js` 的 `linkTo`；去搜索的用 `views/search.js` 的 `searchLink`：已经在搜索页上只给焦点，不清掉搜索词）
 - **DOM**：用 `ui/dom.js` 的 `h()`，只用 `textContent`，不拼 HTML 字符串（清单名、商品名、粘贴的链接都是用户内容）
 - **类型**：`src/core/*.js` 开头加 `// @ts-check`，用 JSDoc 写清参数和记录形状（VS Code 直接检查，不用装东西）
-- **文案**：`t(key, vars)`，三种语言 `zh-Hans`（默认）、`zh-Hant-TW`（台湾用词）、`en`，按功能分文件放在 `src/strings/`，测试检查三种语言的键和 `{占位符}` 一致。用户写的内容永远不经过 `t()`，也不做简繁转换
+- **文案**：`t(key, vars)`，三种语言 `zh-Hans`（默认）、`zh-Hant-TW`（台湾用词：儲存、資料、封存、搜尋、行事曆、義式、連結……，不要写成「繁体字 + 大陆用词」；用户 2026-11-27 定的，四个 App 都一样）、`en`，按功能分文件放在 `src/strings/`，测试检查三种语言的键和 `{占位符}` 一致。用户写的内容永远不经过 `t()`，也不做简繁转换
 - **注释**用中文，写「为什么」，不写「做了什么」；密度照 babble
 - **CSP**：`connect-src 'self' https://api.github.com`、`img-src 'self' data: blob:`（成品图用 object URL 显示），不加载任何 CDN
 - **同步**：什么时候跑、`ctx.sync` 在 `app.js`（照 babble；页面不自己排同步，从备份恢复后马上传也是 app 管）；规则在 `core/sync.js`（成品图：`images/<sha256>.jpg` 只增不改；每一轮先传图再传 `picknest.json`，切到后台的直接上传也是；只传有食谱用着的；check-then-PUT，409 / 422 重新 GET；传之前、下载以后都核对 sha256；上传 JSON 之前那份数据里的图这一轮都要看过（`push` 里查 `upSeen`，查完到编进请求之间不 await）；图没传上 / 没下载成不算同步出错，记在 `status().blobErr`（上传、下载各记各的）；后台下载按改得晚的食谱在前，页面正看着的那张 `getBlob` 马上下（云端没有的 5 分钟内都不再问），小图不单独下；本机存不下的留在内存里、后台停下（`blobFull`），不要每一轮重下；新加的二进制文件也照这套，不要放进 JSON），测试用 `tests/helpers/github.mjs` 的假 GitHub（不联网，令牌是编的 `github_pat_test`）。本机数据有问题时 `getConfig` 返回 null，一律不同步。只收 Fine-grained 令牌，令牌只在 `picknest.local`

@@ -334,7 +334,7 @@ export const RECIPE_TAG_PRESETS = Object.freeze({
 });
 // 预设以前用过、后来改掉的写法：以前存的就是当时显示出来的字，照样认回那个键（文案表里已经没有这些字了）
 /** @type {Record<string, Record<string, string[]>>} */
-const OLD_PRESET_TEXT = { cuisine: { italian: ['義式'] } };
+const OLD_PRESET_TEXT = {};   // 改掉的旧写法（按组、按键）：预设的文案以后改了字，旧数据里存着的旧字放这里还认得
 /** @type {Map<string, Map<string, string>> | null} 组 → (normName(写法) → '#键')；第一次用时才建（和文案表的 import 顺序无关） */
 let presetIndex = null;
 function presetMap(/** @type {string} */ group) {
