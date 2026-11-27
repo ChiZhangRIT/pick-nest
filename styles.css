@@ -886,7 +886,7 @@ body[data-layout="phone"][data-tabs="1"] .plan-day { scroll-margin-bottom: calc(
 .lg-add { flex: none; display: inline-flex; align-items: center; gap: 4px; min-height: 40px; padding: 0 2px; font-size: 14px; }
 .lg-add .ic { width: 18px; height: 18px; }
 .lg-row .pd-sub { white-space: normal; }   /* 几份 · 三样营养素放不下一行：折行，不省略成「脂…」 */
-.lg-nw { white-space: nowrap; }
+.lg-nw, .lg-dot { white-space: nowrap; }   /* lg-dot：「 ·」的点和前面的空格连着，只在点后面折 */
 .lg-list .lg-row { align-items: flex-start; min-height: 50px; }
 .lg-row.go::after { align-self: center; }
 .lg-kcal { flex: none; align-self: center; color: var(--ink-2); font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -946,6 +946,7 @@ body[data-layout="phone"][data-tabs="1"] .plan-day { scroll-margin-bottom: calc(
 .dish-opt-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .dish-opt-name { font-size: 16px; line-height: 1.35; overflow-wrap: anywhere; }
 .dish-opt-meta { font-size: 13px; line-height: 1.35; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dish-opt-meta.wrap { white-space: normal; }   /* 估算的食谱：后面的「（估算，2 样没算进去）」不能被省略号截掉 */
 .meal-seg { display: flex; }
 /* 记一样吃的 / 食谱的每人份营养 / 饮食目标：营养的几个框两个一排（窄的手机上也放得下「蛋白质（克）」） */
 .lg-nut-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px 10px; margin-top: 8px; }

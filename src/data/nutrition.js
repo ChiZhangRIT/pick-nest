@@ -10,7 +10,7 @@
 
 export const NUTRITION_SOURCE = {"attribution":"U.S. Department of Agriculture, Agricultural Research Service. FoodData Central (SR Legacy, 2018).","dataset":"USDA FoodData Central SR Legacy","date":"2018-04","license":"CC0 1.0 (public domain)","url":"https://fdc.nal.usda.gov/"};
 // 生成时的对照表和单位规则的指纹（tools/build-nutrition.mjs 的 inputHash），测试拿它查这份文件是不是按现在的对照表生成的
-export const NUTRITION_INPUT = "70430d2ebe70f433d4386d0b5343d1e2f31d934867f07e636735b25566161b01";
+export const NUTRITION_INPUT = "b29cbed9218dc2698b28980fb648a898b310396fad405365515ceff9a14b7b3d";
 
 /** @type {NutritionFood[]} */
 export const NUTRITION = [
@@ -82,7 +82,7 @@ export const NUTRITION = [
   {"id":168573,"zh":["香茅","柠檬草"],"en":["lemongrass","lemon grass"],"per100":{"kcal":99,"protein":1.8,"carbs":25.3,"fat":0.5},"grams":{"杯":67,"勺":4.8},"density":0.32},
   {"id":168576,"zh":["墨西哥辣椒"],"en":["jalapeno","jalapeno pepper"],"per100":{"kcal":29,"protein":0.9,"carbs":6.5,"fat":0.4},"grams":{"杯":90,"个":14},"density":0.38},
   {"id":168580,"zh":["平菇","杏鲍菇","秀珍菇","蚝菇","鸿喜菇","蟹味菇","白玉菇"],"en":["oyster mushrooms","king oyster mushrooms","king trumpet mushrooms","shimeji"],"per100":{"kcal":33,"protein":3.3,"carbs":6.1,"fat":0.4},"grams":{"杯":86},"density":0.36,"note":"approximation: 杏鲍菇 (king oyster) and 鸿喜菇 / 蟹味菇 (shimeji) use oyster mushrooms"},
-  {"id":168581,"zh":["木耳","黑木耳","云耳","干木耳","银耳","白木耳","干银耳"],"en":["wood ear","black fungus","wood ear mushroom"],"per100":{"kcal":284,"protein":9.3,"carbs":73,"fat":0.7},"grams":{"杯":28},"density":null,"note":"approximation: 银耳 (white fungus) uses dried cloud ears"},
+  {"id":168581,"zh":["干木耳","干黑木耳","干云耳","银耳","白木耳","干银耳"],"en":["dried wood ear","dried black fungus","dried cloud ear"],"per100":{"kcal":284,"protein":9.3,"carbs":73,"fat":0.7},"grams":{"杯":28},"density":null,"note":"approximation: 银耳 (white fungus) uses dried cloud ears"},
   {"id":168583,"zh":["山葵"],"en":["wasabi"],"per100":{"kcal":109,"protein":4.8,"carbs":23.5,"fat":0.6},"grams":{"杯":130,"根":169},"density":0.55},
   {"id":168586,"zh":["椰丝","椰蓉"],"en":["shredded coconut","desiccated coconut"],"per100":{"kcal":501,"protein":2.9,"carbs":47.7,"fat":35.5},"grams":{"杯":93},"density":0.39},
   {"id":168588,"zh":["杏仁酱"],"en":["almond butter"],"per100":{"kcal":614,"protein":21,"carbs":18.8,"fat":55.5},"grams":{"杯":250,"勺":16},"density":1.08},
@@ -125,6 +125,7 @@ export const NUTRITION = [
   {"id":169230,"zh":["蒜","大蒜","蒜头","蒜瓣","蒜末","蒜蓉","蒜泥","独头蒜"],"en":["garlic","garlic cloves","clove garlic"],"per100":{"kcal":149,"protein":6.4,"carbs":33.1,"fat":0.5},"grams":{"杯":136,"小勺":2.8,"瓣":3},"density":0.57},
   {"id":169231,"zh":["姜","生姜","老姜","嫩姜","姜片","姜丝","姜末","姜蓉"],"en":["ginger","fresh ginger","ginger root"],"per100":{"kcal":80,"protein":1.8,"carbs":17.8,"fat":0.8},"grams":{"杯":96,"小勺":2,"片":2.2},"density":0.41},
   {"id":169232,"zh":["葫芦","瓠瓜","蒲瓜","瓠子"],"en":["opo squash","calabash","bottle gourd"],"per100":{"kcal":14,"protein":0.6,"carbs":3.4,"fat":0},"grams":{"杯":116,"个":771},"density":0.49},
+  {"id":169237,"zh":["木耳","黑木耳","云耳","鲜木耳","泡发木耳","水发木耳","泡发黑木耳","水发黑木耳"],"en":["wood ear","black fungus","wood ear mushroom"],"per100":{"kcal":25,"protein":0.5,"carbs":6.8,"fat":0},"grams":{"杯":99,"个":6},"density":0.42,"note":"approximation: 木耳 / 黑木耳 / 云耳 in recipes are mostly weighed after soaking; use raw Jew's ear (close to soaked wood ear), 干木耳 is the dried one"},
   {"id":169242,"zh":["香菇","鲜香菇","冬菇","花菇"],"en":["shiitake","shiitake mushrooms"],"per100":{"kcal":34,"protein":2.2,"carbs":6.8,"fat":0.5},"grams":{"块":19,"个":19},"density":null},
   {"id":169246,"zh":["韭葱","蒜苗","青蒜"],"en":["leeks","leek"],"per100":{"kcal":61,"protein":1.5,"carbs":14.2,"fat":0.3},"grams":{"杯":89,"片":6,"根":89,"个":89},"density":0.38,"note":"approximation: 蒜苗 / 青蒜 (garlic shoots) use leeks"},
   {"id":169247,"zh":["罗马生菜","油麦菜","莴笋叶"],"en":["romaine","romaine lettuce","a-choy"],"per100":{"kcal":17,"protein":1.2,"carbs":3.3,"fat":0.3},"grams":{"杯":47,"片":28,"个":626},"density":null,"note":"approximation: 油麦菜 (A-choy) uses romaine"},

@@ -107,3 +107,16 @@ test('编辑面板的数量：读输入框、−/+、显示', () => {
   assert.deepEqual([formatQty(null), formatQty(12), formatQty(0.5), formatQty(1 / 3), formatQty(12000)], ['', '12', '0.5', '0.33', '12000']);
   assert.deepEqual([qtyLabel(null, '盒'), qtyLabel(1, ''), qtyLabel(2, '盒'), qtyLabel(0.5, 'lb')], ['', '1', '2 盒', '0.5 lb']);
 });
+
+test('英文单位后面的缩写点（第 16 步检查）：「2 lb. ground beef」「1 Tbsp. oil」；整个词的 pound、ounce 和「朵」只在拆食谱时认', () => {
+  assert.deepEqual(parseQuickAdd('2 lb. ground beef'), { name: 'ground beef', qty: 2, unit: 'lb' });
+  assert.deepEqual(parseQuickAdd('3 oz. cheese'), { name: 'cheese', qty: 3, unit: 'oz' });
+  assert.deepEqual(parseQuickAdd('1 Tbsp. olive oil', { recipe: true }), { name: 'olive oil', qty: 1, unit: 'Tbsp' });
+  assert.deepEqual(parseQuickAdd('2 lbs.'), { name: '2 lbs.', qty: null, unit: '' }, '只有数量和单位：整句当名字');
+  assert.deepEqual(parseQuickAdd('2 l.a. style ribs'), { name: 'l.a. style ribs', qty: 2, unit: '' }, '点后面不是空格的不是缩写的单位（l 不是升）');
+  // 快速添加：「2 pound cakes」是两个磅蛋糕，「一朵花」的朵不是单位
+  assert.deepEqual(parseQuickAdd('2 pound cakes'), { name: 'pound cakes', qty: 2, unit: '' });
+  assert.deepEqual(parseQuickAdd('一朵花'), { name: '一朵花', qty: null, unit: '' });
+  assert.deepEqual(parseQuickAdd('2 pounds beef', { recipe: true }), { name: 'beef', qty: 2, unit: 'pounds' });
+  assert.deepEqual(parseQuickAdd('香菇 5朵', { recipe: true }), { name: '香菇', qty: 5, unit: '朵' });
+});

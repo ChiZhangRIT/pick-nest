@@ -7,10 +7,11 @@ import * as planView from '../src/views/plan.js';
 import * as recipeView from '../src/views/recipe.js';
 import * as editView from '../src/views/recipeEdit.js';
 import * as settingsView from '../src/views/settings.js';
+import { weekAvgLine } from '../src/ui/dayLog.js';
 import * as state from '../src/core/state.js';
 import { saveRecipe } from '../src/core/recipes.js';
 import { addEntry } from '../src/core/plan.js';
-import { addLogEntry, logOn, liveLog, setGoals } from '../src/core/log.js';
+import { addLogEntry, logOn, liveLog, setGoals, goalsOf } from '../src/core/log.js';
 import { foodOf } from '../src/core/foods.js';
 import { todayDay, addDays, weekStart } from '../src/core/dates.js';
 import { setLang, t } from '../src/i18n.js';
@@ -83,7 +84,9 @@ function setup({ lang = 'zh-Hans' } = {}) {
   return env;
 }
 const dayEl = (main, day) => find(main, el => cls(el, 'plan-day') && el.dataset.day === day);
-const logRows = (root) => allCls(root, 'lg-row').map(b => [byCls(b, 'pd-meal').textContent, byCls(b, 'pd-name').textContent, byCls(b, 'pd-sub')?.textContent ?? '', byCls(b, 'lg-kcal').textContent]);
+// pd-sub：看的那一行（短写法，aria-hidden）+ 读屏念的（sr-only，全写）；这里取看的那一行，读屏的用 srSub
+const logRows = (root) => allCls(root, 'lg-row').map(b => [byCls(b, 'pd-meal').textContent, byCls(b, 'pd-name').textContent, byCls(b, 'pd-sub')?.children[0].textContent ?? '', byCls(b, 'lg-kcal').textContent]);
+const srSub = (root) => allCls(root, 'lg-row').map(b => (byCls(b, 'pd-sub') ? byCls(byCls(b, 'pd-sub'), 'sr-only').textContent : ''));
 const errOf = (input) => { let p = input.parent; while (p && !cls(p, 'f-row')) p = p.parent; const e = p && byCls(p, 'f-err'); return e && !e.hidden ? e.textContent : null; };
 
 test('日历的一天：吃了什么按顿列出（几份、营养素、没填热量的），合计和目标比（还差 / 超了、细进度条），没记的那天写「还没记」；一周的平均', async () => {
@@ -98,13 +101,15 @@ test('日历的一天：吃了什么按顿列出（几份、营养素、没填�
     const main = env.mount(planView, { name: 'plan' });
     const td = dayEl(main, TODAY);
     assert.equal(byCls(td, 'lg-title').textContent, '吃了什么');
-    assert.deepEqual(logRows(td), [['早饭', '燕麦粥', '蛋白质\u00a014\u00a0g', '330\u00a0千卡'], ['午饭', '牛肉面', '2 份 · 蛋白质\u00a064\u00a0g', '1300\u00a0千卡'], ['午饭', '饼干', '', '没填热量']]);
+    assert.deepEqual(logRows(td), [['早饭', '燕麦粥', '蛋白\u00a014\u00a0g', '330\u00a0千卡'], ['午饭', '牛肉面', '2 份 · 蛋白\u00a064\u00a0g', '1300\u00a0千卡'], ['午饭', '饼干', '', '没填热量']]);
+    assert.deepEqual(srSub(td), ['蛋白质\u00a014\u00a0g', '2 份 · 蛋白质\u00a064\u00a0g', ''], '读屏念全写的');
+    assert.equal(byCls(allCls(td, 'lg-row')[0], 'pd-sub').children[0].attrs['aria-hidden'], 'true');
     assert.ok(cls(allCls(td, 'lg-row')[2].querySelector('.pd-meal'), 'cont'), '同一顿的第二条：「午饭」只给读屏念');
     assert.deepEqual([byCls(td, 'lg-tot-val').textContent, byCls(td, 'lg-tot-goal').textContent, cls(byCls(td, 'lg-tot-goal'), 'over')], ['1630 / 1800\u00a0千卡', '还差 170', false]);
     assert.equal(byCls(td, 'lg-bar').querySelector('span').style.width, '91%');
     assert.deepEqual(allCls(td, 'lg-mac').map(m => [byCls(m, 'lg-mac-label').textContent, byCls(m, 'lg-mac-val').textContent]), [['蛋白质', '78 / 90 g']], '没数也没目标的碳水、脂肪不画');
     assert.equal(byCls(td, 'lg-missing').textContent, '1 样没填热量，没算进去');
-    assert.equal(byCls(main, 'lg-week').textContent, '这一周平均每天 1630\u00a0千卡（记了 1 天） · 目标 1800\u00a0千卡');
+    assert.ok(!byCls(main, 'lg-week'), '只有今天记了：今天还没过完，没有一周的平均');
     const other = dayEl(main, TODAY === MON ? addDays(MON, 1) : MON);
     assert.equal(byCls(other, 'lg-none').textContent, '还没记');
     assert.ok(!byCls(other, 'lg-totals'));
@@ -401,15 +406,15 @@ test('设置 → 饮食目标：一格写完就存（离开输入框），写错
     const kcal = fid(main, 'gl-kcal'), fat = fid(main, 'gl-fat');
     assert.equal(kcal.value, '');
     kcal.value = '1800'; await kcal.fire('change');
-    assert.deepEqual(S().settings.goals, { kcal: 1800, protein: null, carbs: null, fat: null });
+    assert.deepEqual(goalsOf(S()), { kcal: 1800, protein: null, carbs: null, fat: null });
     assert.equal(byCls(main, 'gl-status').textContent, '已保存');
     fat.value = '-1'; await fat.fire('change');
     assert.equal(errOf(fat), '写一个数（不能是负数）');
-    assert.equal(S().settings.goals.fat, null);
+    assert.equal(goalsOf(S()).fat, null);
     fat.value = '60.25'; await fat.fire('change');
-    assert.deepEqual([S().settings.goals.fat, fat.value, errOf(fat)], [60.3, '60.3', null]);
+    assert.deepEqual([goalsOf(S()).fat, fat.value, errOf(fat)], [60.3, '60.3', null]);
     kcal.value = '0'; await kcal.fire('change');
-    assert.deepEqual([S().settings.goals.kcal, kcal.value], [null, ''], '0 是不设');
+    assert.deepEqual([goalsOf(S()).kcal, kcal.value], [null, ''], '0 是不设');
     // 别的设备同步来的
     fat.focus();
     state.mutate(s => setGoals(s, { kcal: '2000', fat: '70' }, now()));
@@ -423,8 +428,63 @@ test('设置 → 饮食目标：一格写完就存（离开输入框），写错
   } finally { env.done(); }
 });
 
+test('一周的平均：不算还没过完的今天（记了就写「不算今天」）；过去的一周照常；「 · 」的点和前面连着（第 16 步检查）', () => {
+  const env = setup();
+  try {
+    const last = addDays(MON, -7);
+    state.mutate(s => {
+      addLogEntry(s, { date: last, title: 'a', per: { kcal: '1500' } }, now());
+      addLogEntry(s, { date: addDays(last, 2), title: 'b', per: { kcal: '2100' } }, now());
+      addLogEntry(s, { date: TODAY, title: '早饭', per: { kcal: '400' } }, now());
+      setGoals(s, { kcal: '1800' }, now());
+    });
+    const past = weekAvgLine({ state: S() }, last);
+    assert.equal(past.textContent, '这一周平均每天 1800\u00a0千卡（记了 2 天） · 目标 1800\u00a0千卡');
+    assert.deepEqual(byCls(past, 'lg-week-goal').children.map(x => x.textContent), [' ·', ' ', '目标 1800\u00a0千卡'], '点和前面的空格不折开');
+    assert.equal(weekAvgLine({ state: S() }, TODAY), null, '这一周只有今天记了');
+    if (TODAY !== MON) {
+      state.mutate(s => addLogEntry(s, { date: MON, title: 'c', per: { kcal: '1600' } }, now()));
+      assert.equal(weekAvgLine({ state: S() }, TODAY).textContent, '这一周平均每天 1600\u00a0千卡（记了 1 天，不算今天） · 目标 1800\u00a0千卡', '今天的 400 不拉低平均');
+    }
+  } finally { env.done(); }
+});
+
+test('记饮食的面板（第 16 步检查）：改一条估算记下的写着是估算的；常吃的是钟表不是对勾；估算的食谱后面那一句折行、不截掉', async () => {
+  const env = setup();
+  try {
+    let rid = '';
+    state.mutate(s => {
+      rid = /** @type {any} */ (saveRecipe(s, null, { name: '鱼豆腐炒蛋', servings: 2, ings: [{ name: '鸡蛋', qty: 4, unit: '个' }, { name: '鱼豆腐', qty: 6, unit: '个' }] }, now())).recipe.id;
+      addLogEntry(s, { date: TODAY, meal: 'lunch', title: '鱼豆腐炒蛋', recipeId: rid, per: { kcal: '143', protein: '12.6' }, estimated: true }, now());
+    });
+    const est = logOn(S(), TODAY).find(e => e.recipeId === rid);
+    assert.equal(est.estimated, true);
+    const main = env.mount(planView, { name: 'plan' });
+    await fid(dayEl(main, TODAY), 'lg-' + est.id).click();
+    let sh = env.sheet();
+    assert.equal(byCls(sh.el, 'lg-was-est').textContent, '记的时候是按食材估算的（约），改了就算自己填的。');
+    sh.close();
+    // 自己填的那一条没有这一句
+    state.mutate(s => addLogEntry(s, { date: TODAY, meal: 'dinner', title: '拿铁', per: { kcal: '190' } }, now()));
+    await settle();
+    const own = logOn(S(), TODAY).find(e => e.title === '拿铁');
+    await fid(dayEl(env.main, TODAY), 'lg-' + own.id).click();
+    assert.ok(!byCls(env.sheet().el, 'lg-was-est'));
+    env.sheet().close();
+    // 新记一样：常吃的用钟表；打字搜到估算的食谱，营养后面的「（估算，1 样没算进去）」不被省略号截掉
+    await fid(dayEl(env.main, TODAY), 'lg-add-' + TODAY).click();
+    sh = env.sheet();
+    const first = allCls(sh.el, 'dish-opt')[0];
+    assert.ok(byCls(first, 'ic-history') && !byCls(first, 'ic-check'), '常吃的不是一列对勾');
+    await type(fid(sh.el, 'lg-q'), '鱼豆腐');
+    const r = find(sh.el, el => el.dataset && el.dataset.fid === 'lg-r-' + rid), meta = byCls(r, 'dish-opt-meta');
+    assert.ok(cls(meta, 'wrap'));
+    assert.match(meta.textContent, /^约\u00a0\d+\u00a0千卡 · .*（估算，1 样没算进去）$/);
+  } finally { env.done(); }
+});
+
 test('英文界面、繁体界面：千卡 / 大卡、份数的单复数', async () => {
-  for (const [lang, kcal, sv] of [['en', '1300\u00a0kcal', '2 servings · Protein\u00a064\u00a0g'], ['zh-Hant-TW', '1300\u00a0大卡', '2 份 · 蛋白質\u00a064\u00a0g']]) {
+  for (const [lang, kcal, sv] of [['en', '1300\u00a0kcal', '2 servings · P\u00a064\u00a0g'], ['zh-Hant-TW', '1300\u00a0大卡', '2 份 · 蛋白\u00a064\u00a0g']]) {
     const env = setup({ lang });
     try {
       state.mutate(s => addLogEntry(s, { date: TODAY, meal: 'lunch', title: '牛肉面', servings: '2', per: { kcal: '650', protein: '32' } }, now()));

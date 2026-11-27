@@ -261,6 +261,19 @@ test('认名字：不该认的不认——后面还有别的字、单字的名�
   assert.ok(PREFIX_WORDS.zh.includes('小') && PREFIX_WORDS.en.has('dried'));
 });
 
+test('木耳按泡发的（鲜的）算，写了「干」的才是干的；泡发、水发开头的别的干货认不出（第 16 步检查）', () => {
+  // 菜谱里的木耳多半是泡发以后的重量：按干的 284 千卡 / 100 g 算，「黑木耳 200g（泡发后）」会多出五百多千卡
+  for (const n of ['木耳', '黑木耳', '云耳', '黑木耳（泡发后）', '泡发木耳', '水发木耳', '泡发的木耳', '木耳丝', '黑木耳', 'wood ear', 'black fungus']) {
+    assert.equal(findFood(n)?.id, 169237, n);
+  }
+  assert.ok(food('木耳').per100.kcal < 40);
+  for (const n of ['干木耳', '干黑木耳', '干云耳', '银耳', '干银耳', 'dried wood ear']) assert.equal(findFood(n)?.id, 168581, n);
+  assert.equal(gramsFor(food('黑木耳'), 200, 'g').grams, 200);
+  // 泡过水的干货每 100 g 是干的几分之一：表里没有这个整个名字的认不出（不按干腐竹、干的算）
+  for (const n of ['水发腐竹', '泡发腐竹', '水发鱿鱼', '泡发香菇', '水发海带']) assert.equal(findFood(n), null, n);
+  assert.ok(PREFIX_WORDS.zh.includes('泡发') && PREFIX_WORDS.zh.includes('水发'));
+});
+
 test('认名字：小的品种、近似的那几样用的是自己的一条，不是大的那一样的「个」', () => {
   assert.equal(food('小米辣').grams.个, 6.1, '小米辣按 serrano 一个 6.1 g，不是一个美国辣椒 45 g');
   assert.equal(food('朝天椒'), food('小米辣'));

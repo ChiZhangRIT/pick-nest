@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Element, all, find, fakeStorage, installDom } from './helpers/dom.mjs';
 import { todayDay, addDays, weekStart } from '../src/core/dates.js';
+import { goalsOf } from '../src/core/log.js';
 
 const cls = (el, c) => (el.className || el.attrs.class || '').split(' ').includes(c);
 const byCls = (root, c) => find(root, el => cls(el, c));
@@ -123,7 +124,7 @@ test('底栏五个都去对的页面；日历是顶层页面、一栏，#/plan �
     assert.equal(main.querySelector('h1').textContent, '饮食目标');
     const goal = main.querySelector('[data-fid="gl-kcal"]');
     goal.value = '1800'; await goal.fire('change');
-    assert.deepEqual(ctx.state.settings.goals, { kcal: 1800, protein: null, carbs: null, fat: null });
+    assert.deepEqual([goalsOf(ctx.state), ctx.state.settings['goals.kcal']], [{ kcal: 1800, protein: null, carbs: null, fat: null }, 1800], '一样一个键');
     await go('#/calendar');
     assert.equal(byCls(main, 'lg-tot-val').textContent, '520 / 1800\u00a0千卡');
     assert.equal(byCls(main, 'lg-tot-goal').textContent, '还差 1280');

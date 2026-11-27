@@ -26,9 +26,14 @@ const OF_UNITS = new Set(['pair', 'pairs', 'set', 'sets', 'sheet', 'sheets']);
 export const UNITS = [...ZH_UNITS, ...EN_UNITS];
 // 食谱里常见、买东西时很少写的单位：只在拆食谱的食材时认（core/recipes.js 的 parseIngredients）。
 // 「两」在这里是单位（「猪肉二两」「二两酒」）：快速添加里它更常是数字（「两盒牛奶」），所以那边不认。
-// 大匙、小匙、cc 是台湾食谱的写法（「醬油 2大匙」「水 200cc」）；cc 只在这里认：买东西时「鮮奶 936cc」说的是一瓶的大小
-export const RECIPE_UNITS = ['两', '勺', '汤匙', '大勺', '汤勺', '小勺', '茶匙', '大匙', '小匙', '碗', '瓣', '撮', '滴', 'cc', 'cup', 'cups', 'tbsp', 'tsp', 'tablespoon', 'tablespoons',
-  'teaspoon', 'teaspoons', 'clove', 'cloves', 'pinch', 'slice', 'slices', 'stalk', 'stalks', 'sprig', 'sprigs'];
+// 大匙、小匙、cc 是台湾食谱的写法（「醬油 2大匙」「水 200cc」）；cc 只在这里认：买东西时「鮮奶 936cc」说的是一瓶的大小。
+// 朵（「香菇 5朵」「花菜 5朵」）只在这里认：快速添加里「一朵花」的朵不是用量。英文食谱把重量写成整个词（2 pounds chicken thighs、
+// 8 ounces cream cheese、500 grams flour）：不认的话单位成了名字的一部分（「pounds chicken thighs」2 个），估算按两只鸡腿算。
+// pound 不放进快速添加：「2 pound cakes」是两个磅蛋糕
+export const RECIPE_UNITS = ['两', '勺', '汤匙', '大勺', '汤勺', '小勺', '茶匙', '大匙', '小匙', '碗', '瓣', '撮', '滴', '朵', 'cc', 'cup', 'cups', 'tbsp', 'tsp', 'tablespoon', 'tablespoons',
+  'teaspoon', 'teaspoons', 'clove', 'cloves', 'pinch', 'slice', 'slices', 'stalk', 'stalks', 'sprig', 'sprigs', 'floret', 'florets',
+  'pound', 'pounds', 'ounce', 'ounces', 'fl oz', 'gram', 'grams', 'kilogram', 'kilograms', 'kilo', 'kilos',
+  'liter', 'liters', 'litre', 'litres', 'milliliter', 'milliliters', 'millilitre', 'millilitres'];
 
 /**
  * 编辑时单位输入框下面的快捷选项（按界面语言；都在 UNITS 里，测试会查）。是填进数据的值，不是界面文案，所以不经过 t()
@@ -64,8 +69,8 @@ const SEP = /[\s,，、:：]/;                       // 数字前面可以是这
 
 /** 认不认得这个单位（不分大小写，简繁都认） @param {unknown} u */
 export const isUnit = u => UNIT_KEYS.includes(foldUnit(str(u)));
-/** 拆食谱时认不认得这个单位（多认 RECIPE_UNITS：勺、两、cup……）：「鸡蛋 3 个」的「个」是左边数量的单位，不是下一样食材 @param {unknown} u */
-export const isRecipeUnit = u => RECIPE_KEYS.includes(foldUnit(str(u)));
+/** 拆食谱时认不认得这个单位（多认 RECIPE_UNITS：勺、两、cup……；英文的结尾可以有点：tbsp.）：「鸡蛋 3 个」的「个」是左边数量的单位，不是下一样食材 @param {unknown} u */
+export const isRecipeUnit = u => RECIPE_KEYS.includes(foldUnit(str(u)).replace(/(?<=[a-z])\.$/, ''));
 
 const CN_DIGIT = /** @type {Record<string, number>} */ ({ 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 });
 /** 中文数字：一到九、两、十、十二、二十、二十四、半 → 数字；别的 → null @param {string} s */
@@ -83,18 +88,24 @@ function arabic(s) {
 const roundQty = (/** @type {number} */ q) => Math.round(q * 1000) / 1000;
 const okQty = (/** @type {number | null} */ q) => q != null && Number.isFinite(q) && q > 0 && q <= QTY_MAX;
 
-/** f 从 i 开始的单位（最长的那个）；英文单位后面必须是空格或结尾（「2 gala apples」的 gal 不算） @param {string} f @param {number} i @param {string[]} keys */
+/**
+ * f 从 i 开始的单位（最长的那个）；英文单位后面必须是空格或结尾（「2 gala apples」的 gal 不算）。英文单位后面可以跟一个点（「2 Tbsp. olive oil」
+ * 「1 lb. pork」：缩写的点），点后面也要是空格或结尾；返回的单位不带点，用 unitEnd 跳过它
+ * @param {string} f @param {number} i @param {string[]} keys
+ */
 function unitAt(f, i, keys) {
   for (const u of keys) {
     if (!f.startsWith(u, i)) continue;
     const after = f[i + u.length];
-    if (LATIN.test(u) && after !== undefined && !SPACE.test(after)) continue;
+    if (LATIN.test(u) && after !== undefined && !SPACE.test(after) && !(after === '.' && (f[i + u.length + 1] === undefined || SPACE.test(f[i + u.length + 1])))) continue;
     if (OF_UNITS.has(u) && !OF.test(f.slice(i + u.length))) continue;
     return u;
   }
   return null;
 }
 const OF = /^\s+of\s+/;                         // 「2 bags of rice」：名字是 rice，不是「of rice」
+/** unitAt 认出的单位 u 在 f 的 i 开始：单位后面到哪（英文缩写的点也跳过） @param {string} f @param {number} i @param {string} u */
+const unitEnd = (f, i, u) => i + u.length + (LATIN.test(u) && f[i + u.length] === '.' ? 1 : 0);
 /** f 在 end 结束的单位（最长的那个）；英文单位前面必须是数字或空格（「Small」的 l 不算） @param {string} f @param {number} end @param {string[]} keys */
 function unitBefore(f, end, keys) {
   for (const u of keys) {
@@ -134,7 +145,7 @@ function leading(raw, f, grocery, keys, recipe) {
     const u = unitAt(f, j, keys);
     // 「2 包子」：包后面连着的「包子」本身是常见的东西，不拆成「2 包 / 子」
     if (u && !(CJK.test(u) && isCatalogName(f.slice(j)))) {
-      let k = j + u.length, q = n;
+      let k = unitEnd(f, j, u), q = n;
       if (f[k] === '半' && Number.isInteger(n)) { q = /** @type {number} */ (n) + 0.5; k++; }
       if (LATIN.test(u)) { const of = OF.exec(f.slice(k)); if (of) k += of[0].length; }
       return out(q, k, raw.slice(j, j + u.length));                // 「2 斤」后面没有名字：不认，整句当名字

@@ -1,5 +1,5 @@
 // 设置 → 饮食目标（#/settings/goals，第 13 步）：每天热量（千卡）、蛋白质 / 碳水 / 脂肪（克），都可以不填。推入的页面（ui/dom.js 的 pushFrame）。
-// 存在同步的设置 settings.goals（core/log.js 的 setGoals：一个框一个框地存，按 settingsAt 合并），日历里每天的合计和它比。
+// 存在同步的设置里，一样一个键 goals.kcal…（core/log.js 的 setGoals：一个框一个框地存，各自按 settingsAt 合并），日历里每天的合计和它比。
 // 一个框写完（离开输入框、回车）就存，不用找「保存」：写错的（读不出来、负数、太大）标在那一格下面、不存；空着、0 是不设。存上了下面说一句「已保存」。
 // 自己管更新（返回 onChange）：别的设备同步来的目标只改没在打字的那几格，正在写的不被冲掉。
 import { h, pushFrame } from '../ui/dom.js';

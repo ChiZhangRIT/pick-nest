@@ -34,17 +34,31 @@ export const kcalText = (n, approx = false) => (n == null ? t('log.noKcal') : t(
  */
 export const macroText = (x) => MACROS.filter(k => x && x[k] != null).map(k => `${t('log.' + k)}\u00a0${formatQty(/** @type {any} */ (x)[k])}\u00a0g`).join(' · ');
 /**
+ * 日历里一条记录下面的短写法：「蛋白 14 · 碳水 48 · 脂肪 9 g」（英文「P 14 · C 48 · F 9 g」），克只写在最后一样后面。
+ * 一天记三五条，每条写全了要折成三行（「蛋白质 14 g · 碳水 48 g ·」/「脂肪 9 g」）；全写的营养素在合计、面板里有。读屏念 macroText 的
+ * @param {Record<string, any> | null | undefined} x
+ */
+export const macroShort = (x) => {
+  const ks = MACROS.filter(k => x && x[k] != null);
+  return ks.map((k, i) => `${t('log.' + k + 'Short')}\u00a0${formatQty(/** @type {any} */ (x)[k])}${i === ks.length - 1 ? '\u00a0g' : ''}`).join(' · ');
+};
+/**
+ * 画进页面的「 · 」：点和它前面的空格是一个不折开的小段，放不下一行时只在点后面折（不会有一行以「· 脂肪」开头）。字还是「 · 」
+ * @returns {(HTMLElement | string)[]}
+ */
+export const dot = () => [h('span.lg-dot', null, ' ·'), ' '];
+/**
  * 一组营养写成一行：「520 千卡 · 蛋白质 25 g · …」（食谱页的每人份、面板里的合计、联想里的常吃的）；一样也没有 → ''。
  * approx：估算的（第 15 步），热量写「约 520 千卡」
  * @param {Record<string, any> | null | undefined} n @param {boolean} [approx]
  */
 export const nutritionLine = (n, approx = false) => [n && n.kcal != null ? kcalText(n.kcal, approx) : null, macroText(n) || null].filter(Boolean).join(' · ');
 /**
- * 一行营养画成几个不折开的小段（span.lg-nw，和 ui/dayLog.js 的一样）：放不下一行时只在「 · 」那里折。只靠不折行的空格不够：
+ * 一行营养画成几个不折开的小段（span.lg-nw，和 ui/dayLog.js 的一样）：放不下一行时只在「 · 」的点后面折。只靠不折行的空格不够：
  * 中文字之间本来就能折，「脂肪 50 g」会折成「脂 / 肪 50 g」。字还是那一行（textContent 不变）
  * @param {string} line
  */
-export const nowrapParts = (line) => (line ? line.split(' · ').flatMap((x, i) => [i ? ' · ' : null, h('span.lg-nw', null, x)]).filter(Boolean) : []);
+export const nowrapParts = (line) => (line ? line.split(' · ').flatMap((x, i) => [...(i ? dot() : []), h('span.lg-nw', null, x)]) : []);
 
 /** 搜出来每种最多列几样（框里能滚，再多就再打几个字） */
 const SHOW_MAX = 6;
@@ -100,18 +114,20 @@ export function logSheet(ctx, { id = null, date = null, meal = null, planId = nu
     const typed = q.value.trim();
     const foods = foodSuggestions(ctx.state, typed, { limit: SHOW_MAX });
     const recs = typed ? searchRecipes(ctx.state, typed, collatorFor(lang), { nameFirst: true }).slice(0, SHOW_MAX) : [];
-    const opt = (fid, ic, label, name, meta, run) => h('li', null, h('button.dish-opt', { type: 'button', 'aria-label': label, dataset: { fid }, onclick: run },
-      icon(ic), h('span.dish-opt-text', null, h('span.dish-opt-name', null, name), meta ? h('span.dish-opt-meta', null, nowrapParts(meta)) : null)));
+    // wrap：食谱的营养后面跟着「（估算，2 样没算进去）」，省略号截掉的正好是这一句：折行，不省略
+    const opt = (fid, ic, label, name, meta, run, wrap = false) => h('li', null, h('button.dish-opt', { type: 'button', 'aria-label': label, dataset: { fid }, onclick: run },
+      icon(ic), h('span.dish-opt-text', null, h('span.dish-opt-name', null, name), meta ? h('span.dish-opt-meta' + (wrap ? '.wrap' : ''), null, nowrapParts(meta)) : null)));
     list.replaceChildren(...[
       foods.length ? h('li.sug-h', { 'aria-hidden': 'true' }, t('log.frequent')) : null,
-      ...foods.map(f => opt('lg-f-' + f.id, 'check', t('plan.pickRecipe', { name: f.name }), f.name, nutritionLine(f.per), () => pickFood(f.id))),
+      // 常吃的用「记过的」钟表：一列对勾看着像都已经选上、记过了
+      ...foods.map(f => opt('lg-f-' + f.id, 'history', t('plan.pickRecipe', { name: f.name }), f.name, nutritionLine(f.per), () => pickFood(f.id))),
       recs.length ? h('li.sug-h', { 'aria-hidden': 'true' }, t('nav.recipes')) : null,
       ...recs.map(({ recipe: r }) => {
         const rn = recipeNutrition(ctx.state, r);
         // 估算的有几样没算进去：跟着写（「约 28 千卡 · …（估算，1 样没算进去）」），别当成准的
         const left = rn && rn.estimate ? rn.estimate.missing.length : 0;
         const meta = rn ? nutritionLine(rn.per, rn.estimated) + (left ? t('est.noteMissing', { n: left }) : '') : '';
-        return opt('lg-r-' + r.id, 'recipe', t('plan.pickRecipe', { name: recipeName(r, t) }), recipeName(r, t), meta, () => pickRecipe(r.id));
+        return opt('lg-r-' + r.id, 'recipe', t('plan.pickRecipe', { name: recipeName(r, t) }), recipeName(r, t), meta, () => pickRecipe(r.id), !!(rn && rn.estimated));
       }),
     ].filter(Boolean));
     list.hidden = !foods.length && !recs.length;
@@ -201,6 +217,8 @@ export function logSheet(ctx, { id = null, date = null, meal = null, planId = nu
   function setPer(per) { const s = perStr(per); for (const k of NUTRIENTS) { nutIns[k].value = s[k]; showErr(rows[k], null); } drawSum(); }
   const boxVals = () => NUTRIENTS.map(k => nutIns[k].value.trim()).join('\n');
   const recipeEmpty = h('p.f-help.lg-recipe-empty', null, t('log.perRecipeEmpty'));
+  // 改一条估算记下的：日历上写着「约 977 千卡」，打开了框里的数看着和自己填的一样——说一句（没算进去的那几样没记下来，不写）
+  const wasEst = prev && prev.estimated ? h('p.f-help.lg-recipe-empty.est.lg-was-est', null, t('log.perWasEstimated')) : null;
   const saveBox = h('input.atl-box', { type: 'checkbox', checked: true, dataset: { fid: 'lg-save-recipe' } });
   const saveTo = h('label.atl-check.lg-save-to', null, saveBox, h('span', null, t('log.saveToRecipe')));
   /**
@@ -238,7 +256,7 @@ export function logSheet(ctx, { id = null, date = null, meal = null, planId = nu
     if (sumLine.textContent !== text) sumLine.replaceChildren(...nowrapParts(text));
     sumLine.hidden = !text;
   }
-  const perBox = h('div.f-row.lg-per', null, h('h3.group-h', null, t('log.per')), recipeEmpty,
+  const perBox = h('div.f-row.lg-per', null, h('h3.group-h', null, t('log.per')), recipeEmpty, wasEst,
     h('div.lg-nut-grid', null, NUTRIENTS.map(k => rows[k])), sumLine, saveTo, h('p.f-help', null, t('log.perHelp')));
 
   const noteIn = h('input.f-in', { type: 'text', value: d.note || '', maxlength: 500, autocomplete: 'off', enterkeyhint: 'done', dataset: { fid: 'lg-note' }, onkeydown: onEnter(() => save()) });

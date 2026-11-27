@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { blankState, ensureSeeds } from '../src/core/store.js';
-import { saveRecipe } from '../src/core/recipes.js';
+import { saveRecipe, parseIngredients } from '../src/core/recipes.js';
 import { addEntry } from '../src/core/plan.js';
 import { addLogEntry, logFromPlan, logFromRecipe, logOn } from '../src/core/log.js';
 import { foodId, liveFood, rememberFood, foodOf, foodSuggestions } from '../src/core/foods.js';
@@ -298,4 +298,61 @@ test('表里的一样叫什么（foodAlias）：写的名字对上的那个别�
     assert.equal(owners.length, 1, n);
     assert.notEqual(owners[0].zh[0], n, n + ' 已经是第一个名字');
   }
+});
+
+test('粘贴的食材直接估算（第 16 步检查）：英文写成整个词的重量、带点的缩写、「朵」都是单位，不当成几个；没认出的单位在名字里也不按几个算', () => {
+  const s = fresh();
+  const est = (/** @type {string} */ text, servings = 1) => estimateRecipe(s, { servings, ings: parseIngredients(text).map((g, i) => ({ key: 'g' + i, ...g })) });
+  const one = (/** @type {string} */ text) => { const e = est(text); return [e.lines[0].name, e.lines[0].unit, e.lines[0].status, e.lines[0].grams]; };
+  assert.deepEqual(one('2 pounds chicken thighs'), ['chicken thighs', 'pounds', 'ok', 907.2], '不是两只鸡腿 298 g');
+  assert.deepEqual(one('3 ounces chicken breast'), ['chicken breast', 'ounces', 'ok', 85.1], '不是三块鸡胸 816 g');
+  assert.deepEqual(one('500 grams chicken breast'), ['chicken breast', 'grams', 'ok', 500]);
+  assert.deepEqual(one('1 kilogram potatoes'), ['potatoes', 'kilogram', 'ok', 1000]);
+  assert.deepEqual(one('2 kilos potatoes'), ['potatoes', 'kilos', 'ok', 2000]);
+  assert.deepEqual(one('1 pound ground beef'), ['ground beef', 'pound', 'ok', 453.6]);
+  assert.deepEqual(one('8 ounces cream cheese'), ['cream cheese', 'ounces', 'ok', 226.8]);
+  assert.deepEqual(one('200 grams flour'), ['flour', 'grams', 'ok', 200]);
+  assert.deepEqual(one('1 liter coconut milk').slice(0, 3), ['coconut milk', 'liter', 'ok']);
+  assert.deepEqual(one('4 fl oz heavy cream').slice(0, 3), ['heavy cream', 'fl oz', 'ok']);
+  // 缩写后面的点
+  assert.deepEqual(one('1 lb. pork shoulder'), ['pork shoulder', 'lb', 'ok', 453.6]);
+  assert.deepEqual(one('2 Tbsp. olive oil'), ['olive oil', 'Tbsp', 'ok', 28]);
+  assert.deepEqual(one('1 1/2 lbs. beef').slice(0, 3), ['beef', 'lbs', 'ok']);
+  assert.deepEqual(one('olive oil 2 tbsp.').slice(0, 3), ['olive oil', 'tbsp', 'ok']);
+  assert.deepEqual(parseIngredients('橄榄油 2 tbsp. 盐 1 tsp').map(g => [g.name, g.qty, g.unit]), [['橄榄油', 2, 'tbsp'], ['盐', 1, 'tsp']]);
+  // 朵：花菜有自己的一朵 13 g，香菇没有「朵」按个；西兰花没有「朵」不退成一整颗
+  assert.deepEqual(one('花菜 5朵'), ['花菜', '朵', 'ok', 65]);
+  assert.deepEqual(one('香菇5朵'), ['香菇', '朵', 'ok', 95]);
+  assert.deepEqual(one('5朵香菇'), ['香菇', '朵', 'ok', 95]);
+  assert.deepEqual(one('西兰花 3朵').slice(0, 3), ['西兰花', '朵', 'unknown-unit']);
+  assert.deepEqual(one('broccoli 2 florets').slice(0, 3), ['broccoli', 'florets', 'unknown-unit']);
+  // 「2 pounds chicken thighs」4 人份：每人份按 907 g 鸡腿算
+  assert.ok(est('2 pounds chicken thighs', 4).perServing.kcal > 1000 / 4);
+  // 名字是重量、体积的词开头、没写单位（拆的时候没认出来）：换算不了，不按几个算；「large eggs」照样是几个
+  const raw = (/** @type {string} */ name) => line(estimateRecipe(s, { servings: 1, ings: [ing(name, 2)] }), name);
+  for (const n of ['pounds chicken thighs', 'fl oz heavy cream', 'Tbsp. olive oil', 'grams chicken breast']) assert.deepEqual([raw(n).status, raw(n).reason, raw(n).grams], ['unknown-unit', 'unit', null], n);
+  assert.deepEqual([raw('large eggs').status, raw('large eggs').grams], ['ok', 100]);
+  assert.deepEqual([raw('L 号鸡蛋').status, raw('L 号鸡蛋').grams], ['ok', 100], '有汉字的名字不看：L 号是大号');
+});
+
+test('一样营养素只有水、盐的 0、又有算进去却没有这一项的：是不知道（null），不是 0 g（第 16 步检查）', () => {
+  const s = fresh();
+  assert.ok(saveIngredientFood(s, '鱼豆腐', { per: { kcal: '200' }, grams: '15', unit: '个' }, now()).ok);
+  const soup = { servings: 1, ings: parseIngredients('鱼豆腐 5个\n清水 500ml\n盐 1小勺').map((g, i) => ({ key: 'g' + i, ...g })) };
+  const e = estimateRecipe(s, soup);
+  assert.deepEqual(e.perServing, { kcal: 150, protein: null, carbs: null, fat: null });
+  assert.deepEqual(e.total, { kcal: 150, protein: null, carbs: null, fat: null });
+  assert.equal(e.blank, false);
+  assert.equal(usableEstimate(e), true, '热量是知道的，照样能用');
+  // 记饮食：蛋白质这几样是没填（合计里写着），不是 0
+  const r = saveRecipe(s, null, { name: '鱼豆腐汤', ...soup }, now());
+  const id = /** @type {any} */ (r).recipe.id;
+  const d = /** @type {any} */ (logFromRecipe(s, id));
+  assert.deepEqual([d.per, d.estimated], [{ kcal: 150, protein: null, carbs: null, fat: null }, true]);
+  // 有一样真有蛋白质的：照样加起来（缺了鱼豆腐的那一份，明细里写着）
+  const withEgg = { servings: 1, ings: [...soup.ings, ing('鸡蛋', 1)] };
+  const e2 = estimateRecipe(s, withEgg);
+  assert.ok(e2.perServing.protein > 0);
+  // 只有水和盐的 0、没有缺的：照样是 0（知道的）
+  assert.deepEqual(estimateRecipe(s, { servings: 1, ings: [ing('清水', 500, 'ml'), ing('盐', 1, '小勺')] }).perServing, { kcal: 0, protein: 0, carbs: 0, fat: 0 });
 });

@@ -158,7 +158,10 @@ export const MAP = [
   { fdc: 168457, zh: ['海带', '海带丝', '海带结', '昆布'], en: ['kelp', 'kombu'] },   // Seaweed, kelp, raw
   { fdc: 170496, zh: ['裙带菜', '海草'], en: ['wakame'] },   // Seaweed, wakame, raw
   { fdc: 170495, zh: ['紫菜', '海苔', '寿司海苔', '干紫菜'], en: ['nori', 'dried seaweed', 'seaweed'], note: 'approximation: 紫菜 / 海苔 (dried laver) use dried spirulina (similar per 100 g dried)', volume: false },   // Seaweed, spirulina, dried（杯、勺、密度都是粉的，干紫菜、海苔片轻得多，按 1 g/ml 猜更差：宁可换算不了）
-  { fdc: 168581, zh: ['木耳', '黑木耳', '云耳', '干木耳', '银耳', '白木耳', '干银耳'], en: ['wood ear', 'black fungus', 'wood ear mushroom'], note: 'approximation: 银耳 (white fungus) uses dried cloud ears', units: { '个': null, '块': null } },   // Fungi, Cloud ears, dried（「1 piece」4.5 g 是一小片云耳，一朵银耳一二十克）
+  // 木耳、黑木耳、云耳在菜谱里多半写的是泡发以后的重量（「黑木耳 200g（泡发后）」）：按鲜的算，每 100 g 25 千卡；按干的（284 千卡）会多算十倍。
+  // 写了「干」的才是干的。银耳一般买干的、按干重写（「银耳 15g」），照旧用干的那一条；泡发、水发开头的别的东西 PREFIX_WORDS 挡着
+  { fdc: 169237, zh: ['木耳', '黑木耳', '云耳', '鲜木耳', '泡发木耳', '水发木耳', '泡发黑木耳', '水发黑木耳'], en: ['wood ear', 'black fungus', 'wood ear mushroom'], note: 'approximation: 木耳 / 黑木耳 / 云耳 in recipes are mostly weighed after soaking; use raw Jew\'s ear (close to soaked wood ear), 干木耳 is the dried one', units: { '块': null } },   // Jew's ear, (pepeao), raw
+  { fdc: 168581, zh: ['干木耳', '干黑木耳', '干云耳', '银耳', '白木耳', '干银耳'], en: ['dried wood ear', 'dried black fungus', 'dried cloud ear'], note: 'approximation: 银耳 (white fungus) uses dried cloud ears', units: { '个': null, '块': null } },   // Fungi, Cloud ears, dried（「1 piece」4.5 g 是一小片云耳，一朵银耳一二十克）
   { fdc: 169242, zh: ['香菇', '鲜香菇', '冬菇', '花菇'], en: ['shiitake', 'shiitake mushrooms'] },   // Mushrooms, shiitake, raw
   { fdc: 168436, zh: ['干香菇', '香菇干'], en: ['dried shiitake', 'dried shiitake mushrooms'] },   // Mushrooms, shiitake, dried
   { fdc: 169382, zh: ['金针菇'], en: ['enoki', 'enoki mushrooms'] },   // Mushrooms, enoki, raw

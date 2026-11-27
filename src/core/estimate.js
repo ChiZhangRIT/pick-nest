@@ -14,7 +14,7 @@
 import { NUTRIENTS, nutrValue, normalizeNutrition, normName, writeRecord, deletedRecord } from './store.js';
 import { own, isObj, str } from './util.js';
 import { readQty } from './parse.js';
-import { findFood, foodById, gramsFor, nameHead, unitKey } from './nutrition.js';
+import { findFood, foodById, gramsFor, nameHead, unitKey, normUnit, GENERIC_UNITS } from './nutrition.js';
 import { foodId, liveFood, hasNutrition, KCAL_MAX, GRAM_MAX } from './foods.js';
 
 /** @typedef {import('./store.js').State} State */
@@ -43,7 +43,7 @@ import { foodId, liveFood, hasNutrition, KCAL_MAX, GRAM_MAX } from './foods.js';
  *   counted: number, guess: boolean, blank: boolean }} Estimate
  * servings：按几人份算的（total 是这么多份的）；whole：食谱没写几人份，一整道当一份；counted：算进去了几样；
  * blank：算进去的都是 0（水、盐）、又有没算进去的——算不出来，不是 0 千卡（麻辣烫：底料、鱼豆腐没算进去，只剩水和盐）；
- * perServing / total：千卡整数、克一位小数，算进去的里面一样也没有这一项的是 null
+ * perServing / total：千卡整数、克一位小数，算进去的里面一样也没有这一项的是 null；只有 0（水、盐）、又有算进去的一样没有这一项的也是 null（不知道，不是 0）
  */
 
 /** 食材自己的说法：这个名字（只看逗号、括号前面那段，和 findFood 一样）的 foods 里 kind 'ingredient'、没删除的那一条；没有 → null @param {State} state @param {unknown} name */
@@ -82,6 +82,17 @@ export function resolveIngredient(state, name) {
   return { mine, food, auto, per100, source, weighable };
 }
 
+/**
+ * 没写单位、名字却是重量或体积的词开头（「pints strawberries」「fl oz cream」：拆的时候没认出来的单位，成了名字的一部分）：
+ * 不能退成「几个」——「2 pounds chicken thighs」按两只鸡腿算差三倍、「500 grams chicken breast」按 500 块鸡胸算差几百倍
+ * @param {string} name
+ */
+// 只看英文的名字：「L 号鸡蛋 3」的 L 是大号，不是升
+const unitInName = (name) => {
+  const m = /[㐀-鿿]/.test(name) ? null : /^(fl\.?\s*oz|[a-z]+)\.?(?=\s)/i.exec(name);
+  return !!m && !!own(GENERIC_UNITS, normUnit(m[1].replace(/\.?\s+/, ' ')));
+};
+
 /** 算不进去、但这道菜里确实有的（可选的另外列） */
 const MISSING = new Set(['vague', 'unknown-food', 'unknown-unit']);
 
@@ -99,7 +110,7 @@ export function estimateRecipe(state, recipe, { servings = null } = {}) {
   const f = want / (base || 1);
   /** @type {Record<string, number>} */
   const sum = { kcal: 0, protein: 0, carbs: 0, fat: 0 };
-  const has = new Set();
+  const has = new Set(), gap = new Set();
   /** @type {EstLine[]} */
   const lines = [];
   for (const g of recipe && Array.isArray(recipe.ings) ? recipe.ings : []) {
@@ -113,6 +124,7 @@ export function estimateRecipe(state, recipe, { servings = null } = {}) {
     if (g.optional === true) line.status = 'optional';
     else if (qty == null) line.status = 'vague';
     else if (!r.per100) line.status = 'unknown-food';
+    else if (!line.unit && unitInName(name)) { line.status = 'unknown-unit'; line.reason = 'unit'; }
     else {
       const w = gramsFor(r.weighable, qty, line.unit);
       if (w.grams == null) { line.status = 'unknown-unit'; line.reason = w.reason === 'unit' ? 'unit' : 'weight'; }
@@ -123,7 +135,7 @@ export function estimateRecipe(state, recipe, { servings = null } = {}) {
         const n = {};
         for (const k of NUTRIENTS) {
           const v = p[k];
-          if (v == null) { n[k] = null; line.gaps.push(k); continue; }
+          if (v == null) { n[k] = null; line.gaps.push(k); gap.add(k); continue; }
           const x = v * w.grams / 100;
           sum[k] += x; has.add(k);
           n[k] = nutrValue(k, x);
@@ -133,7 +145,10 @@ export function estimateRecipe(state, recipe, { servings = null } = {}) {
     }
     lines.push(line);
   }
-  const out = (/** @type {number} */ div) => /** @type {Nutrition} */ (Object.fromEntries(NUTRIENTS.map(k => [k, has.has(k) ? nutrValue(k, sum[k] / div) : null])));
+  // 一样营养素只有 0 的（水、盐的蛋白质）、又有算进去了却没有这一项的（自己填的鱼豆腐只写了热量）：是不知道，不是 0 g——
+  // 写成 0 记进饮食里就当这顿没吃蛋白质，合计也不说有没填的（和 blank 一个道理，只是一样一样地看）
+  const known = (/** @type {string} */ k) => has.has(k) && !(gap.has(k) && !(sum[k] > 0));
+  const out = (/** @type {number} */ div) => /** @type {Nutrition} */ (Object.fromEntries(NUTRIENTS.map(k => [k, known(k) ? nutrValue(k, sum[k] / div) : null])));
   const counted = lines.filter(l => l.status === 'ok');
   const missing = lines.filter(l => MISSING.has(l.status));
   return { servings: want, whole: base == null, perServing: out(want), total: out(1), lines,

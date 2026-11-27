@@ -38,9 +38,10 @@ const BARE_WORDS = new Set([...TAIL_WORDS, 'cold', 'warm', 'freshly', 'ground'])
 // （中文的单字名字本来就只认整个的；水的「hot water」「ice water」「ice cubes」是表里的整个名字，照样认）
 export const EXACT_ONLY = new Set(['pepper', 'milk', 'cheese', 'flour', 'rice', 'steak', 'sausage', 'bacon', 'ham', 'butter', 'stock', 'broth', 'chips', 'water', 'ice']);
 // 包含的名字前面紧挨着这些，就是另一种东西：小的品种（一个的重量差好几倍：小番茄、小土豆、baby corn、pearl onions），
-// 干的、腌的、熏的、卤的（每 100 g 差好几倍：干豆腐、干鱿鱼、dried apricots、smoked salmon）。表里本来就有的写法（小葱、干香菇）是整个名字，不受影响
+// 干的、腌的、熏的、卤的（每 100 g 差好几倍：干豆腐、干鱿鱼、dried apricots、smoked salmon），泡发、水发的（干货泡过水：「水发腐竹」
+// 每 100 g 是干腐竹的几分之一，不能按干的算）。表里本来就有的写法（小葱、干香菇、泡发木耳）是整个名字，不受影响
 export const PREFIX_WORDS = {
-  zh: ['小', '迷你', '干', '腌', '熏', '酱', '卤'],
+  zh: ['小', '迷你', '干', '腌', '熏', '酱', '卤', '泡发', '水发'],
   en: new Set(['baby', 'mini', 'petite', 'pearl', 'cocktail', 'dried', 'dehydrated', 'candied', 'crystallized', 'pickled', 'smoked']),
 };
 // 看着包含表里的名字、其实是别的东西（营养差得多），认不出：鱼豆腐是鱼糜做的、杏仁豆腐是甜点、鸡蛋豆腐是蛋做的；水淀粉大半是水；
@@ -272,9 +273,12 @@ export const GENERIC_UNITS = {
   kg: { g: 1000 }, 公斤: { g: 1000 }, 千克: { g: 1000 },
   // 「斤」按大陆的 500 g：一个字看不出是哪里写的（繁体也折成同一个字）；台湾的一斤是 600 g，写「台斤」才按 600 g，「台两」37.5 g
   斤: { g: 500 }, 两: { g: 50 }, 台斤: { g: 600 }, 台两: { g: 37.5 },
-  oz: { g: 28.35 }, 盎司: { g: 28.35 },
-  lb: { g: 453.6 }, lbs: { g: 453.6 }, 磅: { g: 453.6 },
+  kilogram: { g: 1000 }, kilograms: { g: 1000 }, kilo: { g: 1000 }, kilos: { g: 1000 },
+  oz: { g: 28.35 }, ounce: { g: 28.35 }, ounces: { g: 28.35 }, 盎司: { g: 28.35 },
+  lb: { g: 453.6 }, lbs: { g: 453.6 }, pound: { g: 453.6 }, pounds: { g: 453.6 }, 磅: { g: 453.6 },
   ml: { ml: 1 }, 毫升: { ml: 1 }, cc: { ml: 1 }, l: { ml: 1000 }, 升: { ml: 1000 }, 公升: { ml: 1000 },
+  milliliter: { ml: 1 }, milliliters: { ml: 1 }, millilitre: { ml: 1 }, millilitres: { ml: 1 },
+  liter: { ml: 1000 }, liters: { ml: 1000 }, litre: { ml: 1000 }, litres: { ml: 1000 },
   'fl oz': { ml: 29.57 }, qt: { ml: 946.4 }, quart: { ml: 946.4 }, quarts: { ml: 946.4 }, pt: { ml: 473.2 }, pint: { ml: 473.2 }, pints: { ml: 473.2 },
   gal: { ml: 3785.4 }, gallon: { ml: 3785.4 }, gallons: { ml: 3785.4 },
   勺: { ml: 15 }, 汤匙: { ml: 15 }, 大勺: { ml: 15 }, 大匙: { ml: 15 }, 汤勺: { ml: 15 }, tbsp: { ml: 15 }, tablespoon: { ml: 15 }, tablespoons: { ml: 15 },

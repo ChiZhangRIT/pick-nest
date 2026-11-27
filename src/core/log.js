@@ -7,9 +7,9 @@
 //   没连食谱的（手动写的、常吃的、计划里只写一句的「出去吃」）记进常吃的（foods.js 的 rememberFood），下次输入时联想。
 // 营养是抄下来的：以后改了食谱的每人份、常吃的（第 15 步还有营养表），过去的记录不变（要改就改这一条）。
 // 第 15 步：连着的食谱没填每人份营养时用按食材估算的（core/estimate.js 的 recipeNutrition），记成 estimated（界面上写「约」），记的时候照样抄下来。
-// 目标在同步的设置 settings.goals（goalsOf / setGoals，按 settingsAt 合并）。日子是本地日期 'YYYY-MM-DD'（dates.js）。
+// 目标在同步的设置里一样一个键 goals.kcal、goals.protein……（goalsOf / setGoals，各自按 settingsAt 合并）。日子是本地日期 'YYYY-MM-DD'（dates.js）。
 // 写法和 plan.js 一样：操作函数直接改传进来的 state（在 ctx.mutate 里调用），记录经过 writeRecord / deletedRecord。
-import { MEALS, NUTRIENTS, nutrValue, normalizeNutrition, live, writeRecord, deletedRecord, newId, setSetting, canon } from './store.js';
+import { MEALS, NUTRIENTS, nutrValue, normalizeNutrition, live, writeRecord, deletedRecord, newId, setSetting } from './store.js';
 import { own, isObj, str } from './util.js';
 import { readQty } from './parse.js';
 import { isDay, weekDays } from './dates.js';
@@ -249,29 +249,39 @@ export function totalsByDay(state, from, to) {
 
 /**
  * 这一天所在的一周（周一到周日）平均每天多少：只算记了的日子（每样只算有这一样的日子：没记的那天不是吃了 0 千卡）。
- * 返回 { from, to, days：记了热量的有几天, kcal, protein, carbs, fat（平均，千卡整数、克一位小数；一天也没有是 null）}
- * @param {State} state @param {string} day
+ * today（日历上用，todayDay()）：只算今天以前的——今天还没吃完，早上只记了早饭的一天算进去，平均一整天都偏低，到晚上最后一顿才对；
+ * skipsToday：今天在这一周里、记了东西、没算进去（页面上写「不算今天」）。
+ * 返回 { from, to, days：记了热量的有几天, kcal, protein, carbs, fat（平均，千卡整数、克一位小数；一天也没有是 null）, skipsToday }
+ * @param {State} state @param {string} day @param {{ today?: string }} [opts]
  */
-export function weekAverage(state, day) {
+export function weekAverage(state, day, { today = '' } = {}) {
   const days = weekDays(day);
-  if (!days.length) return { from: '', to: '', days: 0, kcal: null, protein: null, carbs: null, fat: null };
-  const by = totalsByDay(state, days[0], days[6]);
+  if (!days.length) return { from: '', to: '', days: 0, kcal: null, protein: null, carbs: null, fat: null, skipsToday: false };
+  const all = totalsByDay(state, days[0], days[6]);
+  const cut = isDay(today) ? today : '';
+  const by = cut ? [...all].filter(([d]) => d < cut).map(([, t]) => t) : [...all.values()];
   /** @type {Record<string, number | null>} */
   const avg = {};
   let kcalDays = 0;
   for (const k of NUTRIENTS) {
     let sum = 0, n = 0;
-    for (const t of by.values()) if (t.missing[k] < t.n) { sum += t[k]; n++; }
+    for (const t of by) if (t.missing[k] < t.n) { sum += t[k]; n++; }
     avg[k] = n ? nutrValue(k, sum / n) : null;
     if (k === 'kcal') kcalDays = n;
   }
-  return { from: days[0], to: days[6], days: kcalDays, ...avg };
+  return { from: days[0], to: days[6], days: kcalDays, ...avg, skipsToday: !!cut && all.has(cut) };
 }
 
+/**
+ * 饮食目标在同步的设置里是一样一个键（goals.kcal、goals.protein……），各有各的 settingsAt：设置页一个框一个框地存，两台设备还没同步时
+ * 一台设了热量、一台设了蛋白质，合并以后两个都在（整个一份按时间合并的话，晚的那一份没有热量，就把另一台设的冲掉了）
+ * @param {string} k
+ */
+export const goalKey = (k) => 'goals.' + k;
 /** 同步的设置里的饮食目标：每样是正数或 null（没设）；认不出的当没设 @param {State} state @returns {Nutrition} */
 export function goalsOf(state) {
-  const g = isObj(state.settings) && isObj(state.settings.goals) ? state.settings.goals : {};
-  return /** @type {Nutrition} */ (Object.fromEntries(NUTRIENTS.map(k => { const v = nutrValue(k, g[k]); return [k, v != null && v > 0 ? v : null]; })));
+  const g = isObj(state.settings) ? state.settings : {};
+  return /** @type {Nutrition} */ (Object.fromEntries(NUTRIENTS.map(k => { const v = nutrValue(k, own(g, goalKey(k))); return [k, v != null && v > 0 ? v : null]; })));
 }
 /**
  * 检查饮食目标（设置 → 饮食目标，输入框里的字）：空的、0 是不设；别的照 readNutrition（读不出来、负数、太大报错）
@@ -283,9 +293,9 @@ export function validateGoals(input) {
   return { ok: r.ok, clean, errors: r.errors };
 }
 /**
- * 存饮食目标（settings.goals，整个一份按 settingsAt 合并）。只给了几样就只改那几样（页面一个框一个框地存）；有错什么也不改。
- * 意思没变（没设的写 0、清空，1800 写成 1800.4）不写、不盖新时间：整份按时间合并，空写一次就比别的设备刚设、还没同步过来的目标新，把它冲掉。
- * 不认识的（以后的版本加的纤维）原样留着。返回 { ok, changed, errors }
+ * 存饮食目标（settings 的 goals.kcal…，一样一个键、各自按 settingsAt 合并）。只给了几样就只写那几样（页面一个框一个框地存）；有错什么也不改。
+ * 意思没变（没设的写 0、清空，1800 写成 1800.4）不写、不盖新时间：空写一次就比别的设备刚设、还没同步过来的这一样新，把它冲掉。
+ * 不设了写 null（带着新时间：合并时比别的设备更早设的新）。返回 { ok, changed, errors }
  * @param {State} state @param {Partial<Record<string, unknown>>} input @param {number} [now]
  */
 export function setGoals(state, input, now = Date.now()) {
@@ -293,11 +303,12 @@ export function setGoals(state, input, now = Date.now()) {
   const v = validateGoals(give);
   if (!v.ok) return { ok: false, changed: false, errors: v.errors };
   const was = goalsOf(state);
-  /** @type {Record<string, any>} */
-  const next = { ...(isObj(state.settings) && isObj(state.settings.goals) ? state.settings.goals : {}), ...was };
-  for (const k of Object.keys(give)) next[k] = v.clean[/** @type {keyof Nutrition} */ (k)];
-  if (canon(goalsOf(/** @type {any} */ ({ settings: { goals: next } }))) === canon(was)) return { ok: true, changed: false, errors: {} };
-  return { ok: true, changed: setSetting(state, 'goals', next, now), errors: {} };
+  let changed = false;
+  for (const k of /** @type {(keyof Nutrition)[]} */ (Object.keys(give))) {
+    if (v.clean[k] === was[k]) continue;
+    if (setSetting(state, goalKey(k), v.clean[k], now)) changed = true;
+  }
+  return { ok: true, changed, errors: {} };
 }
 
 /**

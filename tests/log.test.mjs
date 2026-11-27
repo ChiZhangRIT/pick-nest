@@ -7,7 +7,7 @@ import { saveRecipe, deleteRecipe, validateRecipe } from '../src/core/recipes.js
 import { addEntry } from '../src/core/plan.js';
 import {
   addLogEntry, editLogEntry, deleteLogEntry, validateLogEntry, logOn, logIn, liveLog, loggedFrom, logFromPlan, logFromRecipe, logFromFood, perServing, editedTotals,
-  sumEntries, dayTotals, totalsByDay, weekAverage, goalsOf, setGoals, validateGoals, goalProgress, mealAt,
+  sumEntries, dayTotals, totalsByDay, weekAverage, goalsOf, setGoals, validateGoals, goalProgress, mealAt, NUTRIENTS,
 } from '../src/core/log.js';
 import { foodId, foodOf, liveFood, rememberFood, foodSuggestions, readNutrition, scaleNutrition, hasNutrition, KCAL_MAX, GRAM_MAX } from '../src/core/foods.js';
 import * as state from '../src/core/state.js';
@@ -258,26 +258,36 @@ test('日子的边界：几天里的（两头都算）、认不出的日子不�
   assert.deepEqual(logIn(s, MON, SUN).map(e => e.date), [MON, MON, '2026-11-25', SUN]);
   assert.deepEqual([...totalsByDay(s, MON, SUN)].map(([d, t]) => [d, t.kcal]), [[MON, 2000], ['2026-11-25', 0], [SUN, 1500]]);
   const w = weekAverage(s, '2026-11-26');
-  assert.deepEqual(w, { from: MON, to: SUN, days: 2, kcal: 1750, protein: 60, carbs: null, fat: null }, '(2000 + 1500) / 2；蛋白质 (90 + 30 + 60) / 3');
+  assert.deepEqual(w, { from: MON, to: SUN, days: 2, kcal: 1750, protein: 60, carbs: null, fat: null, skipsToday: false }, '(2000 + 1500) / 2；蛋白质 (90 + 30 + 60) / 3');
   assert.deepEqual(weekAverage(s, SUN), w, '周日还是这一周');
   assert.equal(weekAverage(s, '2026-11-30').kcal, 9000);
   assert.equal(weekAverage(s, '2026-12-07').days, 0);
   assert.equal(weekAverage(s, 'bad').days, 0);
+  // 今天还没吃完（第 16 步检查）：只算今天以前的。周日只记了早饭：不拉低平均，写着「不算今天」
+  assert.deepEqual(weekAverage(s, MON, { today: SUN }), { ...w, days: 1, kcal: 2000, protein: 60, skipsToday: true }, '周一 2000；蛋白质 (90 + 30) / 2');
+  assert.deepEqual(weekAverage(s, MON, { today: '2026-11-25' }), { ...w, days: 1, kcal: 2000, protein: 90, skipsToday: true });
+  assert.deepEqual(weekAverage(s, MON, { today: '2026-11-24' }), { ...w, days: 1, kcal: 2000, protein: 90, skipsToday: false }, '今天还没记：没有不算的');
+  assert.deepEqual(weekAverage(s, MON, { today: MON }), { from: MON, to: SUN, days: 0, kcal: null, protein: null, carbs: null, fat: null, skipsToday: true }, '只有今天记了：没有平均');
+  assert.deepEqual(weekAverage(s, MON, { today: '2026-12-01' }), w, '过去的一周：都算');
+  assert.deepEqual(weekAverage(s, MON, { today: 'bad' }), w);
 });
 
 test('饮食目标：只改给了的那几样、空的和 0 是不设、写错不存；没变不盖新时间；和目标比（还差 / 超了 / 进度）', () => {
   const s = fresh();
+  const at = (/** @type {any} */ st) => NUTRIENTS.map(k => st.settingsAt['goals.' + k]);
+  const raw = (/** @type {any} */ st) => NUTRIENTS.map(k => st.settings['goals.' + k]);
   assert.deepEqual(goalsOf(s), { kcal: null, protein: null, carbs: null, fat: null });
   assert.deepEqual(setGoals(s, { kcal: '1800.4', protein: '90' }, 5000), { ok: true, changed: true, errors: {} });
-  assert.deepEqual([s.settings.goals, s.settingsAt.goals], [{ kcal: 1800, protein: 90, carbs: null, fat: null }, 5000]);
+  assert.deepEqual([raw(s), at(s)], [[1800, 90, undefined, undefined], [5000, 5000, undefined, undefined]], '一样一个键，没给的不写');
+  assert.equal(s.settings.goals, undefined);
   assert.equal(setGoals(s, { kcal: '1800' }, 6000).changed, false, '一样的不盖新时间');
-  assert.equal(s.settingsAt.goals, 5000);
+  assert.equal(s.settingsAt['goals.kcal'], 5000);
   setGoals(s, { protein: '0' }, 7000);
-  assert.equal(goalsOf(s).protein, null, '0 是不设');
-  assert.deepEqual([setGoals(s, { carbs: '0', fat: '' }, 7500).changed, s.settingsAt.goals], [false, 7000], '本来就没设的写 0、清空：不盖新时间');
+  assert.deepEqual([goalsOf(s).protein, s.settings['goals.protein'], s.settingsAt['goals.protein'], s.settingsAt['goals.kcal']], [null, null, 7000, 5000], '0 是不设：写 null、盖新时间，别的不动');
+  assert.deepEqual([setGoals(s, { carbs: '0', fat: '' }, 7500).changed, at(s)], [false, [5000, 7000, undefined, undefined]], '本来就没设的写 0、清空：不写');
   assert.deepEqual(setGoals(s, { fat: '-3' }, 8000), { ok: false, changed: false, errors: { fat: 'log.err.num' } });
   assert.deepEqual(validateGoals({ kcal: '' }).clean.kcal, null);
-  s.settings.goals = { kcal: 'abc', protein: -1, fat: 50 };
+  Object.assign(s.settings, { 'goals.kcal': 'abc', 'goals.protein': -1, 'goals.fat': 50 });
   assert.deepEqual(goalsOf(s), { kcal: null, protein: null, carbs: null, fat: 50 }, '坏了的当没设');
   const p = goalProgress(/** @type {any} */ ({ kcal: 2100, protein: 45, carbs: 0, fat: 50 }), { kcal: 1800, protein: 90, carbs: null, fat: 50 });
   assert.deepEqual(p, [
@@ -286,21 +296,36 @@ test('饮食目标：只改给了的那几样、空的和 0 是不设、写错�
     { key: 'carbs', value: 0, goal: null, left: null, over: null, ratio: null },
     { key: 'fat', value: 50, goal: 50, left: 0, over: 0, ratio: 1 },
   ]);
-  // 本来就没设的写 0：什么也不写（整份按时间合并，空写一次会冲掉别的设备刚设、还没同步过来的目标）
+  // 本来就没设的写 0：什么也不写（空写一次会冲掉别的设备刚设、还没同步过来的目标）
   const z = fresh();
   assert.deepEqual(setGoals(z, { kcal: '0' }, 1000), { ok: true, changed: false, errors: {} });
-  assert.deepEqual([z.settings.goals, z.settingsAt.goals], [undefined, undefined]);
+  assert.deepEqual([z.settings['goals.kcal'], z.settingsAt['goals.kcal']], [undefined, undefined]);
   const other = fresh();
   setGoals(other, { kcal: '1600' }, 900);
   assert.equal(goalsOf(mergeStates(z, other)).kcal, 1600);
-  // 不认识的（以后的版本加的纤维）留着
-  z.settings.goals = { kcal: 1800, fiber: 30 };
+  // 不认识的（以后的版本加的纤维）是另一个键，原样留着、照样同步
+  z.settings['goals.fiber'] = 30; z.settingsAt['goals.fiber'] = 1500;
   assert.equal(setGoals(z, { protein: '90' }, 2000).changed, true);
-  assert.deepEqual(z.settings.goals, { kcal: 1800, protein: 90, carbs: null, fat: null, fiber: 30 });
-  // 两台设备改了目标：按 settingsAt 取晚的一整份
-  const a = fresh(), b = fresh();
-  setGoals(a, { kcal: '1800' }, 1000); setGoals(b, { kcal: '2000', fat: '60' }, 2000);
-  assert.deepEqual(mergeStates(a, b).settings.goals, { kcal: 2000, protein: null, carbs: null, fat: 60 });
+  assert.equal(z.settings['goals.fiber'], 30);
+  assert.equal(mergeStates(fresh(), z).settings['goals.fiber'], 30);
+});
+
+test('饮食目标：两台设备还没同步时各设了一样，合并以后两样都在（一样一个键）；同一样两边都改了取晚的；顺序无关、重复合并不变（第 16 步检查）', () => {
+  const base = fresh();
+  setGoals(base, { kcal: '2000', fat: '70' }, 1000);
+  const a = mergeStates(fresh(), base), b = mergeStates(fresh(), base);
+  setGoals(a, { kcal: '1800' }, 2000);                    // 设备 A：设置 → 饮食目标，热量
+  setGoals(b, { protein: '120' }, 3000);                  // 设备 B（离线）：蛋白质
+  setGoals(b, { fat: '' }, 3500);                         // B 还把脂肪清掉了
+  const ab = mergeStates(a, b), ba = mergeStates(b, a);
+  assert.deepEqual(goalsOf(ab), { kcal: 1800, protein: 120, carbs: null, fat: null });
+  assert.deepEqual(ab, ba, '顺序无关');
+  assert.deepEqual(mergeStates(ab, ab), ab, '重复合并不变');
+  assert.deepEqual(mergeStates(ab, a), ab);
+  // 同一样两边都改了：晚的为准
+  setGoals(a, { protein: '100' }, 4000);
+  assert.equal(goalsOf(mergeStates(a, b)).protein, 100);
+  assert.equal(goalsOf(mergeStates(b, a)).protein, 100);
 });
 
 test('常吃的联想：开头对上的在前，再按次数、最近一次；框空着列「常吃的」；只有 kind food；最多几样', () => {
