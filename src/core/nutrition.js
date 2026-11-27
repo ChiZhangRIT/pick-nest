@@ -1,10 +1,11 @@
 // @ts-check
 // 内置营养表（src/data/nutrition.js，USDA FoodData Central SR Legacy）的查法：食谱里写的食材名字 → 表里的哪一样（findFood），
-// 「3 个」「2 勺」「半斤」→ 多少克（gramsFor）。都是纯函数，不看 state；按食谱估算每人份是第 15 步的 estimateRecipe，用的就是这两样。
+// 「3 个」「2 勺」「半斤」→ 多少克（gramsFor）。都是纯函数，不看 state；按食谱估算每人份是第 15 步的 core/estimate.js（estimateRecipe），用的就是这两样。
+// 第 15 步还加了：自己的说法按哪个名字记（nameHead）、「一个多重」记在哪个单位上（unitKey、isWeightUnit）、「指定成表里的哪一样」的搜索（searchTable）。
 // 估出来的数一律当「约」：同一样东西的品种、做法、牌子差得不少，宁可认不出（列出来让人指定）也不要认错。
 import { NUTRITION } from '../data/nutrition.js';
 import { normName } from './store.js';
-import { own } from './util.js';
+import { own, str } from './util.js';
 
 /** @typedef {import('../data/nutrition.js').NutritionFood} NutritionFood */
 /** 能换算克数的一样：表里的一样，或者以后 foods 里自己填的（同样的 grams / density；volume: false = 按体积量没有意义） @typedef {{ grams?: Record<string, number> | null, density?: number | null, volume?: boolean }} Weighable */
@@ -33,8 +34,9 @@ const TAIL_WORDS = new Set(['chopped', 'minced', 'diced', 'sliced', 'cubed', 'gr
 const BARE_WORDS = new Set([...TAIL_WORDS, 'cold', 'warm', 'freshly', 'ground']);
 // 太笼统的英文名字只认整个名字（去掉前后的切法、说明以后）：「oat milk」不是牛奶、「feta cheese」不是切达、「almond flour」不是面粉、
 // 「jalapeno pepper」不是黑胡椒、「fried rice」不是生米、「tuna steak」不是牛排、「turkey bacon」「chicken sausage」不是猪肉做的、
-// 「apple butter」不是黄油、「vegetable stock」不是鸡汤、「banana chips」不是薯片（中文的单字名字本来就只认整个的）
-export const EXACT_ONLY = new Set(['pepper', 'milk', 'cheese', 'flour', 'rice', 'steak', 'sausage', 'bacon', 'ham', 'butter', 'stock', 'broth', 'chips']);
+// 「apple butter」不是黄油、「vegetable stock」不是鸡汤、「banana chips」不是薯片、「tonic water」「sugar water」「italian ice」不是 0 千卡的水
+// （中文的单字名字本来就只认整个的；水的「hot water」「ice water」「ice cubes」是表里的整个名字，照样认）
+export const EXACT_ONLY = new Set(['pepper', 'milk', 'cheese', 'flour', 'rice', 'steak', 'sausage', 'bacon', 'ham', 'butter', 'stock', 'broth', 'chips', 'water', 'ice']);
 // 包含的名字前面紧挨着这些，就是另一种东西：小的品种（一个的重量差好几倍：小番茄、小土豆、baby corn、pearl onions），
 // 干的、腌的、熏的、卤的（每 100 g 差好几倍：干豆腐、干鱿鱼、dried apricots、smoked salmon）。表里本来就有的写法（小葱、干香菇）是整个名字，不受影响
 export const PREFIX_WORDS = {
@@ -187,6 +189,77 @@ export function foodById(id, table = NUTRITION) {
   return typeof n === 'number' ? table.find(f => f.id === n) || null : null;
 }
 
+/**
+ * 自己的说法（foods 里 kind 'ingredient' 的那一条）按哪个名字记：和 findFood 一样只看第一个逗号、括号前面那段（原样的写法、去掉前后空白）——
+ * 「鱼豆腐（切块）」「鱼豆腐, 切块」和「鱼豆腐」是同一样，指定一次所有食谱都认；前面那段是空的（「(可选) 香菜」）用整个名字
+ * @param {unknown} name @returns {string}
+ */
+export function nameHead(name) {
+  const s = str(name).trim();
+  const cut = s.search(SEPARATOR_RE);
+  if (cut > 0) { const head = s.slice(0, cut).trim(); if (normName(head)) return head; }
+  return s;
+}
+
+// 繁体（台湾）界面上，表里的一样对不上写的名字时先用台湾的说法：表里第一个名字多是大陆的说法，台湾听着不对，
+// 甚至是别的东西（「土豆」在台湾是花生）。写的是表里的写法（简体），显示时再 toTraditional；测试查每一个都在表里
+export const TW_NAMES = new Set(['马铃薯', '酱油', '优格', '起司', '鲑鱼', '鲔鱼', '高丽菜', '青花菜', '花椰菜', '凤梨', '地瓜', '奇异果', '芭乐', '柳橙',
+  '猪绞肉', '美乃滋', '鲜奶油', '太白粉']);
+
+/**
+ * 表里这一样在界面上叫什么（估算的明细、「指定成…」的搜索）：食材写的名字（只看 nameHead 那段；搜索时是对上的那个名字）对上的别名优先——
+ * 写「马铃薯」就是「马铃薯」，不写成这一样的第一个名字「土豆」；「鲅鱼」不写成同一条的「带鱼」。整个一样的 > 名字里包含的最长的那个；
+ * 都对不上（指定成的、换了语言写的）用第一个名字，tw 时先用台湾的说法（TW_NAMES）。en 用英文名。返回表里的写法（简体、小写）
+ * @param {NutritionFood} food @param {unknown} [name] @param {{ en?: boolean, tw?: boolean }} [opts]
+ */
+export function foodAlias(food, name = '', { en = false, tw = false } = {}) {
+  const list = en && food.en.length ? food.en : food.zh;
+  const key = foldName(nameHead(name)), b = bare(key);
+  let best = '', bestLen = 0;
+  for (const a of list) {
+    const k = foldName(a);
+    if (!k) continue;
+    if (k === key || k === b) return a;
+    const inside = CJK.test(k) ? key.includes(k) : wordRe(k).test(key);
+    if (inside && k.length > bestLen) { best = a; bestLen = k.length; }
+  }
+  if (best) return best;
+  return (tw && !en && list.find(a => TW_NAMES.has(a))) || list[0] || food.zh[0] || '';
+}
+
+/** 搜索用的每个名字（英文按整个词：搜「rice」不该出来「licorice」，名字「ice」也不该算在「rice」里） @type {WeakMap<readonly NutritionFood[], { food: NutritionFood, key: string, re: RegExp | null }[]>} */
+const NAMES = new WeakMap();
+/**
+ * 「指定成表里的哪一样」的搜索：表里的名字（中文、英文，normName 折过，简繁都行）一样的最前，再是开头对上的、包含搜索词的（短的在前：更接近），
+ * 最后是搜索词里包含的（「鱼豆腐」里有「豆腐」：长的在前）。每样只出一次。返回 [{ food, name：对上的那个名字 }]
+ * @param {unknown} query @param {{ limit?: number }} [opts] @param {readonly NutritionFood[]} [table]
+ * @returns {{ food: NutritionFood, name: string }[]}
+ */
+export function searchTable(query, { limit = 30 } = {}, table = NUTRITION) {
+  const q = foldName(query);
+  if (!q) return [];
+  let names = NAMES.get(table);
+  if (!names) {
+    names = [];
+    for (const food of table) for (const name of [...food.zh, ...food.en]) {
+      const key = foldName(name);
+      if (key) names.push({ food, key, re: CJK.test(key) ? null : new RegExp(wordRe(key).source) });
+    }
+    NAMES.set(table, names);
+  }
+  /** @type {Map<NutritionFood, { name: string, rank: number, len: number }>} */
+  const best = new Map();
+  for (const { food, key, re } of names) {
+    const rank = key === q ? 0 : key.startsWith(q) ? 1 : key.includes(q) ? 2 : (re ? re.test(q) : [...key].length >= 2 && q.includes(key)) ? 3 : -1;
+    if (rank < 0) continue;
+    const len = rank === 3 ? -key.length : key.length;
+    const b = best.get(food);
+    if (!b || rank < b.rank || (rank === b.rank && len < b.len)) best.set(food, { name: key, rank, len });
+  }
+  return [...best].sort(([fa, a], [fb, b]) => a.rank - b.rank || a.len - b.len || fa.id - fb.id)
+    .slice(0, Math.max(0, limit)).map(([food, b]) => ({ food, name: b.name }));
+}
+
 // ---------- 单位 → 克 ----------
 /**
  * 通用的单位：重量的直接是克（g），体积的是毫升（ml），按这一样的密度换成克（不知道密度的按 1 g/ml，结果标成猜的）。
@@ -231,6 +304,29 @@ const UNIT_KEYS = {
 
 /** 单位的比较写法：normName，去掉结尾的点（tbsp.、oz.） @param {unknown} unit */
 export const normUnit = unit => normName(unit).replace(/\.$/, '');
+/**
+ * 自己填的「一个多重」记在哪个单位上（foods 的 grams 的键）：和 gramsFor 找的第一个一样——没写单位、只、颗记在「个」上，clove 记在「瓣」上，
+ * 认不出的（盒、罐）就是写的那个（gramsFor 认不出的单位也先找它自己）
+ * @param {unknown} unit
+ */
+export function unitKey(unit) {
+  const u = normUnit(unit), keys = own(UNIT_KEYS, u);
+  return keys ? keys[0] : u;
+}
+/**
+ * 「自己填」要不要问一{unit}多重：没写单位、个、根、勺、杯、认不出的（盒）要问；克、斤、毫升这种通用的不用（勺、杯虽然有通用的毫升数，
+ * 不知道密度的按 1 g/ml 猜，自己知道一勺多重的照样能填）
+ * @param {unknown} unit
+ */
+export function asksWeight(unit) {
+  const u = normUnit(unit);
+  return !!own(UNIT_KEYS, u) || !own(GENERIC_UNITS, u);
+}
+/** 是重量的单位（克、斤、oz……）：换算不用知道这一样一个多重 @param {unknown} unit */
+export function isWeightUnit(unit) {
+  const g = own(GENERIC_UNITS, normUnit(unit));
+  return !!(g && g.g);
+}
 
 /**
  * @typedef {{ grams: number, reason: null, guess: boolean } | { grams: null, reason: 'qty' | 'unit' | 'weight', guess: false }} GramsResult

@@ -27,10 +27,10 @@ const TODAY = todayDay(), MON = weekStart(TODAY);
 let clock = Date.now() - 3600_000;
 const now = () => (clock += 1000);
 
-/** 红烧肉（填了每人份营养）、燕麦粥（没填）；今天晚饭红烧肉、早饭燕麦粥；常吃的牛肉面、拿铁 */
+/** 红烧肉（填了每人份营养）、燕麦粥（没填、也估算不出来：食材没写用量）；今天晚饭红烧肉、早饭燕麦粥；常吃的牛肉面、拿铁 */
 function seed(s) {
   const hsr = saveRecipe(s, null, { name: '红烧肉', servings: '2', ings: [{ name: '五花肉', qty: '500', unit: 'g' }], nutrition: { kcal: '620', protein: '22', carbs: '18', fat: '50' } }, now()).id;
-  const oat = saveRecipe(s, null, { name: '燕麦粥', servings: '1', ings: [{ name: '燕麦', qty: '50', unit: 'g' }, { name: '牛奶', qty: '250', unit: 'mL' }] }, now()).id;
+  const oat = saveRecipe(s, null, { name: '燕麦粥', servings: '1', ings: [{ name: '燕麦' }, { name: '牛奶' }] }, now()).id;
   const pHsr = addEntry(s, { date: TODAY, meal: 'dinner', recipeId: hsr, servings: '3' }, now()).id;
   const pOat = addEntry(s, { date: TODAY, meal: 'breakfast', recipeId: oat, servings: '1' }, now()).id;
   addLogEntry(s, { date: addDays(TODAY, -20), title: '牛肉面', per: { kcal: '650', protein: '32' } }, now());

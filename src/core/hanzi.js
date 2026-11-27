@@ -19,3 +19,30 @@ export function toSimplified(s) {
   for (const ch of String(s ?? '')) out += T2S.get(ch) || ch;
   return out;
 }
+
+// 简 → 繁：只给 App 自己带的简体文字（内置营养表的食材名，第 15 步）在繁体界面上显示用，用户写的字永远不转。
+// 只换一一对应的字；一个简体对几个繁体的（发：發 / 髮，只：隻 / 衹）原样不动，宁可留着简体也不写错。
+// T2S 里还有异体字（荳 → 豆、菓 → 果、痠 → 酸）：简体那个字本身就是繁体的正字，反过来换就错了（「豆腐」不能写成「荳腐」），S2T_KEEP 里的不换
+// （按内置营养表的全部名字一个个看过：改了对照表的话，看一遍繁体界面上新的名字）。
+// 食材名里常见、按吃的意思一定是那一个的几个字另外指定：面 → 麵（麵粉、麵條）、干 → 乾（乾香菇）、鸡 → 雞、绿 → 綠、枪 → 槍
+const S2T_KEEP = '豆果酸麻松冬栗核扇薯佛球韭芸里谷余系准斗才云丑几';
+const S2T_PREFER = { 面: '麵', 干: '乾', 鸡: '雞', 绿: '綠', 枪: '槍' };
+/** @type {Map<string, string> | null} */
+let S2T = null;
+/** 字符串里的简体字换成繁体（只换一一对应的，见上面） @param {unknown} s @returns {string} */
+export function toTraditional(s) {
+  if (!S2T) {
+    const m = new Map(), many = new Set();
+    for (const [tc, sc] of T2S) {
+      if (tc === sc) continue;
+      if (m.has(sc) && m.get(sc) !== tc) many.add(sc); else m.set(sc, tc);
+    }
+    for (const c of many) m.delete(c);
+    for (const c of S2T_KEEP) m.delete(c);
+    for (const [k, v] of Object.entries(S2T_PREFER)) m.set(k, v);
+    S2T = m;
+  }
+  let out = '';
+  for (const ch of String(s ?? '')) out += S2T.get(ch) || ch;
+  return out;
+}

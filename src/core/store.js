@@ -547,9 +547,14 @@ function blend(c, w, o) {
   if (c === 'foods') {
     // 常吃的（第三版）和 memory 一样按名字算 id：新设备上又记了一次「拿铁」，云端那条（几个月前填好的蛋白质、脂肪）不能被一条只写了热量的盖掉。
     // 次数、最近一次取大的；较新那条没填的营养用另一条的补——只在同一种、同一个「每多少」时补（每份的 190 千卡补到每 100 g 上就错了）；
-    // 单位重量两条的都留（同一个单位以较新的为准）；ref 空着就补
+    // 单位重量两条的都留（同一个单位以较新的为准）；ref 空着就补。
+    // 例外（第 15 步）：较新那条是食材「指定成表里的哪一样」（kind 'ingredient'、有 ref）时不补每 100 g：指定的时候就清掉了自己填的数，
+    // 补回来就又成了按自己填的算（估算里自己填的比指定的优先），后来的「指定成」白做了。
+    // 两条里有一条是删掉的（食材「用回自动认的」）：营养、单位重量、ref 都不从它补，也不往删掉的上面补——删掉的是用户撤掉的说法，
+    // 补进另一台设备从头建的那条，指定的、自己填的就又回来了（同一台设备删了再存用的是同一个 createdAt，见 estimate.js 的 ingredientRecord）
     const out = { ...w, uses: Math.max(w.uses || 0, o.uses || 0), lastAt: Math.max(w.lastAt || 0, o.lastAt || 0) };
-    if (w.kind === o.kind && w.perUnit === o.perUnit && isObj(o.per)) {
+    if (w.deleted || o.deleted) return out;
+    if (w.kind === o.kind && w.perUnit === o.perUnit && isObj(o.per) && !(w.kind === 'ingredient' && !blank(w.ref))) {
       const per = { ...(isObj(w.per) ? w.per : {}) };
       for (const k of NUTRIENTS) if (per[k] == null && o.per[k] != null) per[k] = o.per[k];
       out.per = per;

@@ -132,8 +132,8 @@ test('从计划「吃了」：那一天那一顿、1 份、食谱现在的每人
   const rid = saveRecipe(s, null, { name: '红烧肉', servings: '2', ings: [], nutrition: { kcal: '620', protein: '22' } }, now()).id;
   const p = addEntry(s, { date: MON, meal: 'dinner', recipeId: rid, servings: '3' }, now()).id;
   const q = addEntry(s, { date: MON, meal: 'lunch', title: '公司食堂' }, now()).id;
-  assert.deepEqual(logFromPlan(s, p), { date: MON, meal: 'dinner', title: '红烧肉', recipeId: rid, planId: p, servings: 1, per: { kcal: 620, protein: 22, carbs: null, fat: null }, fromFood: null });
-  assert.deepEqual(logFromPlan(s, q), { date: MON, meal: 'lunch', title: '公司食堂', recipeId: null, planId: q, servings: 1, per: null, fromFood: null });
+  assert.deepEqual(logFromPlan(s, p), { date: MON, meal: 'dinner', title: '红烧肉', recipeId: rid, planId: p, servings: 1, per: { kcal: 620, protein: 22, carbs: null, fat: null }, estimated: false, estNote: null, fromFood: null });
+  assert.deepEqual(logFromPlan(s, q), { date: MON, meal: 'lunch', title: '公司食堂', recipeId: null, planId: q, servings: 1, per: null, estimated: false, estNote: null, fromFood: null });
   assert.equal(logFromPlan(s, 'p_nope'), null);
   assert.equal(loggedFrom(s, p), 0);
   addLogEntry(s, logFromPlan(s, p), now());
@@ -146,7 +146,7 @@ test('从计划「吃了」：那一天那一顿、1 份、食谱现在的每人
   // 下一次「吃了」同一句话：用记住的每份；直接「添加」不会记成没填，也不会把记住的冲掉
   const q2 = addEntry(s, { date: SUN, meal: 'lunch', title: '公司食堂' }, now()).id;
   assert.deepEqual(logFromPlan(s, q2), { date: SUN, meal: 'lunch', title: '公司食堂', recipeId: null, planId: q2, servings: 1,
-    per: { kcal: 800, protein: null, carbs: null, fat: null }, fromFood: foodId('公司食堂') });
+    per: { kcal: 800, protein: null, carbs: null, fat: null }, estimated: false, estNote: null, fromFood: foodId('公司食堂') });
   const again = addLogEntry(s, logFromPlan(s, q2), now());
   assert.deepEqual([again.entry.kcal, foodOf(s, '公司食堂').per.kcal, foodOf(s, '公司食堂').uses], [800, 800, 2]);
 });

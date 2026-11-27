@@ -492,6 +492,7 @@ export const MAP = [
   { fdc: 174852, zh: ['可乐'], en: ['cola', 'coke'] },   // Beverages, carbonated, cola, regular
   { fdc: 171890, zh: ['咖啡', '黑咖啡', '美式咖啡'], en: ['coffee', 'black coffee'] },   // Beverages, coffee, brewed, prepared with tap water
   { fdc: 173227, zh: ['红茶', '茶', '绿茶', '乌龙茶'], en: ['tea', 'black tea', 'green tea'] },   // Beverages, tea, black, brewed, prepared with tap water
+  { fdc: 173647, zh: ['水', '清水', '开水', '温水', '凉水', '冷水', '热水', '凉白开', '饮用水', '纯净水', '矿泉水', '冰水', '冰块'], en: ['water', 'hot water', 'boiling water', 'ice water', 'tap water', 'ice', 'ice cubes'] },   // Beverages, water, tap, drinking（第 15 步：汤、面团里的水不算「没算进去」）
   { fdc: 169677, zh: ['薯片', '洋芋片'], en: ['potato chips', 'chips'] },   // Snacks, potato chips, plain, salted
   { fdc: 167959, zh: ['爆米花'], en: ['popcorn'] },   // Snacks, popcorn, air-popped
   { fdc: 167558, zh: ['玉米片', '玉米脆片'], en: ['tortilla chips'] },   // Snacks, tortilla chips, plain, white corn, salted

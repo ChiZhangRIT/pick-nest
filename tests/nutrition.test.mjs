@@ -253,7 +253,9 @@ test('认名字：不该认的不认——后面还有别的字、单字的名�
     '豆皮', '椰汁', '香肠', '腊肠', 'chinese sausage', '鸡柳', '鸭腿', '炒面']) not(n);
   // 太笼统的英文前面是别的食物：tuna steak 不是牛排
   for (const n of ['tuna steak', 'salmon steak', 'ham steak', 'turkey bacon', 'chicken sausage', 'turkey sausage', 'apple butter', 'cocoa butter',
-    'vegetable stock', 'vegetable broth', 'banana chips']) not(n);
+    'vegetable stock', 'vegetable broth', 'banana chips', 'tonic water', 'sugar water', 'vitamin water', 'rose water', 'italian ice', 'shaved ice']) not(n);
+  // 水的整个名字、前后是冷热的照样认（0 千卡）
+  for (const n of ['water', 'cold water', 'warm water', 'hot water', 'ice water', 'ice', 'ice cubes', 'water, divided', '清水', '冰块']) assert.equal(findFood(n).id, 173647, n);
   for (const w of EXACT_ONLY) assert.ok(findFood(w), `「${w}」整个名字照样认`);
   for (const n of LOOKALIKES) assert.equal(findFood(n), null, `LOOKALIKES 的「${n}」认不出`);
   assert.ok(PREFIX_WORDS.zh.includes('小') && PREFIX_WORDS.en.has('dried'));

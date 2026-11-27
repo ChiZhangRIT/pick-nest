@@ -6,6 +6,7 @@
 //   改：editLogEntry（只改份数时合计按比例跟着变）；删：deleteLogEntry（软删除，不进最近删除，撤销靠提示条，和计划一样）。
 //   没连食谱的（手动写的、常吃的、计划里只写一句的「出去吃」）记进常吃的（foods.js 的 rememberFood），下次输入时联想。
 // 营养是抄下来的：以后改了食谱的每人份、常吃的（第 15 步还有营养表），过去的记录不变（要改就改这一条）。
+// 第 15 步：连着的食谱没填每人份营养时用按食材估算的（core/estimate.js 的 recipeNutrition），记成 estimated（界面上写「约」），记的时候照样抄下来。
 // 目标在同步的设置 settings.goals（goalsOf / setGoals，按 settingsAt 合并）。日子是本地日期 'YYYY-MM-DD'（dates.js）。
 // 写法和 plan.js 一样：操作函数直接改传进来的 state（在 ctx.mutate 里调用），记录经过 writeRecord / deletedRecord。
 import { MEALS, NUTRIENTS, nutrValue, normalizeNutrition, live, writeRecord, deletedRecord, newId, setSetting, canon } from './store.js';
@@ -15,6 +16,7 @@ import { isDay, weekDays } from './dates.js';
 import { liveRecipe, SERVINGS_MAX } from './recipes.js';
 import { liveEntry } from './plan.js';
 import { rememberFood, liveFood, foodOf, filledOnly, readNutrition, scaleNutrition, hasNutrition } from './foods.js';
+import { recipeNutrition } from './estimate.js';
 
 /** @typedef {import('./store.js').State} State */
 /** @typedef {import('./store.js').LogEntry} LogEntry */
@@ -56,15 +58,23 @@ export function mealAt(d = new Date()) {
 // ---------- 面板一开始的样子（不改数据） ----------
 /**
  * @typedef {{ date?: unknown, meal?: unknown, title?: unknown, servings?: unknown, per?: unknown, recipeId?: unknown, planId?: unknown,
- *   note?: unknown, estimated?: unknown, saveToRecipe?: unknown, fromFood?: unknown }} LogInput
+ *   note?: unknown, estimated?: unknown, saveToRecipe?: unknown, fromFood?: unknown, estNote?: { missing: string[], whole: boolean } | null }} LogInput
  * 记一样吃的面板交来的（份数、营养可以是输入框里的字）。per 是**每份**的营养，存的时候乘上份数；
- * fromFood：营养框是从哪一条常吃的填好的（点了它、打的名字正好是它、计划里只写一句的）——是这次的名字那一条时，空着的框才算用户删掉了
+ * fromFood：营养框是从哪一条常吃的填好的（点了它、打的名字正好是它、计划里只写一句的）——是这次的名字那一条时，空着的框才算用户删掉了；
+ * estNote：营养是估算的时候，没算进去的那几样的名字、是不是一整道（食谱没写几人份）——面板上说一句（logFromPlan / logFromRecipe 给，存的时候不看）
  */
-/** 食谱的每人份营养（第 13 步只有手动填的；第 15 步没填的用估算） @param {any} r @returns {Nutrition | null} */
-const recipePer = (r) => (r && hasNutrition(r.nutrition) ? normalizeNutrition(r.nutrition) : null);
 /**
- * 从计划里这一道菜「吃了」：那一天、那一顿，默认 1 份（计划的人数是做几人份，吃的是其中一份）；连着食谱的用食谱现在的每人份营养，
- * 没填的空着让人填。只写一句的（「出去吃」）名字是那句话，记过这个名字的（常吃的）用记住的每份（不然点两下「添加」就记成没填、还把记住的冲掉）。
+ * 食谱现在的每人份营养：手动填的为准，没填的用按食材估算的（estimated: true）；都没有 → per 是 null（空着让人填）
+ * @param {State} state @param {any} r @returns {{ per: Nutrition | null, estimated: boolean, estNote: { missing: string[], whole: boolean } | null }}
+ */
+function recipePer(state, r) {
+  const n = recipeNutrition(state, r);
+  const e = n && n.estimate;
+  return n ? { per: n.per, estimated: n.estimated, estNote: e ? { missing: e.missing.map(l => l.name), whole: e.whole } : null } : { per: null, estimated: false, estNote: null };
+}
+/**
+ * 从计划里这一道菜「吃了」：那一天、那一顿，默认 1 份（计划的人数是做几人份，吃的是其中一份）；连着食谱的用食谱现在的每人份营养
+ * （没填的用估算的，estimated），都没有的空着让人填。只写一句的（「出去吃」）名字是那句话，记过这个名字的（常吃的）用记住的每份（不然点两下「添加」就记成没填、还把记住的冲掉）。
  * 这道菜不在了 → null
  * @param {State} state @param {string} planId @returns {LogInput | null}
  */
@@ -73,13 +83,14 @@ export function logFromPlan(state, planId) {
   if (!e) return null;
   const r = liveRecipe(state, e.recipeId);
   const f = r ? null : foodOf(state, e.title);
+  const rp = r ? recipePer(state, r) : { per: f && hasNutrition(f.per) ? normalizeNutrition(f.per) : null, estimated: false, estNote: null };
   return { date: e.date, meal: e.meal, title: r ? r.name.trim() : e.title.trim(), recipeId: r ? r.id : null, planId: e.id, servings: 1,
-    per: r ? recipePer(r) : f && hasNutrition(f.per) ? normalizeNutrition(f.per) : null, fromFood: f ? f.id : null };
+    per: rp.per, estimated: rp.estimated, estNote: rp.estNote, fromFood: f ? f.id : null };
 }
-/** 从食谱选：1 份、食谱的每人份营养（没填的空着）。食谱不在了 → null @param {State} state @param {string} recipeId @returns {LogInput | null} */
+/** 从食谱选：1 份、食谱的每人份营养（没填的用估算的，都没有空着）。食谱不在了 → null @param {State} state @param {string} recipeId @returns {LogInput | null} */
 export function logFromRecipe(state, recipeId) {
   const r = liveRecipe(state, recipeId);
-  return r ? { title: r.name.trim(), recipeId: r.id, servings: 1, per: recipePer(r) } : null;
+  return r ? { title: r.name.trim(), recipeId: r.id, servings: 1, ...recipePer(state, r) } : null;
 }
 /** 从常吃的选：1 份、记住的每份营养 @param {State} state @param {string} foodId @returns {LogInput | null} */
 export function logFromFood(state, foodId) {
@@ -110,7 +121,7 @@ export function validateLogEntry(state, input) {
   Object.assign(errors, nut.errors);
   const planId = typeof input.planId === 'string' && input.planId ? input.planId : null;
   return { ok: !Object.keys(errors).length,
-    clean: { date, meal, title, servings, per: nut.value, recipeId: r ? r.id : null, planId, note: str(input.note), estimated: input.estimated === true }, errors };
+    clean: { date, meal, title, servings, per: nut.value, recipeId: r ? r.id : null, planId, note: str(input.note), estimated: input.estimated === true && hasNutrition(nut.value) }, errors };
 }
 /** 放到这一天这一顿的最后 @param {State} state @param {string} date @param {string} meal @param {string | null} [except] */
 function nextOrder(state, date, meal, except = null) {
@@ -123,7 +134,8 @@ function nextOrder(state, date, meal, except = null) {
  * 记一样吃的。营养存的是合计（每份 × 份数，乘完再整理：千卡整数、克一位小数）——记的时候抄下来，以后改了食谱、常吃的也不变。
  * 没连食谱的记进常吃的（这次的名字和每份营养，uses + 1）：营养框是从这个名字的那一条填好的（fromFood）→ 四样都照这次的（空着是删掉了）；
  * 不是 → 只记填了的，没填的留着记住的；名字就是常吃的、一个数也没填 = 和点了它一样，这一条用记住的每份。
- * 连着食谱、食谱还没填每人份、这次填了、saveToRecipe 是 true：也记到食谱上（下次「吃了」直接带上；已经填了的不改）。有错什么也不改
+ * 连着食谱、食谱还没填每人份、这次填了、saveToRecipe 是 true：也记到食谱上（下次「吃了」直接带上；已经填了的不改）。
+ * 这次的数是估算的、没改过（estimated）不记到食谱上：食谱没填的本来就用估算，抄成手动的以后改了食材、指定了食材也不跟着变了。有错什么也不改
  * @param {State} state @param {LogInput} input @param {number} [now]
  * @returns {{ ok: true, id: string, entry: LogEntry } | { ok: false, errors: Record<string, string> }}
  */
@@ -137,7 +149,7 @@ export function addLogEntry(state, input, now = Date.now()) {
     if (known && !filled && !hasNutrition(c.per)) c.per = /** @type {Nutrition} */ (normalizeNutrition(known.per));
     const f = rememberFood(state, c.title, filled ? c.per : filledOnly(c.per), { use: true }, now);
     foodId = f ? f.id : null;
-  } else if (input.saveToRecipe === true && hasNutrition(c.per)) {
+  } else if (input.saveToRecipe === true && !c.estimated && hasNutrition(c.per)) {
     const r = liveRecipe(state, c.recipeId);
     if (r && !hasNutrition(r.nutrition)) writeRecord(state, 'recipes', { ...r, nutrition: c.per }, now);
   }

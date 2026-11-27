@@ -1,7 +1,8 @@
 // @ts-check
 // foods：常吃的（第三版）。记饮食时手动写过的东西（「拿铁 190 千卡」「公司食堂的午饭」）按名字记一条，下次输入时联想、点一下就填好。
 //   id = 'f_' + hash64(normName)：和 memory 一样，两台设备各自记同一样不会变成两条（合并补字段，store.js 的 mergeRecord）。
-//   kind 'food' 的 per 是每份；'ingredient'（第 15 步：食材每 100 g 的营养）也放在这里，记饮食不碰它。
+//   kind 'food' 的 per 是每份；'ingredient'（第 15 步：食材每 100 g 的营养、指定成表里的哪一样、一个多重）也放在这里，记饮食不碰它，
+//   规则在 core/estimate.js（saveIngredientFood、clearIngredientFood）。
 // 营养数的读法也在这里（readNutrition：输入框里的字 → 千卡整数、克一位小数；饮食记录、食谱的每人份、饮食目标共用）、乘份数 scaleNutrition。
 // 写法和 memory.js 一样：直接改传进来的 state（在 ctx.mutate 里调用），记录经过 writeRecord（内容没变不盖新时间）。
 import { normName, hash64, writeRecord, normalizeNutrition, nutrValue, NUTRIENTS } from './store.js';

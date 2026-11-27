@@ -10,7 +10,7 @@
 
 export const NUTRITION_SOURCE = {"attribution":"U.S. Department of Agriculture, Agricultural Research Service. FoodData Central (SR Legacy, 2018).","dataset":"USDA FoodData Central SR Legacy","date":"2018-04","license":"CC0 1.0 (public domain)","url":"https://fdc.nal.usda.gov/"};
 // 生成时的对照表和单位规则的指纹（tools/build-nutrition.mjs 的 inputHash），测试拿它查这份文件是不是按现在的对照表生成的
-export const NUTRITION_INPUT = "a272bb675c4d3d887eca7434c871f92ca079438a9caafe980cc4374c53d872b8";
+export const NUTRITION_INPUT = "70430d2ebe70f433d4386d0b5343d1e2f31d934867f07e636735b25566161b01";
 
 /** @type {NutritionFood[]} */
 export const NUTRITION = [
@@ -392,6 +392,7 @@ export const NUTRITION = [
   {"id":173475,"zh":["薄荷","薄荷叶"],"en":["mint","mint leaves"],"per100":{"kcal":44,"protein":3.3,"carbs":8.4,"fat":0.7},"grams":{"勺":5.7,"片":0.2},"density":0.39},
   {"id":173573,"zh":["牛油果油","酪梨油"],"en":["avocado oil"],"per100":{"kcal":884,"protein":0,"carbs":0,"fat":100},"grams":{"杯":218,"勺":14,"小勺":4.5},"density":0.95},
   {"id":173627,"zh":["鸡腿肉","去骨鸡腿肉","鸡腿排","鸡扒"],"en":["chicken thigh","boneless chicken thighs","chicken thighs"],"per100":{"kcal":121,"protein":19.7,"carbs":0,"fat":4.1},"grams":{"个":149},"density":null},
+  {"id":173647,"zh":["水","清水","开水","温水","凉水","冷水","热水","凉白开","饮用水","纯净水","矿泉水","冰水","冰块"],"en":["water","hot water","boiling water","ice water","tap water","ice","ice cubes"],"per100":{"kcal":0,"protein":0,"carbs":0,"fat":0},"grams":{},"density":1},
   {"id":173664,"zh":["白酒","二锅头","高粱酒","白干酒"],"en":["baijiu"],"per100":{"kcal":295,"protein":0,"carbs":0,"fat":0},"grams":{},"density":0.94,"note":"approximation: Chinese baijiu (42-56% alcohol) uses 100-proof (50%) distilled spirits"},
   {"id":173673,"zh":["带鱼","马鲛鱼","鲅鱼"],"en":["spanish mackerel","hairtail","ribbonfish"],"per100":{"kcal":139,"protein":19.3,"carbs":0,"fat":6.3},"grams":{},"density":null,"note":"approximation: 带鱼 (hairtail) uses Spanish mackerel (similar lean white-fleshed sea fish)"},
   {"id":173682,"zh":["鲳鱼","平鱼","金鲳鱼"],"en":["pompano","pomfret"],"per100":{"kcal":164,"protein":18.5,"carbs":0,"fat":9.5},"grams":{},"density":null,"note":"approximation: 鲳鱼 (pomfret) uses Florida pompano"},

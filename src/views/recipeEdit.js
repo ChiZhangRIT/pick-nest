@@ -21,6 +21,9 @@
 //  （也不在别的草稿里）的从本机删掉（只删从来没上传过的）：不然换几次图本机就多几张没用的
 // 第 13 步：食材下面「每人份营养」（热量千卡、蛋白质 / 碳水 / 脂肪克，手动填的，都能不填）：日历里「吃了」这道菜时用它；
 //   写错的（读不出来、负数、太大）保存时标在那一格下面（core/foods.js 的 readNutrition，validateRecipe 的 errors.nutrition）
+// 第 15 步：下面一块「按食材估算」：按这一页现在写的食材（还没保存的也算）估算的每人份（core/estimate.js），「明细」打开估算的明细
+//   （ui/estimateSheet.js，能指定、自己填食材的营养，存进 foods 马上生效，不算这一页的修改），「填进去」把估算的数填进上面四格（再改、保存才算；没写几人份的一整道、usableEstimate 不过的不给填，说一句为什么）。
+//   上面四格没填时食谱用估算的，填了以手动的为准。打字、改食材时跟着重算；别处改了 foods（撤销、同步）也重算（onChange）
 import { h, icon, keepUnderFinger } from '../ui/dom.js';
 import { t } from '../i18n.js';
 import { field, showErr, onEnter } from '../ui/form.js';
@@ -34,6 +37,9 @@ import { collatorFor } from '../core/group.js';
 import { isObj } from '../core/util.js';
 import { pasteSheet } from '../ui/pasteIngredients.js';
 import { nameSheet } from '../ui/nameSheet.js';
+import { estimateRecipe, usableEstimate } from '../core/estimate.js';
+import { estimateSheet, estimateText } from '../ui/estimateSheet.js';
+import { nowrapParts } from '../ui/logSheet.js';
 
 export const DRAFT_PREFIX = 'picknest.draft.recipe.';
 const defaultStorage = () => { try { return globalThis.localStorage || null; } catch (e) { return null; } };
@@ -116,7 +122,9 @@ export function render(main, params, ctx, deps = {}) {
 
   // 回车（iPhone 键盘上的「下一项」「完成」）不保存：新建时名字一打完点「完成」收键盘，就成了只有名字的食谱、跳到食谱页。
   // 名字 → 几人份，几人份、来源 → 收起键盘；保存是顶栏的「保存」或 ⌘S / ⌘回车（照 babble 的编辑页）
-  const touched = () => persistSoon();
+  /** @type {any} 按食材估算那一块（第 15 步，下面「每人份营养」里建好；建好以前改了东西不用算） */
+  let estLine = null, estBox = null, fillBtn = null, estWhy = null, estSheet = null, lastEst = null;
+  const touched = () => { persistSoon(); drawEst(); };
   const nameIn = h('input.f-in', { type: 'text', value: w.name, maxlength: 200, placeholder: t('rcp.namePh'), autocomplete: 'off', enterkeyhint: 'next', dataset: { fid: 're-name' },
     onkeydown: onEnter(() => svIn.focus()), oninput: () => { w.name = nameIn.value; touched(); } });
   const nameRow = field(t('rcp.name'), nameIn);
@@ -228,6 +236,7 @@ export function render(main, params, ctx, deps = {}) {
   const nameOf = (g, i) => g.name.trim() || t('rcp.rowN', { n: i + 1 });
   const focusFid = (fid) => { const el = fid ? main.querySelector(`[data-fid="${fid}"]`) : null; if (el) el.focus({ preventScroll: true }); return el; };
   function drawRows() {
+    drawEst();
     emptyNote.hidden = w.ings.length > 0;
     rowsEl.hidden = !w.ings.length;
     sortBtn.hidden = w.ings.length < 2;
@@ -426,8 +435,48 @@ export function render(main, params, ctx, deps = {}) {
       onkeydown: onEnter(() => nutIns[k].blur()), oninput: () => { w.nutrition[k] = nutIns[k].value; showErr(nutRows[k], null); touched(); } });
     nutRows[k] = field(t(NUT_LABEL[k]), nutIns[k]);
   }
+  // 按食材估算（第 15 步）：按这一页现在的食材算（没保存的也算）
+  estLine = h('p.re-est-line');
+  fillBtn = h('button.link-btn', { type: 'button', 'aria-label': t('est.fillLabel'), dataset: { fid: 're-est-fill' }, onclick: () => fillEst() }, t('est.fill'));
+  estBox = h('div.re-est', { hidden: true }, h('div.re-est-label', null, t('est.fromIngs')), estLine,
+    h('div.re-est-acts', null,
+      h('button.link-btn', { type: 'button', 'aria-label': t('est.open'), dataset: { fid: 're-est-open' }, onclick: () => { estSheet = estimateSheet(ctx, { recipe: draftRecipe, editing: true }); } }, t('est.details')),
+      fillBtn),
+    estWhy = h('p.f-help.re-est-why', { hidden: true }),
+    h('p.f-help', null, t('est.editHelp')));
   const nutRow = h('div.f-row.re-nut', null, h('h2.group-h', null, t('log.perServing')), h('div.lg-nut-grid', null, NUTRIENTS.map(k => nutRows[k])),
-    h('p.f-help', null, t('log.recipeNutHelp')));
+    h('p.f-help', null, t('log.recipeNutHelp')), estBox);
+  /** 这一页现在写的食谱（只要算估算用的：几人份、食材；写错的行不算） */
+  function draftRecipe() {
+    const v = validateRecipe({ ...w, nutrition: undefined });
+    return { servings: v.clean.servings, ings: v.clean.ings };
+  }
+  function drawEst() {
+    if (!estLine) return;
+    lastEst = estimateRecipe(ctx.state, draftRecipe());
+    const txt = estimateText(lastEst);
+    estBox.hidden = !txt;
+    if (!txt) return;
+    estLine.replaceChildren(...nowrapParts(txt.main), txt.note ? h('span.rcp-est-note', null, txt.note) : null);
+    // 「填进去」只填能用的：上面是每人份的格子，没写几人份（一整道）的不填；超过一份上限的填进去也存不了，说一句
+    const ok = usableEstimate(lastEst) && !lastEst.whole;
+    fillBtn.hidden = !ok;
+    const why = ok || !lastEst.counted || lastEst.blank ? '' : t(lastEst.whole ? 'est.fillWhole' : 'est.tooBig');
+    estWhy.textContent = why;
+    estWhy.hidden = !why;
+    if (estSheet && estSheet.isOpen()) estSheet.refresh();
+  }
+  /** 「填进去」：估算的每人份填进上面四格（没算出来的那一样空着），和自己打的一样，保存才算 */
+  function fillEst() {
+    if (!lastEst || !usableEstimate(lastEst) || lastEst.whole) return;
+    for (const k of NUTRIENTS) {
+      const v = lastEst.perServing[k];
+      nutIns[k].value = w.nutrition[k] = v == null ? '' : formatQty(v);
+      showErr(nutRows[k], null);
+    }
+    persistSoon();
+    nutIns.kcal.focus();
+  }
 
   const banner = draft && dirty() ? h('div.lp-banner.re-draft', { role: 'status' }, h('span', null, t('rcp.draftBack')),
     h('button.btn.small', { type: 'button', dataset: { fid: 're-drop' }, onclick: () => discard() }, t('rcp.draftDrop'))) : null;
@@ -536,7 +585,8 @@ export function render(main, params, ctx, deps = {}) {
   let unmounted = false;
 
   return {
-    onChange() {},
+    // 别的设备同步来的改动不重画这一页（正在打的字不能被冲掉）；只有估算跟着 foods 变（撤销了「指定成」、别的设备填了食材的营养）
+    onChange() { drawEst(); },
     // 切到后台（app 在 visibilitychange → hidden 时调）：马上存，不等 0.4 秒（iOS 页面一隐藏就停掉计时器，之后可能被系统直接关掉）
     flush() { if (!done) persist(); },
     cleanup() {

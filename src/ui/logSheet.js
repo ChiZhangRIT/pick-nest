@@ -5,17 +5,21 @@
 //       计划里的菜「吃了」：那道食谱已经选好（只写一句的「出去吃」是框里的字，记过的用记住的营养）、那一天那一顿、1 份。
 //   哪一天、哪一顿（新记的默认现在这一顿：core/log.js 的 mealAt）、几份（−/+ 每次半份）、每份营养（热量千卡、蛋白质 / 碳水 / 脂肪克，都能不填），
 //   不是 1 份时下面写合计；食谱还没填每人份营养时多一个「也记到食谱里」（默认勾着：下次「吃了」直接带上）；备注。
+//   第 15 步：食谱没填每人份营养、按食材估算得出来的，框里先填上估算的（说一句「用的是估算的」，哪几样没算进去、是不是一整道：core 的 estNote），
+//   没改过就记成 estimated（日历上写「约」），
+//   这时没有「也记到食谱里」（食谱本来就用估算，抄成手动的以后就不跟着食材变了）；改了框里的数就是自己填的，又有「也记到食谱里」。
 //   改的时候名字是普通的输入框（是抄下来的，改了也不连到别的上），还有「删除这一条」（不用确认，10 秒内能撤销）。
 // 营养是记的时候抄下来的：存的是每份 × 份数的合计（core/log.js 的 addLogEntry）；改的时候框里是每份（合计 ÷ 份数，最多一位小数），
 //   只交改了的那几个框（core 的 editedTotals：没动的照原来的合计、份数变了按比例变，不会因为框里四舍五入过就变一点；下面的合计也这样算）。
 // 「添加」/「保存」才存；有改动时关面板先问「放弃没保存的修改？」，面板里马上生效的「删除」也先问（closeThen）。面板不在页面里：页面重画不打断输入。
 // 显示营养的几个小函数（kcalText、macroText、nutritionLine，画进页面时套 nowrapParts）也在这里：日历的每一天（ui/dayLog.js）、食谱页、设置共用。
 import { h, icon } from './dom.js';
-import { t } from '../i18n.js';
+import { t, listJoin } from '../i18n.js';
 import { field, showErr, discardGuard, closeThen, onEnter, composing } from './form.js';
 import { liveLog, validateLogEntry, addLogEntry, editLogEntry, deleteLogEntry, logFromPlan, logFromRecipe, logFromFood, perServing, editedTotals, mealAt, MEALS, NUTRIENTS, LOG_SERVINGS_MAX } from '../core/log.js';
 import { foodSuggestions, foodOf, hasNutrition, scaleNutrition, readNutrition } from '../core/foods.js';
 import { liveRecipe, recipeName, searchRecipes } from '../core/recipes.js';
+import { recipeNutrition } from '../core/estimate.js';
 import { collatorFor } from '../core/group.js';
 import { formatQty, readQty } from '../core/parse.js';
 import { todayDay, fmtPlanDay } from '../core/dates.js';
@@ -29,8 +33,12 @@ export const kcalText = (n, approx = false) => (n == null ? t('log.noKcal') : t(
  * @param {Record<string, any> | null | undefined} x
  */
 export const macroText = (x) => MACROS.filter(k => x && x[k] != null).map(k => `${t('log.' + k)}\u00a0${formatQty(/** @type {any} */ (x)[k])}\u00a0g`).join(' · ');
-/** 一组营养写成一行：「520 千卡 · 蛋白质 25 g · …」（食谱页的每人份、面板里的合计、联想里的常吃的）；一样也没有 → '' @param {Record<string, any> | null | undefined} n */
-export const nutritionLine = (n) => [n && n.kcal != null ? kcalText(n.kcal) : null, macroText(n) || null].filter(Boolean).join(' · ');
+/**
+ * 一组营养写成一行：「520 千卡 · 蛋白质 25 g · …」（食谱页的每人份、面板里的合计、联想里的常吃的）；一样也没有 → ''。
+ * approx：估算的（第 15 步），热量写「约 520 千卡」
+ * @param {Record<string, any> | null | undefined} n @param {boolean} [approx]
+ */
+export const nutritionLine = (n, approx = false) => [n && n.kcal != null ? kcalText(n.kcal, approx) : null, macroText(n) || null].filter(Boolean).join(' · ');
 /**
  * 一行营养画成几个不折开的小段（span.lg-nw，和 ui/dayLog.js 的一样）：放不下一行时只在「 · 」那里折。只靠不折行的空格不够：
  * 中文字之间本来就能折，「脂肪 50 g」会折成「脂 / 肪 50 g」。字还是那一行（textContent 不变）
@@ -68,6 +76,9 @@ export function logSheet(ctx, { id = null, date = null, meal = null, planId = nu
   // 不是从它填的，空着是没填（不然写「拿铁」直接添加，就把记住的 190 千卡冲成没填）。auto：是写名字时自动填的，vals 是填上的样子
   /** @type {{ id: string, auto: boolean, vals: string } | null} */
   let filled = !prev && d.fromFood ? { id: d.fromFood, auto: false, vals: '' } : null;
+  // 营养框是按食材估算的（第 15 步）：vals 是填上的样子，存的时候没动过才记成估算的；note 是没算进去的那几样、是不是一整道（面板上说一句）
+  /** @type {{ vals: string, note: { missing: string[], whole: boolean } | null } | null} */
+  let est = !prev && d.estimated ? { vals: '', note: d.estNote || null } : null;
   /** @type {Record<string, any>} */
   const rows = {};
 
@@ -95,8 +106,13 @@ export function logSheet(ctx, { id = null, date = null, meal = null, planId = nu
       foods.length ? h('li.sug-h', { 'aria-hidden': 'true' }, t('log.frequent')) : null,
       ...foods.map(f => opt('lg-f-' + f.id, 'check', t('plan.pickRecipe', { name: f.name }), f.name, nutritionLine(f.per), () => pickFood(f.id))),
       recs.length ? h('li.sug-h', { 'aria-hidden': 'true' }, t('nav.recipes')) : null,
-      ...recs.map(({ recipe: r }) => opt('lg-r-' + r.id, 'recipe', t('plan.pickRecipe', { name: recipeName(r, t) }), recipeName(r, t),
-        hasNutrition(r.nutrition) ? nutritionLine(r.nutrition) : '', () => pickRecipe(r.id))),
+      ...recs.map(({ recipe: r }) => {
+        const rn = recipeNutrition(ctx.state, r);
+        // 估算的有几样没算进去：跟着写（「约 28 千卡 · …（估算，1 样没算进去）」），别当成准的
+        const left = rn && rn.estimate ? rn.estimate.missing.length : 0;
+        const meta = rn ? nutritionLine(rn.per, rn.estimated) + (left ? t('est.noteMissing', { n: left }) : '') : '';
+        return opt('lg-r-' + r.id, 'recipe', t('plan.pickRecipe', { name: recipeName(r, t) }), recipeName(r, t), meta, () => pickRecipe(r.id));
+      }),
     ].filter(Boolean));
     list.hidden = !foods.length && !recs.length;
   }
@@ -108,7 +124,7 @@ export function logSheet(ctx, { id = null, date = null, meal = null, planId = nu
       const name = r ? recipeName(r, t) : chosenName;
       chosenBox.replaceChildren(icon('recipe'), h('span.dish-chosen-name', null, name),
         h('button.link-btn.dish-change', { type: 'button', 'aria-label': t('plan.changeLabel', { name }), dataset: { fid: 'lg-change' },
-          onclick: () => { chosen = null; chosenName = ''; q.value = ''; setPer(null); filled = null; drawChosen(); drawResults(); q.focus(); } }, t('log.change')));
+          onclick: () => { chosen = null; chosenName = ''; q.value = ''; setPer(null); filled = null; est = null; drawChosen(); drawResults(); q.focus(); } }, t('log.change')));
     }
     drawSaveTo();
   }
@@ -117,6 +133,7 @@ export function logSheet(ctx, { id = null, date = null, meal = null, planId = nu
     if (!x) { drawResults(); return; }
     chosen = rid; chosenName = /** @type {string} */ (x.title);
     setPer(x.per); filled = null;
+    est = x.estimated ? { vals: boxVals(), note: x.estNote || null } : null;
     showErr(rows.title, null);
     drawChosen(); drawResults();
     const btn = chosenBox.querySelector('[data-fid="lg-change"]');
@@ -175,7 +192,7 @@ export function logSheet(ctx, { id = null, date = null, meal = null, planId = nu
   for (const k of NUTRIENTS) {
     // 热量存的是整数：整数的数字键盘（和设置 → 饮食目标、编辑食谱一样）
     nutIns[k] = h('input.f-in.nut-in', { type: 'text', inputmode: k === 'kcal' ? 'numeric' : 'decimal', autocomplete: 'off', enterkeyhint: 'done', dataset: { fid: 'lg-' + k },
-      onkeydown: onEnter(() => save()), oninput: () => { const r = readNutrition({ [k]: nutIns[k].value }); showErr(rows[k], r.errors[k] || null); drawSum(); } });
+      onkeydown: onEnter(() => save()), oninput: () => { const r = readNutrition({ [k]: nutIns[k].value }); showErr(rows[k], r.errors[k] || null); drawSum(); drawSaveTo(); } });
     rows[k] = field(t(FIELD[k]), nutIns[k]);
   }
   const perIn = perStr(d.per);
@@ -186,11 +203,30 @@ export function logSheet(ctx, { id = null, date = null, meal = null, planId = nu
   const recipeEmpty = h('p.f-help.lg-recipe-empty', null, t('log.perRecipeEmpty'));
   const saveBox = h('input.atl-box', { type: 'checkbox', checked: true, dataset: { fid: 'lg-save-recipe' } });
   const saveTo = h('label.atl-check.lg-save-to', null, saveBox, h('span', null, t('log.saveToRecipe')));
-  /** 选上的食谱还没填每人份营养（新记的才有）：说一句，「也记到食谱里」 */
+  /**
+   * 估算的那一句：一整道（食谱没写几人份）说是一整道、吃了一部分改份数；有没算进去的写上是哪几样（最多写 4 样）——
+   * 「卤鸡腿」的鸡腿不知道一个多重，框里的 28 千卡只是生抽和冰糖的
+   * @param {{ missing: string[], whole: boolean } | null} note
+   */
+  function estHint(note) {
+    const names = note ? note.missing : [];
+    const more = names.length > 4 ? '…' : '';
+    return t(note && note.whole ? 'log.perEstWhole' : 'log.perEstimated')
+      + (names.length ? t('log.perEstMissing', { n: names.length, name: listJoin(names.slice(0, 4)) + more }) : '');
+  }
+  /** 框里还是估算的数（没改过） */
+  const asEstimated = () => !!est && boxVals() === est.vals;
+  /**
+   * 选上的食谱还没填每人份营养（新记的才有）：说一句（用的是估算的 / 这次填一份的），「也记到食谱里」——
+   * 框里还是估算的数时没有：存了就成了手动的，以后改了食材、指定了食材不再跟着变
+   */
   function drawSaveTo() {
     const r = chosen ? liveRecipe(ctx.state, chosen) : null;
     const show = !!(r && !hasNutrition(r.nutrition));
-    recipeEmpty.hidden = !show; saveTo.hidden = !show;
+    recipeEmpty.hidden = !show;
+    recipeEmpty.textContent = est ? estHint(est.note) : t('log.perRecipeEmpty');
+    recipeEmpty.classList.toggle('est', !!est);
+    saveTo.hidden = !show || asEstimated();
   }
   const sumLine = h('p.f-help.lg-sum', { 'aria-live': 'polite' });
   /** 不是 1 份：下面写合计（存的就是它：新记的是每份 × 份数；改的时候和 core 一样，没动的框照原来的合计按份数比例变） */
@@ -209,6 +245,7 @@ export function logSheet(ctx, { id = null, date = null, meal = null, planId = nu
   rows.note = field(t('plan.note'), noteIn);
 
   setPer(d.per);
+  if (est) est.vals = boxVals();
   const vals = () => ({ title: q.value.trim(), chosen, date: dateIn.value, meal: curMeal, servings: svIn.value.trim(), note: noteIn.value,
     ...Object.fromEntries(NUTRIENTS.map(k => [k, nutIns[k].value.trim()])) });
   const init = vals();
@@ -241,7 +278,8 @@ export function logSheet(ctx, { id = null, date = null, meal = null, planId = nu
     const r = chosen ? liveRecipe(ctx.state, chosen) : null;
     const per = Object.fromEntries(NUTRIENTS.map(k => [k, /** @type {any} */ (v)[k]]));
     const input = { date: v.date, meal: v.meal, title: chosen ? (r ? r.name.trim() : chosenName) : v.title, recipeId: chosen, planId: (d.planId) || null,
-      servings: v.servings, per, note: v.note, saveToRecipe: !saveTo.hidden && saveBox.checked, fromFood: !chosen && filled ? filled.id : null };
+      servings: v.servings, per, note: v.note, saveToRecipe: !saveTo.hidden && saveBox.checked, fromFood: !chosen && filled ? filled.id : null,
+      estimated: !!chosen && asEstimated() };
     // 先在不改数据的情况下查一遍：有错标在那一项下面，面板不关，焦点给第一个错的
     const check = validateLogEntry(ctx.state, input);
     for (const [k, row] of Object.entries(rows)) showErr(row, check.errors[k] || null);

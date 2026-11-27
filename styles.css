@@ -1010,3 +1010,38 @@ body .recovery-screen .page { max-width: 720px; margin: 0 auto; padding: 0; }   
 .tab-note .btn { flex: none; }
 /* 设置 → 关于：新版本下载好了 */
 .set-update { margin-top: 6px; color: var(--accent-text); }
+/* 自动估算（第 15 步）：食谱页「每人份约 …（估算，2 样没算进去）」是整块能点的卡片（右边淡的 ›，和 .group-row.go 一样）；
+   估算的明细：每样食材一行（名字、用量、约多少千卡，下面一行小字是多少克、按什么算 / 为什么没算），下面「指定成… · 自己填」 */
+.rcp-est { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; color: var(--ink); text-align: left; font: inherit; line-height: 1.6; font-variant-numeric: tabular-nums; }
+.rcp-est::after { content: ""; flex: none; width: 8px; height: 8px; margin: 0 4px 0 2px; border: solid var(--faint); border-width: 2px 2px 0 0; transform: rotate(45deg); }
+.rcp-est:hover { background: var(--fill); }
+.rcp-est-text { flex: 1; min-width: 0; }
+.rcp-est-note { color: var(--muted); font-size: 14px; }
+.est-sum { font-variant-numeric: tabular-nums; }
+.est-main { margin: 0; font-weight: 600; line-height: 1.6; }
+.est-total { margin: 4px 0 0; color: var(--ink-2); font-size: 14px; line-height: 1.5; }
+.est-sec { margin-top: 18px; }
+.est-sec .group-h { margin: 0 2px 6px; }
+.est-lines { margin: 0; padding: 0; list-style: none; }
+.est-line { position: relative; padding: 10px 16px; }
+.est-line + .est-line::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: .5px; background: var(--line); }
+.est-line-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.est-name { font-size: 16px; overflow-wrap: anywhere; }
+.est-qty { color: var(--ink-2); font-size: 14.5px; font-variant-numeric: tabular-nums; }
+.est-kcal { margin-left: auto; color: var(--ink-2); font-size: 14.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.est-why { margin: 2px 0 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.est-missing .est-why { color: var(--warn); }
+.est-acts { display: flex; flex-wrap: wrap; gap: 0 14px; margin: 2px 0 -6px; }
+.est-acts .link-btn { min-height: 36px; padding: 4px 0; font-size: 14px; }
+.est-manual { margin-top: 20px; }
+.est-caveat { margin-top: 18px; }
+.est-hits { margin-top: 10px; }
+.est-own .f-row + .f-row, .est-own .f-row + .f-help { margin-top: 16px; }
+.est-converted { color: var(--warn); }
+.lg-recipe-empty.est { color: var(--ink-2); }
+.re-est { margin-top: 12px; padding: 12px 14px; border-radius: var(--radius); background: var(--fill); font-variant-numeric: tabular-nums; }
+.re-est-label { color: var(--ink-2); font-size: 12.5px; font-weight: 600; }
+.re-est-line { margin: 2px 0 0; line-height: 1.6; }
+.re-est-acts { display: flex; gap: 0 16px; margin: 2px 0 -6px; }
+.re-est .f-help { margin: 2px 0 0; }
+.est-hits .dish-opt-meta { white-space: normal; }

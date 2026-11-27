@@ -99,17 +99,20 @@ test('底栏五个都去对的页面；日历是顶层页面、一栏，#/plan �
     main.querySelector('[data-fid="plan-next"]').click();
     await settle();
 
-    // 「吃了」：面板里食谱已经选好、1 份；食谱还没填每人份营养，填了热量就记下来（也记到食谱上），这一天下面列出来
+    // 「吃了」：面板里食谱已经选好、1 份；食谱还没填每人份营养，框里是按食材估算的（第 15 步：五花肉 500 g、2 人份 → 一份约 1295 千卡）；
+    // 改了热量就是自己填的，记下来（也记到食谱上，没改的几格照估算的），这一天下面列出来
     main.querySelector(`[data-fid="pd-eat-${p.id}"]`).click();
     const eat = find(body, el => el.tag === 'dialog' && el.open);
     assert.equal(eat.querySelector('.dish-chosen-name').textContent, '红烧肉');
     const kcal = eat.querySelector('[data-fid="lg-kcal"]');
+    assert.equal(kcal.value, '1295', '没填每人份营养的用估算的');
     kcal.value = '520'; await kcal.fire('input');
     await eat.querySelector('[data-fid="lg-save"]').click();
     await settle();
     const logged = Object.values(ctx.state.data.log);
     assert.deepEqual(logged.map(e => [e.date, e.meal, e.title, e.servings, e.kcal, e.planId, e.recipeId]), [[next, 'dinner', '红烧肉', 1, 520, p.id, r.id]]);
-    assert.deepEqual(ctx.state.data.recipes[r.id].nutrition, { kcal: 520, protein: null, carbs: null, fat: null }, '也记到食谱上了');
+    assert.deepEqual(ctx.state.data.recipes[r.id].nutrition, { kcal: 520, protein: 23.3, carbs: 0, fat: 132.5 }, '也记到食谱上了');
+    assert.equal(logged[0].estimated, false, '改过的是自己填的');
     assert.ok(main.querySelector(`[data-fid="lg-${logged[0].id}"]`), '这一天的「吃了什么」里有它');
     assert.equal(byCls(main, 'lg-tot-val').textContent, '520\u00a0千卡');
 

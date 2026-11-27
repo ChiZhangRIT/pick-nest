@@ -7,6 +7,9 @@
 // 第 12 步：有成品图的最上面一张大图（ui/photo.js：本机没有、开着同步时写「正在下载图片…」，拿不到写「这台设备上没有这张图」；
 // 这一页的 object URL 页面清理时放掉）。
 // 第 13 步：填了每人份营养的，食材下面一块「每人份营养」（520 千卡 · 蛋白质 25 g · …；在编辑里填）。
+// 第 15 步：没填的按食材估算（core/estimate.js）：「每人份约 520 千卡 · …（估算，2 样没算进去）」，点了打开估算的明细（ui/estimateSheet.js：
+//   每样多少克、没算进去的、指定成… / 自己填、用手动的）；面板开着时数据变了（撤销、同步）跟着重画。手动填了的以手动的为准，不显示估算。
+//   没写几人份的估算的是一整道菜：标题写「营养（整道菜）」，不写「每人份营养」。
 import { h, icon, backText } from '../ui/dom.js';
 import { t } from '../i18n.js';
 import { liveRecipe, recipeName, deleteRecipe, recipeTags } from '../core/recipes.js';
@@ -20,6 +23,8 @@ import { recipeMeta } from './recipes.js';
 import { photoPool } from '../ui/photo.js';
 import { nutritionLine, nowrapParts } from '../ui/logSheet.js';
 import { hasNutrition } from '../core/foods.js';
+import { estimateRecipe } from '../core/estimate.js';
+import { estimateSheet, estimateText } from '../ui/estimateSheet.js';
 
 export function render(main, params, ctx) {
   const id = params.id;
@@ -37,11 +42,25 @@ export function render(main, params, ctx) {
     h('div.nav-acts', null, h('button.tb-btn', { type: 'button', dataset: { fid: 'rcp-edit' }, onclick: () => ctx.navigate('/r/' + encodeURIComponent(id) + '/edit') }, icon('pencil'), t('rcp.edit'))));
   const content = h('div.rcp-page');
   const photos = photoPool(ctx, main);
+  /** @type {{ refresh: () => void, isOpen: () => boolean } | null} 开着的估算明细 */
+  let estSheet = null;
 
   // 标签（第 11 步）：菜系在前、风格在后，读屏先念「标签」
   function tagsOf(r) {
     const tg = recipeTags(r), all = [...tg.cuisine, ...tg.style];
     return all.length ? h('ul.rcp-tags.rcp-page-tags', { 'aria-label': t('rcp.tags') }, all.map(x => h('li.tag.rcp-tag', null, x))) : null;
+  }
+  /** 每人份营养：手动填的照写；没填的按食材估算（「每人份约 …（估算，2 样没算进去）」，点了看明细）；估算也没有（没写食材）→ null */
+  function nutritionOf(r) {
+    const sec = (body, whole = false) => h('section.page.rcp-sec', null, h('h2.group-h', null, t(whole ? 'est.wholeH' : 'log.perServing')), body);
+    if (hasNutrition(r.nutrition)) return sec(h('div.card.rcp-prose.rcp-nut', null, nowrapParts(nutritionLine(r.nutrition))));
+    const est = estimateRecipe(ctx.state, r);
+    const txt = estimateText(est);
+    if (!txt) return null;
+    // 没写几人份：估算的是一整道菜，标题不写「每人份」
+    return sec(h('button.card.rcp-est', { type: 'button', dataset: { fid: 'rcp-est' }, onclick: () => { estSheet = estimateSheet(ctx, { recipeId: id }); } },
+      h('span.rcp-est-text', null, h('span.rcp-est-main', null, ...nowrapParts(txt.main)), txt.note ? h('span.rcp-est-note', null, txt.note) : null),
+      h('span.sr-only', null, t('est.open'))), est.whole);
   }
   function draw() {
     const r = rec();
@@ -73,7 +92,7 @@ export function render(main, params, ctx) {
             g.note ? h('span.rcp-ing-note', null, g.note) : null),
           h('span.rcp-ing-qty', null, qtyLabel(g.qty, g.unit)))))
           : h('p.group-foot', null, t('rcp.ingsEmpty'))),
-      hasNutrition(r.nutrition) ? h('section.page.rcp-sec', null, h('h2.group-h', null, t('log.perServing')), text('.rcp-nut', nowrapParts(nutritionLine(r.nutrition)))) : null,
+      nutritionOf(r),
       r.steps.trim() ? h('section.page.rcp-sec', null, h('h2.group-h', null, t('rcp.steps')), text('.rcp-steps', r.steps.trim())) : null,
       r.note.trim() ? h('section.page.rcp-sec', null, h('h2.group-h', null, t('rcp.note')), text('.rcp-note', r.note.trim())) : null,
       h('div.page.rcp-foot', null, h('button.btn.block.danger', { type: 'button', dataset: { fid: 'rcp-del' }, onclick: () => remove() }, t('rcp.delete'))),
@@ -100,6 +119,7 @@ export function render(main, params, ctx) {
       draw();
       const el = fid ? main.querySelector(`[data-fid="${fid}"]`) : null;
       if (el) el.focus({ preventScroll: true });
+      if (estSheet && estSheet.isOpen()) estSheet.refresh();
     },
     cleanup: () => photos.revoke(),
   };
